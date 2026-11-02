@@ -36,6 +36,7 @@ export default function QuestionPack({ test, onClose, onImported }) {
   const [pack, setPack] = useState(null)
   const [report, setReport] = useState(null)  // the server's dry-run answer: { ok, errors, sections, total_questions, total_marks }
   const [fileError, setFileError] = useState("")
+  const [pasted, setPasted] = useState("")
   const [busy, setBusy] = useState(false)
 
   const total = offered.reduce((n, t) => n + (Number(counts[t]) || 0), 0)
@@ -61,16 +62,15 @@ export default function QuestionPack({ test, onClose, onImported }) {
     }
   }
 
-  async function chooseFile(e) {
-    const file = e.target.files?.[0]
+  // Both ways in (a file, or the AI's reply pasted as text) end here: parse, let the server check everything, show the result.
+  async function check(text) {
     setPack(null)
     setReport(null)
     setFileError("")
-    if (!file) return
-    if (file.size > MAX_BYTES) return setFileError("The file is too large (2 MB at most).")
+    if (text.length > MAX_BYTES) return setFileError("The JSON is too large (2 MB at most).")
     setBusy(true)
     try {
-      const parsed = parsePack(await file.text())
+      const parsed = parsePack(text)
       setReport(await post(`/tests/${test.id}/import-questions`, { pack: parsed, dry_run: true }))
       setPack(parsed)
     } catch (err) {
@@ -78,6 +78,13 @@ export default function QuestionPack({ test, onClose, onImported }) {
     } finally {
       setBusy(false)
     }
+  }
+
+  async function chooseFile(e) {
+    const file = e.target.files?.[0]
+    setPasted("")
+    if (file) await check(await file.text())
+    else { setPack(null); setReport(null); setFileError("") }
   }
 
   async function importAll() {
@@ -124,8 +131,12 @@ export default function QuestionPack({ test, onClose, onImported }) {
         </section>
 
         <section className="grid gap-3">
-          <h3 className="font-medium">2. Upload the JSON file</h3>
+          <h3 className="font-medium">2. Give the AI's answer: upload the file, or paste the text</h3>
           <Input type="file" accept=".json,.txt,application/json" aria-label="Questions JSON file" onChange={chooseFile} />
+          <p className="text-sm text-muted-foreground">Some AI chats show the JSON on screen instead of giving a file. Copy it and paste it here.</p>
+          <Textarea aria-label="Pasted JSON" className="h-28 font-mono text-xs" placeholder='Paste the JSON here, for example {"sections": [ ... ]}' value={pasted}
+            onChange={(e) => setPasted(e.target.value)} />
+          <div><Button variant="outline" size="sm" disabled={busy || !pasted.trim()} onClick={() => check(pasted)}>Check pasted JSON</Button></div>
           {fileError && <Alert variant="destructive" className="p-3" data-testid="pack-file-error">{fileError}</Alert>}
           {report && !report.ok && (
             <Alert variant="destructive" className="p-3" data-testid="pack-errors">

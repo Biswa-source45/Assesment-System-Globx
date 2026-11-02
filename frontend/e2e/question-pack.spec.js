@@ -129,3 +129,26 @@ test("the prompt and the file follow the exam's department: HR has no coding", a
   await dialog(page).getByLabel("Questions JSON file").setInputFiles(file({ sections: [{ title: "Tech", questions: [coding] }] }))
   await expect(dialog(page).getByTestId("pack-errors")).toContainText("does not offer coding")
 })
+
+test("the AI's answer can be pasted as text instead of uploaded: checked, previewed and imported the same way", async ({ page }) => {
+  await loginStaff(page)
+  await createExam(page, "General", "E2E Pack Paste Exam")
+  await page.getByRole("button", { name: "Build with AI" }).click()
+  const paste = dialog(page).getByLabel("Pasted JSON")
+  const check = dialog(page).getByRole("button", { name: "Check pasted JSON" })
+  await expect(check).toBeDisabled()  // nothing pasted yet
+
+  await paste.fill("Sure! I cannot give a file, sorry.")
+  await check.click()
+  await expect(dialog(page).getByTestId("pack-file-error")).toContainText("does not contain a JSON document")
+
+  const pack = { sections: [{ title: "Pasted part", questions: [mcq(1, { title: "E2E pasted one" }), { type: "short", title: "E2E pasted short", statement: "Say hi.", model_answer: "Hi." }] }] }
+  await paste.fill("Here is the exam:\n```json\n" + JSON.stringify(pack, null, 2) + "\n```")  // a chat reply, copied as it is
+  await check.click()
+  await expect(dialog(page).getByTestId("pack-file-error")).toHaveCount(0)
+  await expect(dialog(page).getByTestId("pack-preview")).toContainText("2 questions, 3 marks, in 1 sections")
+  await shot(page, "question-pack-paste")
+  await dialog(page).getByRole("button", { name: "Import 2 questions" }).click()
+  await expect(page.getByTestId("exam-item")).toHaveCount(2)
+  await expect(page.getByTestId("exam-totals")).toContainText("2 questions, 3 marks")
+})
