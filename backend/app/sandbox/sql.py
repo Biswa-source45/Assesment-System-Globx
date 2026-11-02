@@ -54,6 +54,16 @@ def _deny_escape(action, *_):
     return sqlite3.SQLITE_DENY if action in _DENIED else sqlite3.SQLITE_OK
 
 
+def _type_of(declared: str) -> str:
+    """Column type as the table builder offers it: INTEGER, REAL, DATE or TEXT."""
+    t = (declared or "").upper()
+    if "INT" in t:
+        return "INTEGER"
+    if any(k in t for k in ("REAL", "FLOA", "DOUB", "DEC", "NUM")):
+        return "REAL"
+    return "DATE" if "DATE" in t or "TIME" in t else "TEXT"
+
+
 def describe_tables(schema: str, seed: str, dataset: str, limit: int = 20) -> List[Dict]:
     """The tables that schema + seed + one dataset create, as [{name, columns, rows}] so the candidate can see the sample data.
     Built with SQLite; the scripts are written by the question author, so they are trusted. Returns [] if they do not run."""
@@ -63,8 +73,10 @@ def describe_tables(schema: str, seed: str, dataset: str, limit: int = 20) -> Li
         names = [r[0] for r in con.execute("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY rowid").fetchall()]
         out = []
         for name in names:
-            cur = con.execute(f'SELECT * FROM "{name.replace(chr(34), chr(34) * 2)}" LIMIT {int(limit)}')
-            out.append({"name": name, **result_payload([d[0] for d in cur.description], cur.fetchall())})
+            quoted = name.replace(chr(34), chr(34) * 2)
+            types = [_type_of(r[2]) for r in con.execute(f'PRAGMA table_info("{quoted}")').fetchall()]
+            cur = con.execute(f'SELECT * FROM "{quoted}" LIMIT {int(limit)}')
+            out.append({"name": name, "types": types, **result_payload([d[0] for d in cur.description], cur.fetchall())})
         return out
     except sqlite3.Error:
         return []

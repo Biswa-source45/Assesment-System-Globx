@@ -15,6 +15,7 @@ from app.db import get_db
 from app.models import QTYPES, Question, QuestionGroup, TestCase, User, aware, uid
 from app.sandbox.judge import judge_code, judge_sql, run_reference, sql_expected_for
 from app.sandbox.languages import REGISTRY
+from app.sandbox.sql import describe_tables
 from app.services import ai
 from app.services.sanitize import sanitize_html
 
@@ -61,6 +62,9 @@ def q_out(q: Question, full: bool = True) -> dict:
         d.update({"body": q.body, "config": q.config,
                   "cases": [{"id": c.id, "ordinal": c.ordinal, "visibility": c.visibility, "input": c.input,
                              "expected": c.expected, "weight": c.weight, "purpose": c.purpose} for c in q.cases]})
+        if q.type == "sql":  # the table builder shows each dataset as editable tables
+            cfg = q.config or {}
+            d["sql_tables"] = [describe_tables(cfg.get("schema", ""), cfg.get("seed", ""), c.input, limit=500) for c in q.cases]
     return d
 
 
@@ -125,6 +129,18 @@ def _normalise_weights(q: Question) -> None:
         c.weight = w
 
 
+def _fill_sql_expected(q: Question) -> None:
+    """SQL cases are authored as data only: the expected output is whatever the reference query returns on each dataset."""
+    if q.type != "sql":
+        return
+    cfg = q.config or {}
+    for i, c in enumerate(q.cases):
+        try:
+            c.expected = json.dumps(sql_expected_for(cfg, c.input))
+        except ValueError as e:
+            raise HTTPException(422, {"errors": [f"Dataset {i + 1}: {e}"]})
+
+
 def _apply(q: Question, body: QuestionIn) -> None:
     q.type, q.title, q.difficulty = body.type, body.title.strip(), body.difficulty
     q.body = sanitize_html(body.body)
@@ -174,6 +190,7 @@ def create_question(body: QuestionIn, request: Request, user: User = Depends(AUT
         raise HTTPException(422, {"errors": errs})
     q = Question(id=uid(), org_id=user.org_id, created_by=user.id)
     _apply(q, body)
+    _fill_sql_expected(q)
     db.add(q)
     audit(db, user, "create", "question", q.id, {"type": q.type}, request)
     db.commit()
@@ -199,6 +216,7 @@ def update_question(qid: str, body: QuestionIn, request: Request, user: User = D
     if errs:
         raise HTTPException(422, {"errors": errs})
     _apply(q, body)
+    _fill_sql_expected(q)
     q.version += 1
     audit(db, user, "update", "question", q.id, {"version": q.version}, request)
     db.commit()
@@ -312,6 +330,25 @@ def generate_cases(body: GenerateIn, request: Request, user: User = Depends(AUTH
     audit(db, user, "generate_cases", "question", "", {"proposed": len(proposed), "kept": len(cases)}, request)
     db.commit()
     return {"cases": cases, "dropped": off_shape + len(ran) - len(cases)}
+
+
+class SqlPreviewIn(BaseModel):
+    ddl: str
+    reference_sql: str
+    datasets: List[str]
+
+
+@router.post("/questions/sql-preview")
+def sql_preview(body: SqlPreviewIn, user: User = Depends(AUTHOR)):
+    """Run the reference query on each dataset of the unsaved form; the result is the expected output the candidate must match."""
+    cfg = {"schema": body.ddl, "seed": "", "reference_sql": body.reference_sql}
+    results = []
+    for ds in body.datasets:
+        try:
+            results.append({"ok": True, **sql_expected_for(cfg, ds)})
+        except ValueError as e:
+            results.append({"ok": False, "error": str(e)})
+    return {"results": results}
 
 
 @router.post("/questions/check-reference")

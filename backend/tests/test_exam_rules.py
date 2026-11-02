@@ -135,7 +135,7 @@ def test_sql_sample_tables_and_candidate_verdicts():
     from app.sandbox.judge import public_view
     from app.sandbox.sql import describe_tables
     t = describe_tables("CREATE TABLE a(id INTEGER, name TEXT);", "", "INSERT INTO a VALUES (1, 'x'), (2, 'y');")
-    assert t == [{"name": "a", "columns": ["id", "name"], "rows": [[1, "x"], [2, "y"]]}]
+    assert t == [{"name": "a", "types": ["INTEGER", "TEXT"], "columns": ["id", "name"], "rows": [[1, "x"], [2, "y"]]}]
     assert describe_tables("not sql at all (", "", "") == []
     res = {"cases": [{"ordinal": 1, "visibility": "open", "verdict": "AC", "passed": True, "weight": 1},
                      {"ordinal": 2, "visibility": "hidden", "verdict": "TLE", "passed": False, "weight": 2, "input": "SECRET", "expected": "SECRET"}]}
@@ -152,3 +152,31 @@ def test_generated_inputs_must_keep_the_examples_shape():
     kept, off = keep_same_shape(gen, ["3\n1 2 3\n", "1\n7\n"])  # examples are two-line
     assert kept == [] and off == 3
     assert keep_same_shape(gen, ["4\n", "2\n1 2\n"]) == (gen, 0)  # examples differ: no filtering
+
+
+def test_sql_question_is_authored_as_data_and_the_expected_output_is_computed(client):
+    import json
+    creator = _login(client, "creator@globx.co.in", PW["creator@globx.co.in"])
+    ddl = "CREATE TABLE emp (id INTEGER, name TEXT, salary INTEGER);"
+    ref = "SELECT name FROM emp WHERE salary > 50 ORDER BY name"
+    ds = ["INSERT INTO emp VALUES (1, 'Ben', 60), (2, 'Ann', 70), (3, 'Cy', 10);", "INSERT INTO emp VALUES (1, 'Zed', 99);"]
+    body = {"type": "sql", "title": "Names over 50", "body": "<p>Names earning over 50.</p>", "marks": 10,
+            "config": {"schema": ddl, "seed": "", "engines": ["sqlite"], "ordered": True, "reference_sql": ref},
+            "cases": [{"visibility": "open", "input": ds[0]}, {"visibility": "hidden", "input": ds[1]}]}
+    r = client.post("/api/v1/questions", headers=creator, json=body)
+    assert r.status_code == 200, r.text
+    q = r.json()
+    # nobody typed an expected output: it is whatever the reference query returns
+    assert [json.loads(c["expected"])["rows"] for c in q["cases"]] == [[["Ann"], ["Ben"]], [["Zed"]]]
+    table = q["sql_tables"][0][0]  # the editor shows each dataset as editable tables
+    assert (table["name"], table["types"], len(table["rows"])) == ("emp", ["INTEGER", "TEXT", "INTEGER"], 3)
+
+    preview = "/api/v1/questions/sql-preview"
+    pv = client.post(preview, headers=creator, json={"ddl": ddl, "reference_sql": ref, "datasets": ds}).json()
+    assert [x["rows"] for x in pv["results"]] == [[["Ann"], ["Ben"]], [["Zed"]]]
+    bad = client.post(preview, headers=creator, json={"ddl": ddl, "reference_sql": "SELECT nope FROM emp", "datasets": ds[:1]}).json()
+    assert bad["results"][0]["ok"] is False
+
+    body["config"]["reference_sql"] = "SELECT nope FROM emp"  # a broken reference query is refused, naming the dataset
+    r = client.post("/api/v1/questions", headers=creator, json=body)
+    assert r.status_code == 422 and "Dataset 1" in r.text
