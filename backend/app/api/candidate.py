@@ -137,7 +137,7 @@ def clock(atid: str, user: User = Depends(current_user), db: Session = Depends(g
     """The server's view of the deadline, polled by the exam page so that an extension or an ended exam is noticed quickly."""
     at = _my_attempt(db, atid, user)
     return {"status": at.status, "deadline_at": aware(at.deadline_at).isoformat(), "server_time": now().isoformat(),
-            "reason": at.submit_reason}
+            "reason": at.submit_reason, "content_version": svc.content_version(db, at)}
 
 
 @router.post("/attempts/{atid}/sections/{sid}/enter")

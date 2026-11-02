@@ -142,7 +142,7 @@ def test_out(db: Session, t: Test, full: bool = True) -> dict:
     d = {"id": t.id, "department_id": t.department_id, "title": t.title, "status": t.status, "duration_min": t.duration_min,
          "starts_at": _iso(t.starts_at), "ends_at": _iso(t.ends_at), "cutoff": t.cutoff,
          "question_count": n_q, "total_marks": round(marks, 2), "section_count": len(t.sections),
-         "invited": len(asgs), "taken": sum(1 for a in asgs if a.status not in ("invited", "expired", "cancelled", "in_progress")),
+         "invited": len(asgs), "taking": sum(1 for a in asgs if a.status == "in_progress"), "taken": sum(1 for a in asgs if a.status not in ("invited", "expired", "cancelled", "in_progress")),
          "updated_at": _iso(t.updated_at)}
     if full:
         d.update({"description": t.description, "instructions": t.instructions, "access_enabled": t.access_enabled,

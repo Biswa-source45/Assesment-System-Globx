@@ -77,10 +77,10 @@ test("auto populate: random questions from the exam's department, reviewed befor
   await page.keyboard.press("Escape")
 
   // removing a question asks first
-  await page.getByTestId("exam-item").first().getByRole("button").click()
+  await page.getByTestId("exam-item").first().getByRole("button", { name: /^Remove / }).click()
   await dialog(page).getByRole("button", { name: "Cancel" }).click()
   await expect(page.getByTestId("exam-item")).toHaveCount(5)
-  await page.getByTestId("exam-item").first().getByRole("button").click()
+  await page.getByTestId("exam-item").first().getByRole("button", { name: /^Remove / }).click()
   await dialog(page).getByRole("button", { name: "Remove", exact: true }).click()
   await expect(page.getByTestId("exam-item")).toHaveCount(4)
 

@@ -27,7 +27,7 @@ const blankOptions = () => Array.from({ length: 4 }, () => ({ id: rid(), text: "
 
 
 const blank = () => ({
-  department_id: "", type: "mcq_single", title: "", body: "", difficulty: "medium", marks: 1, negative_marks: 0, skills: "",
+  department_id: "", group_id: null, type: "mcq_single", title: "", body: "", difficulty: "medium", marks: 1, negative_marks: 0, skills: "",
   options: blankOptions(), model_answer: "", keywords: "", max_words: 150,
   languages: ["python"], time_limit_ms: 2000, memory_mb: 256, constraints: "", ref_lang: "python", ref_source: "", cases: [],
   tables: [], datasets: [], reference_sql: "", ordered: false, preview: null,  // SQL questions
@@ -36,7 +36,7 @@ const blank = () => ({
 function fromQuestion(q) {
   const c = q.config ?? {}
   return {
-    ...blank(), department_id: q.department_id ?? "", type: q.type, title: q.title, body: fromHtml(q.body), difficulty: q.difficulty, marks: q.marks, negative_marks: q.negative_marks,
+    ...blank(), department_id: q.department_id ?? "", group_id: q.group_id ?? null, type: q.type, title: q.title, body: fromHtml(q.body), difficulty: q.difficulty, marks: q.marks, negative_marks: q.negative_marks,
     skills: (q.skills ?? []).join(", "),
     options: q.type.startsWith("mcq") ? (c.options ?? []).map((o) => ({ id: o.id, text: o.text, correct: !!o.correct })) : blankOptions(),
     model_answer: c.model_answer ?? "", keywords: (c.keywords ?? []).join(", "), max_words: c.max_words ?? (q.type === "short" ? 150 : 800),
@@ -58,9 +58,15 @@ function withSql(f, q) {
   return { ...f, tables, datasets, preview, reference_sql: q.config?.reference_sql ?? "", ordered: !!q.config?.ordered }
 }
 
-export default function QuestionEditor() {
+// The bank's page: saving goes back to the bank.
+export function QuestionPage() {
   const { id } = useParams()
   const navigate = useNavigate()
+  return <QuestionEditor id={id} onSaved={() => navigate("/admin/questions")} />  // the bank shows the new or updated question at the top
+}
+
+// Also used inside the exam's Questions tab (embedded): the caller gets the saved question and decides what happens next.
+export default function QuestionEditor({ id, onSaved, embedded = false }) {
   const [f, setF] = useState(blank)
   const { departments, byId } = useDepartments()
   const [check, setCheck] = useState(null)  // verdict per case from "Check reference solution"
@@ -97,7 +103,7 @@ export default function QuestionEditor() {
     const bad = checkTables(f.tables)
     if (bad) throw new Error(bad)
     return {
-      department_id: f.department_id, type: "sql", title: f.title, body: toHtml(f.body), difficulty: f.difficulty, marks: Number(f.marks), negative_marks: 0,
+      department_id: f.department_id, group_id: f.group_id, type: "sql", title: f.title, body: toHtml(f.body), difficulty: f.difficulty, marks: Number(f.marks), negative_marks: 0,
       skills: f.skills.split(",").map((s) => s.trim()).filter(Boolean), status: "approved",
       config: { schema: buildSchema(f.tables), seed: "", engines: ["sqlite"], ordered: f.ordered, reference_sql: f.reference_sql },
       cases: f.datasets.map((d, i) => ({ ordinal: i + 1, visibility: d.visibility, input: buildInserts(f.tables, d.rows), expected: "", weight: Number(d.weight) || 1, purpose: d.purpose })),
@@ -119,7 +125,7 @@ export default function QuestionEditor() {
       if (f.ref_source.trim()) config.reference = { language: f.ref_lang, source: f.ref_source }
     }
     return {
-      department_id: f.department_id, type: f.type, title: f.title, body: toHtml(f.body), difficulty: f.difficulty, marks: Number(f.marks), negative_marks: Number(f.negative_marks),
+      department_id: f.department_id, group_id: f.group_id, type: f.type, title: f.title, body: toHtml(f.body), difficulty: f.difficulty, marks: Number(f.marks), negative_marks: Number(f.negative_marks),
       skills: f.skills.split(",").map((s) => s.trim()).filter(Boolean), status: "approved", config,
       cases: f.type === "coding" ? f.cases.map((c, i) => ({ ordinal: i + 1, visibility: c.visibility, input: c.input, expected: c.expected, weight: Number(c.weight) || 1, purpose: c.purpose })) : undefined,
     }
@@ -129,9 +135,9 @@ export default function QuestionEditor() {
     setBusy("save")
     setError("")
     try {
-      if (id === "new") { await post("/questions", payload()); toast.success("Question created") }
-      else { await put(`/questions/${id}`, payload()); toast.success("Question saved") }
-      navigate("/admin/questions")  // the bank shows the new or updated question at the top
+      const saved = id === "new" ? await post("/questions", payload()) : await put(`/questions/${id}`, payload())
+      toast.success(id === "new" ? "Question created" : "Question saved")
+      onSaved(saved)
     } catch (e) {
       setError(e.message)
     } finally {
@@ -178,10 +184,12 @@ export default function QuestionEditor() {
 
   return (
     <div className="grid max-w-4xl gap-4">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-semibold">{id === "new" ? "New question" : "Edit question"}</h1>
-        <Button variant="ghost" asChild><Link to="/admin/questions">Back to bank</Link></Button>
-      </div>
+      {!embedded && (
+        <div className="flex items-center justify-between">
+          <h1 className="text-2xl font-semibold">{id === "new" ? "New question" : "Edit question"}</h1>
+          <Button variant="ghost" asChild><Link to="/admin/questions">Back to bank</Link></Button>
+        </div>
+      )}
 
       <Card>
         <CardContent className="grid gap-4 pt-6">

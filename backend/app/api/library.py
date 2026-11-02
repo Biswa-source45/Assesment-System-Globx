@@ -7,16 +7,17 @@ from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, UploadFile
 from pydantic import BaseModel
-from sqlalchemy import select
+from sqlalchemy import and_, or_, select
 from sqlalchemy.orm import Session
 
 from app.core.deps import audit, require, same_org
 from app.db import get_db
-from app.models import QTYPES, Department, Question, QuestionGroup, TestCase, User, aware, uid
+from app.models import QTYPES, Answer, Department, Question, QuestionGroup, Section, SectionItem, Test, TestCase, User, aware, uid
 from app.sandbox.judge import judge_code, run_reference, sql_expected_for
 from app.sandbox.languages import REGISTRY
 from app.sandbox.sql import describe_tables
 from app.services import ai
+from app.services.attempts import sync_live_attempts
 from app.services.sanitize import sanitize_html
 
 router = APIRouter(tags=["library"])
@@ -189,6 +190,13 @@ def _apply(q: Question, body: QuestionIn) -> None:
     _normalise_weights(q)
 
 
+def _in_published_exam(db: Session, q: Question) -> bool:
+    """Directly, or through a linked group the question belongs to."""
+    return db.scalar(select(Test.id).join(Section, Section.test_id == Test.id).join(SectionItem, SectionItem.section_id == Section.id)
+                     .where(Test.status == "published", or_(SectionItem.question_id == q.id, and_(SectionItem.group_id.is_not(None), SectionItem.group_id == q.group_id)))
+                     .limit(1)) is not None
+
+
 @router.get("/questions")
 def list_questions(type: Optional[str] = None, department_id: Optional[str] = None, skill: Optional[str] = None, difficulty: Optional[str] = None,
                    q: Optional[str] = None, status: Optional[str] = None, group_id: Optional[str] = None,
@@ -250,9 +258,14 @@ def update_question(qid: str, body: QuestionIn, request: Request, user: User = D
     if errs:
         raise HTTPException(422, {"errors": errs})
     _department(db, user, body, current_type=q.type)
+    if body.type != q.type and (db.scalar(select(SectionItem.id).where(SectionItem.question_id == q.id).limit(1)) or db.scalar(select(Answer.id).where(Answer.question_id == q.id).limit(1))):
+        raise HTTPException(422, {"errors": ["The type of a question cannot change once it is in an exam"]})
     _apply(q, body)
     _check_on_save(q)
+    if q.type in ("coding", "sql") and not q.config.get("validated") and _in_published_exam(db, q):
+        raise HTTPException(422, {"errors": ["This question is in a published exam, so its reference solution must still pass every test case. Fix it and save again."]})
     q.version += 1
+    sync_live_attempts(db, q)  # candidates taking an exam right now get the new marks and options
     audit(db, user, "update", "question", q.id, {"version": q.version}, request)
     db.commit()
     return q_out(q)

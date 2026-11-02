@@ -1,9 +1,10 @@
 import { useEffect, useState } from "react"
 import { toast } from "sonner"
-import { Plus, Shuffle, Sparkles, Trash2 } from "lucide-react"
+import { Pencil, Plus, Shuffle, Sparkles, Trash2 } from "lucide-react"
 import { del, get, post, put } from "@/lib/api"
 import { useDepartments } from "@/lib/useDepartments"
 import AutoPopulate from "@/pages/admin/AutoPopulate"
+import QuestionEditor from "@/pages/admin/QuestionEditor"
 import QuestionPack from "@/pages/admin/QuestionPack"
 import { TYPE_LABEL } from "@/pages/admin/Questions"
 import { useConfirm } from "@/components/ConfirmDialog"
@@ -16,6 +17,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet"
 
 const needsReference = (q) => (q.type === "coding" || q.type === "sql") && !q.validated
 
@@ -106,7 +108,7 @@ function itemTitle(it) {
   return `Random pool: ${it.pool?.draw ?? "?"} questions`
 }
 
-function SectionCard({ section, test, setTest, locked, onPick, onPopulate }) {
+function SectionCard({ section, test, setTest, locked, onPick, onPopulate, onEdit }) {
   const confirm = useConfirm()
   const [title, setTitle] = useState(section.title)
   const [timer, setTimer] = useState(section.timer_min ?? "")
@@ -147,6 +149,7 @@ function SectionCard({ section, test, setTest, locked, onPick, onPopulate }) {
             {it.question && needsReference(it.question) && <Badge className="bg-destructive text-white">Not validated</Badge>}
             {it.question && <Badge variant="secondary">{TYPE_LABEL[it.question.type] ?? it.question.type}</Badge>}
             {it.question && <span className="w-16 text-right text-xs text-muted-foreground">{it.question.marks} marks</span>}
+            {it.question && <Button variant="ghost" size="icon" className="size-8" aria-label={`Edit ${it.question.title}`} onClick={() => onEdit(it.question.id)}><Pencil /></Button>}
             {!locked && <Button variant="ghost" size="icon" className="size-8" aria-label={`Remove ${itemTitle(it)}`} onClick={() => removeItem(it)}><Trash2 /></Button>}
           </div>
         ))}
@@ -168,6 +171,7 @@ export default function ExamQuestions({ test, setTest }) {
   const [pickFor, setPickFor] = useState(null)
   const [populateFor, setPopulateFor] = useState(null)
   const [packOpen, setPackOpen] = useState(false)
+  const [editId, setEditId] = useState(null)  // the question being edited in the side panel
   const used = new Set(test.sections.flatMap((s) => s.items.map((i) => i.question?.id).filter(Boolean)))
 
   async function addSection(e) {
@@ -187,7 +191,7 @@ export default function ExamQuestions({ test, setTest }) {
         <p className="text-sm text-muted-foreground" data-testid="exam-totals">{test.question_count} questions, {test.total_marks} marks in total</p>
         {!locked && <Button variant="outline" size="sm" onClick={() => setPackOpen(true)}><Sparkles /> Build with AI</Button>}
       </div>
-      {test.sections.map((s) => <SectionCard key={s.id} section={s} test={test} setTest={setTest} locked={locked} onPick={setPickFor} onPopulate={setPopulateFor} />)}
+      {test.sections.map((s) => <SectionCard key={s.id} section={s} test={test} setTest={setTest} locked={locked} onPick={setPickFor} onPopulate={setPopulateFor} onEdit={setEditId} />)}
       {!locked && (
         <form onSubmit={addSection} className="flex gap-2">
           <Input aria-label="New section title" placeholder={`Section ${test.sections.length + 1}`} value={newTitle} onChange={(e) => setNewTitle(e.target.value)} />
@@ -196,6 +200,21 @@ export default function ExamQuestions({ test, setTest }) {
       )}
       <QuestionPicker section={pickFor} test={test} used={used} onClose={() => setPickFor(null)} onAdded={setTest} />
       {populateFor && <AutoPopulate test={test} section={populateFor} onClose={() => setPopulateFor(null)} onAdded={setTest} />}
+      <Sheet open={!!editId} onOpenChange={(o) => !o && setEditId(null)}>
+        <SheetContent className="w-full overflow-y-auto p-4 data-[side=right]:sm:max-w-4xl">
+          <SheetHeader className="p-0">
+            <SheetTitle>Edit question</SheetTitle>
+            <SheetDescription>
+              {test.taking > 0
+                ? `${test.taking} candidate(s) are taking this exam right now. When you save, the change reaches their screen within about 15 seconds (text, options, answer key and marks). Their answers are kept.`
+                : test.status === "published"
+                  ? "This exam is published. When you save, everyone who takes it from now on sees the change."
+                  : "The change also applies in the question bank and in every other exam that uses this question."}
+            </SheetDescription>
+          </SheetHeader>
+          {editId && <QuestionEditor key={editId} id={editId} embedded onSaved={async () => { setEditId(null); setTest(await get(`/tests/${test.id}`)) }} />}
+        </SheetContent>
+      </Sheet>
       {packOpen && <QuestionPack test={test} onClose={() => setPackOpen(false)} onImported={setTest} />}
     </div>
   )

@@ -8,12 +8,12 @@ from datetime import timedelta
 from typing import Dict, List, Optional
 
 from fastapi import HTTPException
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.domain import scoring
 from app.models import (Answer, Assignment, Attempt, AttemptQuestion, CodeSubmission, Evaluation, Question,
-                        QuestionGroup, Section, Test, aware, now, uid)
+                        QuestionGroup, Section, SectionItem, Test, aware, now, uid)
 from app.sandbox.languages import get_language
 from app.sandbox.sql import SQL_ENGINES, describe_tables
 from app.services import ai
@@ -148,6 +148,31 @@ def candidate_question(aq: AttemptQuestion, db: Session) -> Dict:
     return out
 
 
+def content_version(db: Session, at: Attempt) -> int:
+    """Changes whenever the examiner saves any question of this attempt (every save adds one to the question's version).
+    The exam page compares it on each clock check and reloads the questions when it moves."""
+    return int(db.scalar(select(func.coalesce(func.sum(Question.version), 0)).join(AttemptQuestion, AttemptQuestion.question_id == Question.id)
+                         .where(AttemptQuestion.attempt_id == at.id)) or 0)
+
+
+def sync_live_attempts(db: Session, q: Question) -> None:
+    """The examiner edited a question: candidates taking an exam right now get its current marks and options (the text is read live).
+    An exam's own marks override still wins. Attempts that are already finished keep what they were graded with."""
+    rows = db.scalars(select(AttemptQuestion).join(Attempt, Attempt.id == AttemptQuestion.attempt_id)
+                      .where(AttemptQuestion.question_id == q.id, Attempt.status == "in_progress")).all()
+    ids = [o["id"] for o in (q.config or {}).get("options") or []] if q.type.startswith("mcq") else None
+    for aq in rows:
+        items = db.scalars(select(SectionItem).where(SectionItem.section_id == aq.section_id)).all()
+        mine = [i for i in items if i.question_id == q.id or (i.group_id and i.group_id == q.group_id)] or [i for i in items if i.kind == "pool"]
+        mo, no = (mine[0].marks_override, mine[0].negative_override) if mine else (None, None)
+        aq.marks, aq.negative = float(mo if mo is not None else q.marks), float(no if no is not None else q.negative_marks)
+        if ids is not None:  # a new option appears at the end of this candidate's order, a removed one disappears
+            aq.option_order = [i for i in aq.option_order if i in ids] + [i for i in ids if i not in aq.option_order]
+    db.flush()
+    for aid in {aq.attempt_id for aq in rows}:
+        db.get(Attempt, aid).max_score = scoring.r2(sum(float(r.marks) for r in db.scalars(select(AttemptQuestion).where(AttemptQuestion.attempt_id == aid))))
+
+
 def attempt_state(db: Session, at: Attempt, test: Test) -> Dict:
     aqs = db.scalars(select(AttemptQuestion).where(AttemptQuestion.attempt_id == at.id)
                      .order_by(AttemptQuestion.order)).all()
@@ -165,7 +190,7 @@ def attempt_state(db: Session, at: Attempt, test: Test) -> Dict:
     return {"attempt": {"id": at.id, "status": at.status, "started_at": aware(at.started_at).isoformat(),
                         "deadline_at": aware(at.deadline_at).isoformat(), "server_time": now().isoformat(),
                         "risk_level": at.risk_level, "violations": at.violations,
-                        "max_score": at.max_score},
+                        "max_score": at.max_score, "content_version": content_version(db, at)},
             "test": {"id": test.id, "title": test.title, "instructions": test.instructions,
                      "proctoring": proctoring_config(test)},
             "sections": secs,

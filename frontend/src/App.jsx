@@ -8,7 +8,7 @@ import Departments from "@/pages/admin/Departments"
 import ExamEditor from "@/pages/admin/ExamEditor"
 import Monitor from "@/pages/admin/Monitor"
 import Questions from "@/pages/admin/Questions"
-import QuestionEditor from "@/pages/admin/QuestionEditor"
+import { QuestionPage } from "@/pages/admin/QuestionEditor"
 import CandidateHome from "@/pages/candidate/Home"
 import CheckIn from "@/pages/candidate/CheckIn"
 import Exam from "@/pages/candidate/Exam"
@@ -32,7 +32,7 @@ export default function App() {
         <Route index element={<Exams />} />
         <Route path="exams/:id" element={<ExamEditor />} />
         <Route path="questions" element={<Questions />} />
-        <Route path="questions/:id" element={<QuestionEditor />} />
+        <Route path="questions/:id" element={<QuestionPage />} />
         <Route path="results" element={<ComingSoon title="Results and review" />} />
         <Route path="departments" element={<Departments />} />
         <Route path="monitor" element={<Monitor />} />

@@ -45,6 +45,7 @@ export default function Exam() {
   const dirty = useRef(new Set())
   const timers = useRef({})
   const skew = useRef(0)
+  const version = useRef(null)  // the content version the screen shows; the server's moves when the examiner saves a question
   const video = useRef(null)
   const proctor = useRef(null)
   const finished = useRef(false)
@@ -55,6 +56,7 @@ export default function Exam() {
       .then((d) => {
         if (d.attempt.status !== "in_progress") { navigate(`/exam/done/${attemptId}`, { replace: true }); return }
         skew.current = new Date(d.attempt.server_time).getTime() - Date.now()
+        version.current = d.attempt.content_version
         const r = {}, f = {}
         Object.entries(d.answers).forEach(([k, v]) => { r[k] = v.response; f[k] = v.flagged; seqs.current[k] = v.seq || 0 })
         respRef.current = r
@@ -125,12 +127,25 @@ export default function Exam() {
   }
   // Ask the server what the clock says. An admin may have extended the time or ended the exam.
   const REASON = { admin_ended: "ended", time_over: "time", violation_limit: "force_submit", face_violation: "ban" }
+  // The examiner saved a question: load the new text, options and marks. Answers, position and section timers stay as they are.
+  async function refreshQuestions() {
+    const fresh = await get(`/attempts/${attemptId}`)
+    const before = Object.fromEntries(sections.flatMap((s) => s.questions).map((x) => [x.id, JSON.stringify(x)]))
+    const changed = fresh.sections.flatMap((s) => s.questions).filter((x) => before[x.id] !== JSON.stringify(x))
+    version.current = fresh.attempt.content_version
+    setSt((x) => ({
+      ...x, attempt: { ...x.attempt, max_score: fresh.attempt.max_score },
+      sections: x.sections.map((s) => { const n = fresh.sections.find((f) => f.id === s.id); return n ? { ...n, deadline: s.deadline, closed: s.closed } : s }),
+    }))
+    if (changed.length) toast.info(`The examiner updated ${changed.length === 1 ? `"${changed[0].title}"` : `${changed.length} questions`}. Your answers are kept.`)
+  }
   async function syncClock() {
     try {
       const c = await get(`/attempts/${attemptId}/clock`)
       if (c.status === "in_progress") {
         skew.current = new Date(c.server_time).getTime() - Date.now()
         setDeadline(c.deadline_at)
+        if (c.content_version !== version.current) await refreshQuestions()
         return
       }
       if (finished.current) return
