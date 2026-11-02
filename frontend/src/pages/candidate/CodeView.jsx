@@ -6,9 +6,10 @@ import { java } from "@codemirror/lang-java"
 import { javascript } from "@codemirror/lang-javascript"
 import { cpp } from "@codemirror/lang-cpp"
 import { MySQL, PostgreSQL, SQLite, sql } from "@codemirror/lang-sql"
-import { githubDark } from "@uiw/codemirror-theme-github"
-import { Loader2 } from "lucide-react"
+import { vscodeDark, vscodeLight } from "@uiw/codemirror-theme-vscode"
+import { Loader2, Moon, Sun } from "lucide-react"
 import { get, post } from "@/lib/api"
+import { useEditorTheme } from "@/lib/useEditorTheme"
 import { Alert } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -96,6 +97,7 @@ export function CodeView({ q, r, onChange, attemptId, closed, blockPaste }) {
   const [sources, setSources] = useState({ [lang]: r.source ?? blank(lang) })
   const [custom, setCustom] = useState(isSql ? "" : q.open_cases[0]?.input ?? "")
   const [busy, setBusy] = useState("")
+  const [dark, toggleTheme] = useEditorTheme()
   const [res, setRes] = useState(null)
   const src = sources[lang] ?? blank(lang)
 
@@ -140,11 +142,14 @@ export function CodeView({ q, r, onChange, attemptId, closed, blockPaste }) {
           <SelectContent>{langs.map((l) => <SelectItem key={l.key} value={l.key}>{l.name}</SelectItem>)}</SelectContent>
         </Select>
         {!isSql && <span className="text-xs text-muted-foreground">Time limit {q.time_limit_ms / 1000}s per case, memory {q.memory_mb} MB</span>}
+        <Button variant="outline" size="sm" className="ml-auto" onClick={toggleTheme} aria-label="Switch editor theme" data-testid="editor-theme">
+          {dark ? <Sun /> : <Moon />} {dark ? "Light editor" : "Dark editor"}
+        </Button>
       </div>
       {!langs.length && <Alert variant="destructive" className="p-3">Nothing is installed on the server to run this question. Tell the invigilator.</Alert>}
       <div className="overflow-hidden rounded-lg border" data-testid="code-editor">
         <CodeMirror value={src} height="340px" extensions={extensions} editable={!closed} onChange={setSrc}
-          basicSetup={{ foldGutter: false }} theme={githubDark} />
+          basicSetup={{ foldGutter: false }} theme={dark ? vscodeDark : vscodeLight} />
       </div>
       <div className="flex gap-2">
         <Button variant="outline" disabled={!!busy || closed || !langs.length} onClick={() => exec("run")}>{busy === "run" ? "Running..." : "Run on samples"}</Button>

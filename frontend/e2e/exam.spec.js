@@ -21,6 +21,11 @@ async function openPracticeCode(page, user) {
   await loginCandidate(page, user)
   await page.locator("div[data-slot=card]").filter({ hasText: "Practice Test" }).getByRole("link", { name: /Start|Resume/ }).click()
   await page.getByRole("button", { name: "Start exam" }).click()
+  await showCodeQuestion(page)
+}
+
+// Walks the question palette until the coding question (the one with an editor) is showing.
+async function showCodeQuestion(page) {
   const palette = page.getByLabel("Question palette").getByRole("button")
   for (let i = 0; i < 3; i++) {
     await palette.nth(i).click()
@@ -28,6 +33,9 @@ async function openPracticeCode(page, user) {
   }
   throw new Error("no coding question found")
 }
+
+const editorBackground = (page) => page.locator(".cm-editor").evaluate((el) => getComputedStyle(el).backgroundColor)
+const brightness = (rgb) => rgb.match(/\d+/g).slice(0, 3).map(Number).reduce((a, b) => a + b, 0) / 3
 
 test("candidate: wrong password, then sign in and see own exams only", async ({ page }) => {
   await login(page, "sneha", "wrong-pass-1")
@@ -188,4 +196,23 @@ test("a question that cannot be drawn shows a message and a Reload button, never
   await expect(page.getByText("Your answers are saved")).toBeVisible()
   await expect(page.getByRole("button", { name: "Reload" })).toBeVisible()
   await shot(page, "exam-crash-message")
+})
+
+test("the code editor is black with coloured code, switches to white, and remembers the choice", async ({ page }) => {
+  await openPracticeCode(page, "amit")
+  await typeCode(page, "for i in range(3): print(i)")
+  expect(brightness(await editorBackground(page))).toBeLessThan(80)  // black by default
+  expect(await colouredTokens(page)).toEqual(expect.arrayContaining(["for", "in", "range"]))  // with coloured syntax
+  await shot(page, "editor-dark")
+
+  await page.getByTestId("editor-theme").click()
+  expect(brightness(await editorBackground(page))).toBeGreaterThan(200)  // white
+  expect(await colouredTokens(page)).toEqual(expect.arrayContaining(["for", "in", "range"]))  // still coloured
+  await shot(page, "editor-light")
+
+  await page.reload()  // the choice is remembered in this browser
+  await showCodeQuestion(page)
+  expect(brightness(await editorBackground(page))).toBeGreaterThan(200)
+  await page.getByTestId("editor-theme").click()
+  expect(brightness(await editorBackground(page))).toBeLessThan(80)
 })
