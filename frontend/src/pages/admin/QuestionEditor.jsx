@@ -5,6 +5,8 @@ import { Plus, Sparkles, Trash2 } from "lucide-react"
 import { get, post, put } from "@/lib/api"
 import { TYPE_LABEL } from "@/pages/admin/Questions"
 import { Verdict } from "@/pages/candidate/CodeView"
+import SqlBuilder from "@/pages/admin/SqlBuilder"
+import { buildInserts, buildSchema, checkTables } from "@/lib/sqlbuild"
 import { Alert } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -15,8 +17,8 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
 
-const TYPES = ["mcq_single", "mcq_multi", "short", "long", "coding"]
-const DEFAULT_MARKS = { mcq_single: 1, mcq_multi: 1, short: 2, long: 5, coding: 10 }
+const TYPES = ["mcq_single", "mcq_multi", "short", "long", "coding", "sql"]
+const DEFAULT_MARKS = { mcq_single: 1, mcq_multi: 1, short: 2, long: 5, coding: 10, sql: 10 }
 const LANGS = [["python", "Python"], ["java", "Java"], ["javascript", "JavaScript"], ["cpp", "C++"], ["c", "C"]]
 const rid = () => Math.random().toString(36).slice(2, 8)
 const blankOptions = () => Array.from({ length: 4 }, () => ({ id: rid(), text: "", correct: false }))
@@ -31,6 +33,7 @@ const blank = () => ({
   type: "mcq_single", title: "", body: "", difficulty: "medium", marks: 1, negative_marks: 0, skills: "",
   options: blankOptions(), model_answer: "", keywords: "", max_words: 150,
   languages: ["python"], time_limit_ms: 2000, memory_mb: 256, constraints: "", ref_lang: "python", ref_source: "", cases: [],
+  tables: [], datasets: [], reference_sql: "", ordered: false, preview: null,  // SQL questions
 })
 
 function fromQuestion(q) {
@@ -46,6 +49,18 @@ function fromQuestion(q) {
   }
 }
 
+// An existing SQL question comes back as tables and rows (built by the server from its schema and datasets).
+function withSql(f, q) {
+  if (q.type !== "sql") return f
+  const tables = (q.sql_tables?.[0] ?? []).map((t) => ({ name: t.name, columns: t.columns.map((c, i) => ({ name: c, type: t.types[i] })) }))
+  const datasets = q.cases.map((c, i) => ({
+    visibility: c.visibility, weight: c.weight, purpose: c.purpose ?? "",
+    rows: tables.map((_, ti) => (q.sql_tables[i]?.[ti]?.rows ?? []).map((r) => r.map((v) => (v === null ? "" : String(v))))),
+  }))
+  const preview = q.cases.map((c) => (c.expected ? { ok: true, ...JSON.parse(c.expected) } : null))
+  return { ...f, tables, datasets, preview, reference_sql: q.config?.reference_sql ?? "", ordered: !!q.config?.ordered }
+}
+
 export default function QuestionEditor() {
   const { id } = useParams()
   const navigate = useNavigate()
@@ -59,7 +74,7 @@ export default function QuestionEditor() {
 
   useEffect(() => {
     if (id === "new") return
-    get(`/questions/${id}`).then((q) => setF(fromQuestion(q))).catch((e) => setError(e.message))
+    get(`/questions/${id}`).then((q) => setF(withSql(fromQuestion(q), q))).catch((e) => setError(e.message))
   }, [id])
 
   function pickType(t) {
@@ -69,7 +84,19 @@ export default function QuestionEditor() {
   const setOption = (i, patch) => set("options", f.options.map((o, j) => (j === i ? { ...o, ...patch } : o)))
   const setCase = (i, patch) => { setCheck(null); set("cases", f.cases.map((c, j) => (j === i ? { ...c, ...patch } : c))) }
 
+  function sqlPayload() {
+    const bad = checkTables(f.tables)
+    if (bad) throw new Error(bad)
+    return {
+      type: "sql", title: f.title, body: toHtml(f.body), difficulty: f.difficulty, marks: Number(f.marks), negative_marks: 0,
+      skills: f.skills.split(",").map((s) => s.trim()).filter(Boolean), status: "approved",
+      config: { schema: buildSchema(f.tables), seed: "", engines: ["sqlite"], ordered: f.ordered, reference_sql: f.reference_sql },
+      cases: f.datasets.map((d, i) => ({ ordinal: i + 1, visibility: d.visibility, input: buildInserts(f.tables, d.rows), expected: "", weight: Number(d.weight) || 1, purpose: d.purpose })),
+    }
+  }
+
   function payload() {
+    if (f.type === "sql") return sqlPayload()
     const config = {}
     if (isMcq) { config.options = f.options.filter((o) => o.text.trim()).map((o) => ({ id: o.id, text: o.text.trim(), correct: !!o.correct })); config.partial = true }
     if (isText) {
@@ -282,6 +309,8 @@ export default function QuestionEditor() {
           </Card>
         </>
       )}
+
+      {f.type === "sql" && <SqlBuilder f={f} set={set} />}
 
       {error && <Alert variant="destructive" className="p-3">{error}</Alert>}
       <div><Button onClick={save} disabled={busy === "save"}>{busy === "save" ? "Saving..." : "Save question"}</Button></div>

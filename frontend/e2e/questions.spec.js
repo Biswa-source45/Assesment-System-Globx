@@ -112,3 +112,103 @@ test("coding question: check and AI generation work before saving; save returns 
   await expect(page).toHaveURL(BANK)
   await expect(page.getByRole("row").nth(1)).toContainText("E2E: double it")
 })
+
+async function setType(page, label, name) {
+  await page.getByLabel(label, { exact: true }).click()
+  await page.getByRole("option", { name, exact: true }).click()
+}
+
+test("SQL question: tables and datasets are grids, the expected output is computed, saved and reopened", async ({ page }) => {
+  await loginStaff(page)
+  await page.goto("/admin/questions/new")
+  await setType(page, "Question type", "SQL")
+  await page.getByLabel("Title").fill("E2E: well paid staff")
+  await page.getByLabel("Question text").fill("Return the names of staff earning more than 50000, sorted by name.")
+
+  // the table, defined with fields and dropdowns: no CREATE TABLE
+  await page.getByRole("button", { name: "Add table" }).click()
+  await page.getByLabel("Table 1 name", { exact: true }).fill("staff")
+  await page.getByLabel("Table 1 column 1 name", { exact: true }).fill("id")
+  await setType(page, "Table 1 column 1 type", "INTEGER")
+  await page.getByRole("button", { name: "Add column" }).click()
+  await page.getByLabel("Table 1 column 2 name", { exact: true }).fill("name")
+  await page.getByRole("button", { name: "Add column" }).click()
+  await page.getByLabel("Table 1 column 3 name", { exact: true }).fill("salary")
+  await setType(page, "Table 1 column 3 type", "INTEGER")
+
+  // dataset 1 (sample): rows typed into a grid: no INSERT
+  await page.getByRole("button", { name: "Add dataset" }).click()
+  const rows1 = [["1", "Ben", "60000"], ["2", "Ann", "70000"], ["3", "Cy", "10000"]]
+  for (const [i, row] of rows1.entries()) {
+    await page.getByRole("button", { name: "Add row to staff" }).first().click()
+    for (const [col, v] of ["id", "name", "salary"].entries()) await page.getByLabel(`Dataset 1 staff row ${i + 1} ${["id", "name", "salary"][col]}`, { exact: true }).fill(row[col])
+  }
+  // dataset 2 (hidden): one row
+  await page.getByRole("button", { name: "Add dataset" }).click()
+  await expect(page.getByLabel("Dataset 2 visibility", { exact: true })).toContainText("Hidden")
+  await page.getByRole("button", { name: "Add row to staff" }).nth(1).click()
+  for (const [col, v] of ["1", "Zed", "99000"].entries()) await page.getByLabel(`Dataset 2 staff row 1 ${["id", "name", "salary"][col]}`, { exact: true }).fill(v)
+
+  await page.getByLabel("Solution query", { exact: true }).fill("SELECT name FROM staff WHERE salary > 50000 ORDER BY name")
+  await page.getByRole("button", { name: /Run solution query/ }).click()
+  const ds = page.getByTestId("sql-dataset")
+  const out = (i) => ds.nth(i).locator("td[data-slot=table-cell]")  // cells of the expected-output table only, not the input grid
+  await expect(out(0).filter({ hasText: "Ann" })).toBeVisible()  // expected output as a table
+  await expect(out(0).filter({ hasText: "Ben" })).toBeVisible()
+  await expect(out(0)).toHaveCount(2)                                        // Ann and Ben only: Cy earns too little
+  await expect(out(1).filter({ hasText: "Zed" })).toBeVisible()
+  await shot(page, "bank-editor-sql")
+
+  await page.getByRole("button", { name: "Save question" }).click()
+  await expect(page).toHaveURL(BANK)
+  const top = page.getByRole("row").nth(1)
+  await expect(top).toContainText("E2E: well paid staff")
+  await expect(top).toContainText("SQL")
+
+  await top.getByRole("link", { name: "E2E: well paid staff" }).click()  // reopen: everything comes back as tables
+  await expect(page.getByLabel("Table 1 name", { exact: true })).toHaveValue("staff")
+  await expect(page.getByLabel("Table 1 column 3 type", { exact: true })).toContainText("INTEGER")
+  await expect(page.getByLabel("Dataset 1 staff row 2 name", { exact: true })).toHaveValue("Ann")
+  await expect(page.getByLabel("Dataset 2 visibility", { exact: true })).toContainText("Hidden")
+  await expect(page.getByTestId("sql-dataset").nth(0).locator("td[data-slot=table-cell]").filter({ hasText: "Ben" })).toBeVisible()  // stored expected output shows without a rerun
+})
+
+test("SQL question: bad table names and a broken solution query are reported", async ({ page }) => {
+  await loginStaff(page)
+  await page.goto("/admin/questions/new")
+  await setType(page, "Question type", "SQL")
+  await page.getByLabel("Title").fill("E2E: bad sql")
+  await page.getByRole("button", { name: "Add table" }).click()
+  await page.getByLabel("Table 1 name", { exact: true }).fill("my table")
+  await page.getByLabel("Table 1 column 1 name", { exact: true }).fill("a")
+  await page.getByRole("button", { name: "Save question" }).click()
+  await expect(page.getByText(/Table name "my table" is not valid/)).toBeVisible()
+
+  await page.getByLabel("Table 1 name", { exact: true }).fill("t")
+  await page.getByRole("button", { name: "Add dataset" }).click()
+  await page.getByRole("button", { name: "Add dataset" }).click()
+  await page.getByRole("button", { name: "Add row to t" }).first().click()
+  await page.getByLabel("Dataset 1 t row 1 a", { exact: true }).fill("x")
+  await page.getByLabel("Solution query", { exact: true }).fill("SELECT nope FROM t")
+  await page.getByRole("button", { name: /Run solution query/ }).click()
+  await expect(page.getByTestId("sql-dataset").first().getByText(/no such column/i)).toBeVisible()
+  await page.getByRole("button", { name: "Save question" }).click()
+  await expect(page.getByText(/Dataset 1:/)).toBeVisible()
+  await expect(page).toHaveURL(/\/admin\/questions\/new/)
+})
+
+test("the seeded SQL question opens as tables and saves unchanged", async ({ page }) => {
+  await loginStaff(page)
+  await page.goto("/admin/questions")
+  await page.getByLabel("Filter by type").click()
+  await page.getByRole("option", { name: "SQL", exact: true }).click()
+  await page.getByRole("link", { name: "Top customers by revenue (2025)" }).click()
+  await expect(page.getByLabel("Table 1 name", { exact: true })).toHaveValue("customers")
+  await expect(page.getByLabel("Table 2 name", { exact: true })).toHaveValue("orders")
+  await expect(page.getByTestId("sql-dataset")).toHaveCount(6)
+  await expect(page.getByLabel("Solution query", { exact: true })).toHaveValue(/GROUP BY/)
+  await shot(page, "bank-editor-sql-seeded")
+  await page.getByRole("button", { name: "Save question" }).click()
+  await expect(page.getByText("Question saved")).toBeVisible()
+  await expect(page).toHaveURL(BANK)
+})
