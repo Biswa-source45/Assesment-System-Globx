@@ -104,7 +104,7 @@ def create_participants(db: Session, test: Test, names: List[str]) -> List[Dict]
         db.add(u)
         db.flush()
         a = Assignment(id=uid(), test_id=test.id, candidate_id=u.id, token_hash=sha256(new_token(32)),
-                       expires_at=test.ends_at, sent_at=now())
+                       sent_at=now())  # no expiry of its own: the exam window decides when they may start
         db.add(a)
         db.flush()
         out.append({"assignment_id": a.id, "name": name, "username": username, "password": password})

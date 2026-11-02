@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 from app.core.deps import audit, require, same_org
 from app.db import get_db
 from app.models import QTYPES, Question, QuestionGroup, TestCase, User, aware, uid
-from app.sandbox.judge import judge_code, judge_sql, run_reference, sql_expected_for
+from app.sandbox.judge import judge_code, run_reference, sql_expected_for
 from app.sandbox.languages import REGISTRY
 from app.sandbox.sql import describe_tables
 from app.services import ai
@@ -129,16 +129,30 @@ def _normalise_weights(q: Question) -> None:
         c.weight = w
 
 
-def _fill_sql_expected(q: Question) -> None:
-    """SQL cases are authored as data only: the expected output is whatever the reference query returns on each dataset."""
-    if q.type != "sql":
+def _check_on_save(q: Question) -> None:
+    """Decide from the saved data whether the question can go into a published exam, never from a flag the client sends.
+    SQL: the expected output is computed from the solution query, so it matches by construction.
+    Coding: the reference solution must pass every test case."""
+    cfg = dict(q.config or {})
+    if q.type == "sql":
+        for i, c in enumerate(q.cases):
+            try:
+                c.expected = json.dumps(sql_expected_for(cfg, c.input))
+            except ValueError as e:
+                raise HTTPException(422, {"errors": [f"Dataset {i + 1}: {e}"]})
+        cfg["validated"] = bool(q.cases)
+    elif q.type == "coding":
+        ref = cfg.get("reference") or {}
+        cases = [{"ordinal": c.ordinal, "visibility": c.visibility, "input": c.input, "expected": c.expected,
+                  "weight": float(c.weight)} for c in q.cases]
+        ok = False
+        if (ref.get("source") or "").strip() and cases:
+            res = judge_code(cfg, cases, ref.get("language", "python"), ref["source"], "validate")
+            ok = res.get("status") == "done" and res.get("total", 0) > 0 and res.get("passed") == res.get("total")
+        cfg["validated"] = ok
+    else:
         return
-    cfg = q.config or {}
-    for i, c in enumerate(q.cases):
-        try:
-            c.expected = json.dumps(sql_expected_for(cfg, c.input))
-        except ValueError as e:
-            raise HTTPException(422, {"errors": [f"Dataset {i + 1}: {e}"]})
+    q.config = cfg
 
 
 def _apply(q: Question, body: QuestionIn) -> None:
@@ -190,7 +204,7 @@ def create_question(body: QuestionIn, request: Request, user: User = Depends(AUT
         raise HTTPException(422, {"errors": errs})
     q = Question(id=uid(), org_id=user.org_id, created_by=user.id)
     _apply(q, body)
-    _fill_sql_expected(q)
+    _check_on_save(q)
     db.add(q)
     audit(db, user, "create", "question", q.id, {"type": q.type}, request)
     db.commit()
@@ -216,7 +230,7 @@ def update_question(qid: str, body: QuestionIn, request: Request, user: User = D
     if errs:
         raise HTTPException(422, {"errors": errs})
     _apply(q, body)
-    _fill_sql_expected(q)
+    _check_on_save(q)
     q.version += 1
     audit(db, user, "update", "question", q.id, {"version": q.version}, request)
     db.commit()
@@ -233,40 +247,6 @@ def archive_question(qid: str, request: Request, user: User = Depends(AUTHOR), d
     audit(db, user, "archive", "question", q.id, request=request)
     db.commit()
     return {"ok": True}
-
-
-@router.post("/questions/{qid}/validate")
-def validate_reference(qid: str, request: Request, user: User = Depends(AUTHOR), db: Session = Depends(get_db)):
-    """Coding: reference solution must pass 6/6. SQL: compute expected results from the reference query."""
-    q = db.get(Question, qid)
-    if not q:
-        raise HTTPException(404, "Question not found")
-    same_org(user, q.org_id)
-    cfg = dict(q.config or {})
-    cases = [{"id": c.id, "ordinal": c.ordinal, "visibility": c.visibility, "input": c.input,
-              "expected": c.expected, "weight": float(c.weight)} for c in q.cases]
-    if q.type == "sql":
-        eng = (cfg.get("engines") or ["sqlite"])[0]
-        try:
-            for c, row in zip(q.cases, cases):
-                exp = sql_expected_for(cfg, c.input, eng)
-                c.expected = row["expected"] = json.dumps(exp)
-        except ValueError as e:
-            raise HTTPException(422, {"errors": [str(e)]})
-        res = judge_sql(cfg, cases, eng, cfg.get("reference_sql", ""), "validate")
-    elif q.type == "coding":
-        ref = cfg.get("reference") or {}
-        if not ref.get("source"):
-            raise HTTPException(422, {"errors": ["Add a reference solution (language + source) first"]})
-        res = judge_code(cfg, cases, ref.get("language", "python"), ref["source"], "validate")
-    else:
-        raise HTTPException(400, "Only programming and SQL questions are validated")
-    ok = res.get("status") == "done" and res.get("passed") == res.get("total") and res.get("total", 0) > 0
-    cfg["validated"] = ok
-    q.config = cfg
-    audit(db, user, "validate", "question", q.id, {"ok": ok}, request)
-    db.commit()
-    return {"ok": ok, "result": res}
 
 
 def keep_same_shape(proposed: List[Dict], examples: List[str]) -> tuple:

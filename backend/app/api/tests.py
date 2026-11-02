@@ -66,7 +66,7 @@ class InviteIn(BaseModel):
 
 
 class ActionIn(BaseModel):
-    action: str  # shortlist|archive|extend|reset|cancel|remind|resend
+    action: str  # shortlist|archive|extend|terminate|reset|cancel|remind|resend
     minutes: int = 0
     reason: str = ""
 
@@ -77,6 +77,12 @@ def _test(db: Session, tid: str, user: User) -> Test:
         raise HTTPException(404, "Test not found")
     same_org(user, t.org_id)
     return t
+
+
+def _draft(t: Test) -> None:
+    """Sections and questions of a published exam are frozen: candidates may be taking it."""
+    if t.status != "draft":
+        raise HTTPException(409, "Unpublish the exam before changing its sections or questions")
 
 
 def _iso(d):
@@ -253,7 +259,7 @@ def publish_errors(db: Session, t: Test) -> List[str]:
                 if q.status != "approved":
                     errs.append(f"'{q.title}' is not approved")
                 if q.type in ("coding", "sql") and not (q.config or {}).get("validated"):
-                    errs.append(f"'{q.title}' has not passed reference validation")
+                    errs.append(f"'{q.title}': its reference solution does not pass every test case. Open it in the question bank, fix it and save.")
     return errs
 
 
@@ -272,6 +278,8 @@ def publish(tid: str, request: Request, user: User = Depends(AUTHOR), db: Sessio
 @router.post("/tests/{tid}/unpublish")
 def unpublish(tid: str, request: Request, user: User = Depends(AUTHOR), db: Session = Depends(get_db)):
     t = _test(db, tid, user)
+    if db.scalar(select(Attempt.id).where(Attempt.test_id == t.id, Attempt.status == "in_progress")):
+        raise HTTPException(409, "Candidates are taking this exam right now. End their exams first.")
     t.status = "draft"
     audit(db, user, "unpublish", "test", t.id, request=request)
     db.commit()
@@ -282,6 +290,7 @@ def unpublish(tid: str, request: Request, user: User = Depends(AUTHOR), db: Sess
 @router.post("/tests/{tid}/sections")
 def add_section(tid: str, body: SectionIn, user: User = Depends(AUTHOR), db: Session = Depends(get_db)):
     t = _test(db, tid, user)
+    _draft(t)
     s = Section(id=uid(), title=body.title, order=body.order if body.order is not None else len(t.sections),
                 timer_min=body.timer_min or None, shuffle=body.shuffle, lock_nav=body.lock_nav,
                 min_score=body.min_score, allow_negative=body.allow_negative)
@@ -301,6 +310,7 @@ def _section(db: Session, sid: str, user: User) -> tuple:
 @router.put("/sections/{sid}")
 def update_section(sid: str, body: SectionIn, user: User = Depends(AUTHOR), db: Session = Depends(get_db)):
     s, t = _section(db, sid, user)
+    _draft(t)
     s.title, s.timer_min, s.shuffle, s.lock_nav = body.title, body.timer_min or None, body.shuffle, body.lock_nav
     s.min_score, s.allow_negative = body.min_score, body.allow_negative
     if body.order is not None:
@@ -312,6 +322,7 @@ def update_section(sid: str, body: SectionIn, user: User = Depends(AUTHOR), db: 
 @router.delete("/sections/{sid}")
 def delete_section(sid: str, user: User = Depends(AUTHOR), db: Session = Depends(get_db)):
     s, t = _section(db, sid, user)
+    _draft(t)
     t.sections.remove(s)
     db.delete(s)
     db.commit()
@@ -321,6 +332,7 @@ def delete_section(sid: str, user: User = Depends(AUTHOR), db: Session = Depends
 @router.post("/sections/{sid}/items")
 def add_item(sid: str, body: ItemIn, user: User = Depends(AUTHOR), db: Session = Depends(get_db)):
     s, t = _section(db, sid, user)
+    _draft(t)
     if body.kind == "question":
         q = db.get(Question, body.question_id or "")
         if not q:
@@ -351,6 +363,7 @@ def update_item(iid: str, body: ItemIn, user: User = Depends(AUTHOR), db: Sessio
     if not it:
         raise HTTPException(404, "Item not found")
     s, t = _section(db, it.section_id, user)
+    _draft(t)
     it.marks_override, it.negative_override = body.marks_override, body.negative_override
     if it.kind == "pool" and body.pool:
         it.pool = body.pool
@@ -364,6 +377,7 @@ def delete_item(iid: str, user: User = Depends(AUTHOR), db: Session = Depends(ge
     if not it:
         raise HTTPException(404, "Item not found")
     s, t = _section(db, it.section_id, user)
+    _draft(t)
     s.items.remove(it)
     db.delete(it)
     db.commit()
@@ -449,6 +463,11 @@ def candidates(tid: str, status: str = "", user: User = Depends(VIEW), db: Sessi
     return {"rows": rows, "counts": counts}
 
 
+@router.get("/tests/{tid}/monitor")
+def monitor(tid: str, user: User = Depends(VIEW), db: Session = Depends(get_db)):
+    return reports.monitor_rows(db, _test(db, tid, user))
+
+
 @router.post("/assignments/{aid}/action")
 def assignment_action(aid: str, body: ActionIn, request: Request, user: User = Depends(RECRUIT), db: Session = Depends(get_db)):
     from app.services.mail import queue_mail
@@ -475,6 +494,17 @@ def assignment_action(aid: str, body: ActionIn, request: Request, user: User = D
         a.extra_time_min += body.minutes
         if at and at.status == "in_progress":
             at.deadline_at = aware(at.deadline_at) + timedelta(minutes=body.minutes)
+    elif act == "terminate":  # end a running exam now; the candidate's browser notices within seconds
+        if not body.reason:
+            raise HTTPException(422, "A reason is required")
+        if not at or at.status != "in_progress":
+            raise HTTPException(409, "This candidate is not taking the exam right now")
+        from app.services import attempts as attempts_svc, jobs
+        attempts_svc.terminate_attempt(db, at, "admin_ended")
+        audit(db, user, "assignment_terminate", "assignment", a.id, {"reason": body.reason}, request)
+        db.commit()
+        jobs.finalize_async(at.id, "admin_ended")
+        return {"ok": True, "status": a.status}
     elif act == "reset":
         if not body.reason:
             raise HTTPException(422, "A reason is required")

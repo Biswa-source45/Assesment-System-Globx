@@ -132,6 +132,14 @@ def state(atid: str, user: User = Depends(current_user), db: Session = Depends(g
     return svc.attempt_state(db, at, db.get(Test, at.test_id))
 
 
+@router.get("/attempts/{atid}/clock")
+def clock(atid: str, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    """The server's view of the deadline, polled by the exam page so that an extension or an ended exam is noticed quickly."""
+    at = _my_attempt(db, atid, user)
+    return {"status": at.status, "deadline_at": aware(at.deadline_at).isoformat(), "server_time": now().isoformat(),
+            "reason": at.submit_reason}
+
+
 @router.post("/attempts/{atid}/sections/{sid}/enter")
 def enter(atid: str, sid: str, user: User = Depends(current_user), db: Session = Depends(get_db)):
     at = _my_attempt(db, atid, user)

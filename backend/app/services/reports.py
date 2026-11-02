@@ -6,14 +6,14 @@ import io
 from collections import Counter
 from typing import Dict, List
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.domain.risk import BAND
 from app.domain.scoring import rank_key
 from app.models import (Answer, Assignment, Attempt, AttemptQuestion, CodeSubmission, ProctorEvent, ProctorSnapshot,
-                        Question, Test, User, aware)
-from app.services.attempts import _text_of
+                        Question, Test, User, aware, now)
+from app.services.attempts import _text_of, proctoring_config
 from app.services.plagiarism import candidate_summary
 
 FINAL = ("review_pending", "evaluated")
@@ -161,7 +161,7 @@ def candidates_table(db: Session, test: Test, status: str = "") -> List[Dict]:
         if status and st != status:
             continue
         rows.append({"assignment_id": g.id, "attempt_id": at.id if at else None, "name": g.candidate.name,
-                     "email": g.candidate.email, "status": st, "tag": g.tag,
+                     "username": g.candidate.username or "", "email": g.candidate.email, "status": st, "tag": g.tag,
                      "invited_at": aware(g.invited_at).isoformat(), "sent": bool(g.sent_at),
                      "expires_at": aware(g.expires_at).isoformat() if g.expires_at else None,
                      "rank": rank.get(at.id) if at else None,
@@ -210,3 +210,50 @@ def to_xlsx(rows: List[List], title: str = "Results") -> bytes:
     buf = io.BytesIO()
     wb.save(buf)
     return buf.getvalue()
+
+
+def _has_answer(resp: Dict) -> bool:
+    """Same rule as the exam palette: a choice, some text, or a submitted program."""
+    r = resp or {}
+    return bool(r.get("selected") or (r.get("text") or "").strip() or r.get("submitted") or r.get("best_submission_id"))
+
+
+def _age_s(moment, at) -> int | None:
+    return max(0, int((at - aware(moment)).total_seconds())) if moment else None
+
+
+def monitor_rows(db: Session, test: Test) -> Dict:
+    """One row per participant for the live monitor: where they are, how long is left, what the proctoring has seen,
+    and when we last heard from their browser. Small exams only: a few queries per participant."""
+    from app.services.proctoring import face_incidents  # proctoring imports attempts; keep the import out of module load
+    cfg = proctoring_config(test)
+    t = now()
+    rows = []
+    for g in db.scalars(select(Assignment).where(Assignment.test_id == test.id)).all():
+        at = db.scalar(select(Attempt).where(Attempt.assignment_id == g.id, Attempt.status != "reset")
+                       .order_by(Attempt.started_at.desc()))
+        row = {"assignment_id": g.id, "name": g.candidate.name, "username": g.candidate.username or g.candidate.email,
+               "status": at.status if at else g.status, "assignment_status": g.status, "attempt": None}
+        if at:
+            answers = db.scalars(select(Answer).where(Answer.attempt_id == at.id)).all()
+            heard = [m for m in (
+                db.scalar(select(func.max(ProctorEvent.started_at)).where(ProctorEvent.attempt_id == at.id)),
+                db.scalar(select(func.max(ProctorSnapshot.captured_at)).where(ProctorSnapshot.attempt_id == at.id)),
+                db.scalar(select(func.max(Answer.saved_at)).where(Answer.attempt_id == at.id))) if m]
+            snap = db.scalar(select(ProctorSnapshot).where(ProctorSnapshot.attempt_id == at.id, ProctorSnapshot.kind == "webcam")
+                             .order_by(ProctorSnapshot.captured_at.desc()))
+            row["attempt"] = {
+                "id": at.id, "started_at": aware(at.started_at).isoformat(), "deadline_at": aware(at.deadline_at).isoformat(),
+                "submit_reason": at.submit_reason, "violations": at.violations, "face_incidents": face_incidents(db, at, cfg),
+                "risk_level": at.risk_level, "risk_score": at.risk_score,
+                "answered": sum(1 for a in answers if _has_answer(a.response)),
+                "total": db.scalar(select(func.count(AttemptQuestion.id)).where(AttemptQuestion.attempt_id == at.id)),
+                "last_seen_s": _age_s(max(heard) if heard else None, t),
+                "snapshot_id": snap.id if snap else None, "snapshot_age_s": _age_s(snap.captured_at if snap else None, t),
+            }
+        rows.append(row)
+    live_first = {"in_progress": 0}
+    rows.sort(key=lambda r: (live_first.get(r["status"], 1), r["name"].lower()))
+    return {"server_time": t.isoformat(), "limits": {"tab": cfg["tab_switch_limit"], "face": cfg["face_limit"],
+                                                      "snapshot_s": cfg["snapshot_seconds"], "webcam": bool(cfg["enabled"] and cfg["webcam"])},
+            "rows": rows}

@@ -180,3 +180,94 @@ def test_sql_question_is_authored_as_data_and_the_expected_output_is_computed(cl
     body["config"]["reference_sql"] = "SELECT nope FROM emp"  # a broken reference query is refused, naming the dataset
     r = client.post("/api/v1/questions", headers=creator, json=body)
     assert r.status_code == 422 and "Dataset 1" in r.text
+
+
+def _coding(title, hidden_expected):
+    return {"type": "coding", "title": title, "body": "<p>Double it.</p>", "marks": 10,
+            "config": {"languages": ["python"], "reference": {"language": "python", "source": "n=int(input())\nprint(2*n)"}},
+            "cases": [{"visibility": "open", "input": "2\n", "expected": "4"},
+                      {"visibility": "hidden", "input": "3\n", "expected": hidden_expected}]}
+
+
+def _sql(title):
+    return {"type": "sql", "title": title, "body": "<p>Names.</p>", "marks": 10,
+            "config": {"schema": "CREATE TABLE t (name TEXT);", "seed": "", "engines": ["sqlite"], "ordered": True,
+                       "reference_sql": "SELECT name FROM t ORDER BY name"},
+            "cases": [{"visibility": "open", "input": "INSERT INTO t VALUES ('b'), ('a');"},
+                      {"visibility": "hidden", "input": "INSERT INTO t VALUES ('z');"}]}
+
+
+def test_questions_are_validated_on_save_and_exams_publish_only_with_valid_ones(client):
+    creator = _login(client, "creator@globx.co.in", PW["creator@globx.co.in"])
+    good = client.post("/api/v1/questions", headers=creator, json=_coding("Double A", "6")).json()
+    bad = client.post("/api/v1/questions", headers=creator, json=_coding("Double B", "7")).json()  # wrong expected output
+    sql = client.post("/api/v1/questions", headers=creator, json=_sql("Names")).json()
+    # the server decides from the saved data; nothing the client sends can set the flag
+    assert (good["config"]["validated"], bad["config"]["validated"], sql["config"]["validated"]) == (True, False, True)
+    forged = _coding("Double C", "7")
+    forged["config"]["validated"] = True
+    assert client.post("/api/v1/questions", headers=creator, json=forged).json()["config"]["validated"] is False
+
+    test = client.post("/api/v1/tests", headers=creator, json={"title": "Setup test", "duration_min": 30}).json()
+    empty = client.post(f"/api/v1/tests/{test['id']}/publish", headers=creator)
+    assert empty.status_code == 422 and "Add at least one section" in empty.text
+    section = client.post(f"/api/v1/tests/{test['id']}/sections", headers=creator, json={"title": "Part 1"}).json()["sections"][0]
+    for q in (good, bad, sql):
+        assert client.post(f"/api/v1/sections/{section['id']}/items", headers=creator, json={"kind": "question", "question_id": q["id"]}).status_code == 200
+    r = client.post(f"/api/v1/tests/{test['id']}/publish", headers=creator)
+    assert r.status_code == 422 and "Double B" in r.text and "Double A" not in r.text
+
+    items = client.get(f"/api/v1/tests/{test['id']}", headers=creator).json()["sections"][0]["items"]
+    bad_item = next(i["id"] for i in items if i["question"]["title"] == "Double B")
+    assert client.delete(f"/api/v1/items/{bad_item}", headers=creator).status_code == 200
+    r = client.post(f"/api/v1/tests/{test['id']}/publish", headers=creator)
+    assert r.status_code == 200 and r.json()["status"] == "published"
+
+
+def test_live_monitor_clock_extend_and_end_exam(client):
+    staff, cand, aid = _new_candidate(client, "Monitor Me")
+    exam = next(t for t in client.get("/api/v1/tests", headers=staff).json() if t["title"] == EXAM)["id"]
+    rows = client.get(f"/api/v1/tests/{exam}/candidates", headers=staff).json()["rows"]
+    assert next(r for r in rows if r["assignment_id"] == aid)["username"].startswith("monitor")
+
+    def row():
+        m = client.get(f"/api/v1/tests/{exam}/monitor", headers=staff).json()
+        return m, next(r for r in m["rows"] if r["assignment_id"] == aid)
+
+    assert row()[1]["status"] == "invited" and row()[1]["attempt"] is None  # not started yet
+    at = _start(client, cand, aid)
+    m, r = row()
+    assert r["status"] == "in_progress" and r["attempt"]["violations"] == 0 and r["attempt"]["total"] > 0
+    assert m["limits"]["tab"] == 3 and m["limits"]["face"] == 5 and m["rows"][0]["status"] == "in_progress"  # live rows first
+    _event(client, cand, at, type="tab_blur", duration_ms=2000)
+    r = row()[1]["attempt"]
+    assert r["violations"] == 1 and r["last_seen_s"] is not None and r["last_seen_s"] < 30
+
+    clock = f"/api/v1/attempts/{at}/clock"
+    before = client.get(clock, headers=cand).json()
+    assert before["status"] == "in_progress"
+    action = f"/api/v1/assignments/{aid}/action"
+    assert client.post(action, headers=staff, json={"action": "extend", "minutes": 10, "reason": "slow laptop"}).status_code == 200
+    assert client.get(clock, headers=cand).json()["deadline_at"] > before["deadline_at"]  # the candidate's page can pick this up
+
+    assert client.post(action, headers=staff, json={"action": "terminate"}).status_code == 422  # a reason is required
+    assert client.post(action, headers=staff, json={"action": "terminate", "reason": "fire drill"}).status_code == 200
+    ended = client.get(clock, headers=cand).json()
+    assert ended["status"] != "in_progress" and ended["reason"] == "admin_ended"
+    assert client.post(action, headers=staff, json={"action": "terminate", "reason": "again"}).status_code == 409
+    assert client.get(f"/api/v1/attempts/{at}/clock", headers=_login(client, "creator@globx.co.in", PW["creator@globx.co.in"])).status_code == 404  # only the owner
+
+
+def test_a_published_exam_is_frozen_and_cannot_be_unpublished_while_someone_sits_it(client):
+    staff, cand, aid = _new_candidate(client, "Freeze Me")
+    creator = _login(client, "creator@globx.co.in", PW["creator@globx.co.in"])
+    exam = next(t for t in client.get("/api/v1/tests", headers=staff).json() if t["title"] == EXAM)
+    full = client.get(f"/api/v1/tests/{exam['id']}", headers=creator).json()
+    sid = full["sections"][0]["id"]
+    # published: structure is frozen
+    assert client.post(f"/api/v1/tests/{exam['id']}/sections", headers=creator, json={"title": "Late"}).status_code == 409
+    assert client.put(f"/api/v1/sections/{sid}", headers=creator, json={"title": "Renamed"}).status_code == 409
+    assert client.delete(f"/api/v1/items/{full['sections'][0]['items'][0]['id']}", headers=creator).status_code == 409
+    _start(client, cand, aid)
+    r = client.post(f"/api/v1/tests/{exam['id']}/unpublish", headers=creator)
+    assert r.status_code == 409 and "taking this exam" in r.text
