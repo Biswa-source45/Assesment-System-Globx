@@ -10,5 +10,6 @@ psutil>=6.0
 openpyxl==3.1.5
 httpx==0.28.1
 psycopg[binary]==3.2.3
+alembic==1.20.1
 # tests
 pytest>=8.0

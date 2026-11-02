@@ -10,7 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 
 from app.core.config import ROOT_DIR, get_settings
-from app.db import Base, engine
+from app.db import migrate
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 log = logging.getLogger("oap")
@@ -21,7 +21,7 @@ DIST = ROOT_DIR / "frontend" / "dist"
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     from app import models  # noqa: F401  (register tables)
-    Base.metadata.create_all(engine)
+    migrate()
     os.makedirs(settings.storage_dir, exist_ok=True)
     os.makedirs(settings.sandbox_dir, exist_ok=True)
     from app.services import jobs
@@ -52,9 +52,9 @@ async def security_headers(request: Request, call_next):
     return resp
 
 
-from app.api import auth, candidate, library, staff, tests  # noqa: E402
+from app.api import auth, candidate, departments, library, staff, tests  # noqa: E402
 
-for r in (auth.router, library.router, tests.router, candidate.router, staff.router):
+for r in (auth.router, departments.router, library.router, tests.router, candidate.router, staff.router):
     app.include_router(r, prefix="/api/v1")
 
 

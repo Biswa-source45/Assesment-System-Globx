@@ -12,10 +12,12 @@ from sqlalchemy.orm import Session
 
 from app.core.deps import audit, require, same_org
 from app.db import get_db
-from app.models import (Assignment, Attempt, PlagiarismMatch, Question, QuestionGroup, Section, SectionItem, Test,
+from app.api.library import q_out
+from app.models import (Assignment, Attempt, Department, PlagiarismMatch, Question, QuestionGroup, Section, SectionItem, Test,
                         User, AttemptQuestion, CodeSubmission, Answer, aware, now, uid)
 from app.services import invites as inv
 from app.services import reports
+from app.services.populate import pick_questions
 from app.services.sanitize import sanitize_html
 
 router = APIRouter(tags=["tests"])
@@ -25,6 +27,7 @@ VIEW = require("recruiter", "org_admin", "test_creator", "evaluator")
 
 
 class TestIn(BaseModel):
+    department_id: Optional[str] = None
     title: str
     description: str = ""
     instructions: str = ""
@@ -136,7 +139,7 @@ def test_out(db: Session, t: Test, full: bool = True) -> dict:
                          "lock_nav": s.lock_nav, "min_score": s.min_score, "allow_negative": s.allow_negative,
                          "question_count": sq, "marks": round(sm, 2), "items": [item_out(db, it) for it in s.items]})
     asgs = db.scalars(select(Assignment).where(Assignment.test_id == t.id)).all()
-    d = {"id": t.id, "title": t.title, "status": t.status, "duration_min": t.duration_min,
+    d = {"id": t.id, "department_id": t.department_id, "title": t.title, "status": t.status, "duration_min": t.duration_min,
          "starts_at": _iso(t.starts_at), "ends_at": _iso(t.ends_at), "cutoff": t.cutoff,
          "question_count": n_q, "total_marks": round(marks, 2), "section_count": len(t.sections),
          "invited": len(asgs), "taken": sum(1 for a in asgs if a.status not in ("invited", "expired", "cancelled", "in_progress")),
@@ -157,14 +160,18 @@ def list_tests(user: User = Depends(VIEW), db: Session = Depends(get_db)):
 @router.post("/tests")
 def create_test(body: TestIn, request: Request, user: User = Depends(AUTHOR), db: Session = Depends(get_db)):
     t = Test(id=uid(), org_id=user.org_id, created_by=user.id)
-    _apply_test(t, body)
+    _apply_test(db, user, t, body)
     db.add(t)
     audit(db, user, "create", "test", t.id, request=request)
     db.commit()
     return test_out(db, t)
 
 
-def _apply_test(t: Test, body: TestIn) -> None:
+def _apply_test(db: Session, user: User, t: Test, body: TestIn) -> None:
+    dept = db.get(Department, body.department_id or "")
+    if not dept or dept.org_id != user.org_id:
+        raise HTTPException(422, "Choose the department this exam is for")
+    t.department_id = dept.id
     if body.duration_min < 1 or body.duration_min > 600:
         raise HTTPException(422, "Duration must be 1-600 minutes")
     if body.starts_at and body.ends_at and body.ends_at <= body.starts_at:
@@ -185,7 +192,7 @@ def get_test(tid: str, user: User = Depends(VIEW), db: Session = Depends(get_db)
 @router.put("/tests/{tid}")
 def update_test(tid: str, body: TestIn, request: Request, user: User = Depends(AUTHOR), db: Session = Depends(get_db)):
     t = _test(db, tid, user)
-    _apply_test(t, body)
+    _apply_test(db, user, t, body)
     audit(db, user, "update", "test", t.id, request=request)
     db.commit()
     return test_out(db, t)
@@ -203,7 +210,7 @@ def archive_test(tid: str, request: Request, user: User = Depends(AUTHOR), db: S
 @router.post("/tests/{tid}/clone")
 def clone_test(tid: str, request: Request, user: User = Depends(AUTHOR), db: Session = Depends(get_db)):
     t = _test(db, tid, user)
-    n = Test(id=uid(), org_id=t.org_id, title=t.title + " (copy)", description=t.description, instructions=t.instructions,
+    n = Test(id=uid(), org_id=t.org_id, department_id=t.department_id, title=t.title + " (copy)", description=t.description, instructions=t.instructions,
              duration_min=t.duration_min, cutoff=t.cutoff, shuffle_questions=t.shuffle_questions,
              shuffle_options=t.shuffle_options, settings=dict(t.settings or {}), created_by=user.id)
     for s in t.sections:
@@ -287,6 +294,32 @@ def unpublish(tid: str, request: Request, user: User = Depends(AUTHOR), db: Sess
 
 
 # ------------------------------------------------------------------ sections & items
+class PopulateIn(BaseModel):
+    department_id: Optional[str] = None
+    types: List[str] = []
+    easy: int = 0
+    medium: int = 0
+    hard: int = 0
+    skills: List[str] = []
+
+
+@router.post("/tests/{tid}/auto-populate")
+def auto_populate(tid: str, body: PopulateIn, user: User = Depends(AUTHOR), db: Session = Depends(get_db)):
+    """Pick random questions for a section from the bank. Nothing is saved: the admin reviews the pick (and can pick again),
+    then adds the questions with POST /sections/{id}/items. `short` says what the bank could not supply."""
+    t = _test(db, tid, user)
+    _draft(t)
+    mix = {"easy": body.easy, "medium": body.medium, "hard": body.hard}
+    if any(n < 0 for n in mix.values()) or not 1 <= sum(mix.values()) <= 50:
+        raise HTTPException(422, "Ask for between 1 and 50 questions in total")
+    if body.department_id:
+        d = db.get(Department, body.department_id)
+        if not d or d.org_id != user.org_id:
+            raise HTTPException(422, "Unknown department")
+    picked, short = pick_questions(db, t, mix, body.department_id, body.types, body.skills)
+    return {"questions": [q_out(q, full=False) for q in picked], "short": short}
+
+
 @router.post("/tests/{tid}/sections")
 def add_section(tid: str, body: SectionIn, user: User = Depends(AUTHOR), db: Session = Depends(get_db)):
     t = _test(db, tid, user)

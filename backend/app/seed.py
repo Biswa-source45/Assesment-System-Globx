@@ -14,7 +14,8 @@ from datetime import timedelta
 from sqlalchemy import select
 
 from app.core.security import hash_password, new_password, new_token, sha256
-from app.db import Base, SessionLocal, engine
+from app.services.departments import create_defaults
+from app.db import SessionLocal, migrate, reset_schema
 from app.models import (Assignment, Organization, Question, QuestionGroup, Section, SectionItem, Test, TestCase,
                         User, UserRole, now, uid)
 
@@ -28,6 +29,39 @@ STAFF = [  # (email, name, roles) - passwords are generated at seed time and onl
 CANDIDATES = [("rahul.mishra@example.com", "Rahul Mishra"), ("sneha.patnaik@example.com", "Sneha Patnaik"),
               ("amit.sahoo@example.com", "Amit Sahoo")]
 W6 = [1, 1, 1, 2, 2, 3]
+
+# Sample questions for the non-technical departments: (title, body, options, correct, difficulty, skills)
+NON_TECH = {
+    "HR": [
+        ("A colleague keeps missing deadlines", "<p>A teammate is repeatedly late with their part of a shared task. What is the best first step?</p>",
+         ["Report them to the manager straight away", "Talk to them privately to understand the cause", "Quietly do their part yourself", "Complain about it to the rest of the team"], "b", "easy", ["communication", "teamwork"]),
+        ("Giving critical feedback", "<p>Which approach to critical feedback is most effective?</p>",
+         ["Describe the specific behaviour and its impact, then agree next steps", "Mention it in front of the team so everyone learns", "Wait for the yearly review", "Keep it general so it does not feel personal"], "a", "medium", ["feedback", "communication"]),
+        ("Overheard salary details", "<p>You overhear confidential salary details of a colleague. What should you do?</p>",
+         ["Share it with your team", "Raise it as unfair with your manager", "Keep it confidential and do not discuss it", "Ask the colleague about it"], "c", "medium", ["confidentiality", "judgement"]),
+        ("Two managers, two urgent tasks", "<p>Two managers give you conflicting urgent tasks and you cannot finish both today. What do you do?</p>",
+         ["Do the one from the more senior manager", "Tell both managers about the conflict and ask them to agree the priority", "Work late and do both badly", "Do the easier one first"], "b", "hard", ["prioritisation", "judgement"]),
+    ],
+    "Finance": [
+        ("Profit over a period", "<p>Which financial statement shows a company's profit or loss over a period?</p>",
+         ["Balance sheet", "Income statement", "Cash position report", "Trial balance"], "b", "easy", ["accounting"]),
+        ("Percentage of an amount", "<p>What is 15% of 2,400?</p>", ["300", "360", "400", "240"], "b", "easy", ["numeracy"]),
+        ("Straight-line depreciation", "<p>Equipment costs 50,000, has a useful life of 5 years and no residual value. What is the yearly straight-line depreciation?</p>",
+         ["5,000", "8,000", "10,000", "12,500"], "c", "medium", ["accounting", "numeracy"]),
+        ("Current assets", "<p>Which of these is a current asset?</p>", ["Land", "Inventory", "Patents", "Goodwill"], "b", "medium", ["accounting"]),
+        ("Compound interest", "<p>1,000 earns 10% compound interest per year. What is it worth after 2 years?</p>", ["1,200", "1,210", "1,100", "1,220"], "b", "hard", ["numeracy", "interest"]),
+    ],
+    "Operations": [
+        ("Bottleneck", "<p>In a process, what is a bottleneck?</p>",
+         ["The step with the lowest capacity, which limits total output", "The most expensive step", "The last step", "The step with the most staff"], "a", "easy", ["process"]),
+        ("Reorder point", "<p>A product sells 20 units a day, the supplier lead time is 5 days and safety stock is 30 units. What is the reorder point?</p>",
+         ["100", "130", "150", "170"], "b", "medium", ["inventory", "planning"]),
+        ("Output per productive hour", "<p>A machine is scheduled for 8 hours, loses 2 hours to breakdown and produces 360 units. What is the output per productive hour?</p>",
+         ["45", "50", "60", "72"], "c", "medium", ["process", "numeracy"]),
+        ("Economic order quantity", "<p>Yearly demand is 1,200 units, ordering costs 50 per order and holding costs 3 per unit per year. What is the economic order quantity?</p>",
+         ["100", "150", "200", "300"], "c", "hard", ["inventory", "planning"]),
+    ],
+}
 PURPOSE = ["Sample", "Basic", "Edge case", "Correctness", "Tricky cases", "Performance"]
 
 LONG_RUBRIC = [
@@ -174,8 +208,8 @@ def mcq(org, title, body, opts, correct, diff, skills, marks=1.0, neg=0.0, group
 def seed(reset: bool = False) -> dict:
     from app import models  # noqa: F401
     if reset:
-        Base.metadata.drop_all(engine)
-    Base.metadata.create_all(engine)
+        reset_schema()
+    migrate()
     db = SessionLocal()
     try:
         if db.scalar(select(Organization).where(Organization.slug == "globx")):
@@ -184,6 +218,8 @@ def seed(reset: bool = False) -> dict:
                            credits=10000, data_region="IN")
         db.add(org)
         db.flush()
+        depts = create_defaults(db, org.id)
+        tech = depts["Technical"].id
         staff = [(e, n, new_password(12), r) for e, n, r in STAFF]
         cand_pw = new_password(12)
         users = {}
@@ -301,7 +337,13 @@ def seed(reset: bool = False) -> dict:
         qs.append(q_sql)
         for q in qs:
             q.created_by = creator
+            q.department_id = tech
             db.add(q)
+        for dept, items in NON_TECH.items():
+            for title, body, opts, correct, diff, skills in items:
+                q = mcq(O, title, body, opts, correct, diff, skills)
+                q.created_by, q.department_id = creator, depts[dept].id
+                db.add(q)
         db.flush()
         # validate coding + SQL with the sandbox (fills SQL expected results)
         from app.sandbox.judge import judge_code, judge_sql, sql_expected_for
@@ -323,7 +365,7 @@ def seed(reset: bool = False) -> dict:
             print(f"  validated {q.title}: {'OK' if ok else 'FAILED ' + str([c['verdict'] for c in r.get('cases', [])])}")
         # ---------------- sample test
         by = {q.title: q for q in qs}
-        t = Test(id=uid(), org_id=O, title="GLOBX Full-Stack Screening (Sample)", status="published", duration_min=90,
+        t = Test(id=uid(), org_id=O, department_id=tech, title="GLOBX Full-Stack Screening (Sample)", status="published", duration_min=90,
                  description="Sample 6-section assessment: MCQ, Linked MCQ, Short, Long, Programming and SQL.",
                  instructions="<p>Read each question carefully. MCQs carry 1 mark; Linked MCQs carry 2 marks with -0.5 for a wrong answer. "
                               "Programming questions carry 10 marks: 3 open test cases (1 mark each) and 3 hidden test cases (2, 2 and 3 marks). "
@@ -353,7 +395,7 @@ def seed(reset: bool = False) -> dict:
         t.sections = [sA, sB, sC, sD, sE, sF]
         db.add(t)
         # practice test (no proctoring)
-        p = Test(id=uid(), org_id=O, title="Practice Test", status="published", duration_min=20, cutoff=0, created_by=creator,
+        p = Test(id=uid(), org_id=O, department_id=tech, title="Practice Test", status="published", duration_min=20, cutoff=0, created_by=creator,
                  description="Get familiar with the test environment. Not scored for hiring.",
                  instructions="<p>This practice test is not proctored and does not count.</p>",
                  settings={"proctoring": {"enabled": False, "webcam": False, "fullscreen": False, "tab_switch_limit": 0,

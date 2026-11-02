@@ -5,14 +5,14 @@ import json
 import re
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, UploadFile
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.deps import audit, require, same_org
 from app.db import get_db
-from app.models import QTYPES, Question, QuestionGroup, TestCase, User, aware, uid
+from app.models import QTYPES, Department, Question, QuestionGroup, TestCase, User, aware, uid
 from app.sandbox.judge import judge_code, run_reference, sql_expected_for
 from app.sandbox.languages import REGISTRY
 from app.sandbox.sql import describe_tables
@@ -34,6 +34,7 @@ class CaseIn(BaseModel):
 
 
 class QuestionIn(BaseModel):
+    department_id: Optional[str] = None
     type: str
     title: str
     body: str = ""
@@ -54,7 +55,7 @@ class GroupIn(BaseModel):
 
 
 def q_out(q: Question, full: bool = True) -> dict:
-    d = {"id": q.id, "type": q.type, "title": q.title, "difficulty": q.difficulty, "skills": q.skills,
+    d = {"id": q.id, "department_id": q.department_id, "type": q.type, "title": q.title, "difficulty": q.difficulty, "skills": q.skills,
          "marks": q.marks, "negative_marks": q.negative_marks, "group_id": q.group_id, "status": q.status,
          "version": q.version, "updated_at": aware(q.updated_at).isoformat() if q.updated_at else None,
          "validated": bool((q.config or {}).get("validated")), "case_count": len(q.cases)}
@@ -155,7 +156,23 @@ def _check_on_save(q: Question) -> None:
     q.config = cfg
 
 
+TYPE_NAME = {"mcq_single": "multiple choice", "mcq_multi": "multiple answer", "short": "short answer", "long": "explained answer",
+             "coding": "coding", "sql": "SQL"}
+
+
+def _department(db: Session, user: User, body: QuestionIn, current_type: Optional[str] = None) -> Department:
+    """The question's department must be one of the organisation's, and must offer this type of question.
+    A question that already exists keeps its type even if the department no longer offers it."""
+    d = db.get(Department, body.department_id or "")
+    if not d or d.org_id != user.org_id:
+        raise HTTPException(422, {"errors": ["Choose a department"]})
+    if body.type not in (d.question_types or []) and body.type != current_type:
+        raise HTTPException(422, {"errors": [f"The {d.name} department does not offer {TYPE_NAME.get(body.type, body.type)} questions"]})
+    return d
+
+
 def _apply(q: Question, body: QuestionIn) -> None:
+    q.department_id = body.department_id
     q.type, q.title, q.difficulty = body.type, body.title.strip(), body.difficulty
     q.body = sanitize_html(body.body)
     q.skills = [s.strip() for s in body.skills if s.strip()]
@@ -173,12 +190,14 @@ def _apply(q: Question, body: QuestionIn) -> None:
 
 
 @router.get("/questions")
-def list_questions(type: Optional[str] = None, skill: Optional[str] = None, difficulty: Optional[str] = None,
+def list_questions(type: Optional[str] = None, department_id: Optional[str] = None, skill: Optional[str] = None, difficulty: Optional[str] = None,
                    q: Optional[str] = None, status: Optional[str] = None, group_id: Optional[str] = None,
                    standalone: bool = False, user: User = Depends(READ), db: Session = Depends(get_db)):
     stmt = select(Question).where(Question.org_id == user.org_id)
     if type:
         stmt = stmt.where(Question.type == type)
+    if department_id:
+        stmt = stmt.where(Question.department_id == department_id)
     if difficulty:
         stmt = stmt.where(Question.difficulty == difficulty)
     if status:
@@ -202,6 +221,7 @@ def create_question(body: QuestionIn, request: Request, user: User = Depends(AUT
     errs = validate_question(body, strict=body.status == "approved")
     if errs:
         raise HTTPException(422, {"errors": errs})
+    _department(db, user, body)
     q = Question(id=uid(), org_id=user.org_id, created_by=user.id)
     _apply(q, body)
     _check_on_save(q)
@@ -229,6 +249,7 @@ def update_question(qid: str, body: QuestionIn, request: Request, user: User = D
     errs = validate_question(body, strict=body.status == "approved")
     if errs:
         raise HTTPException(422, {"errors": errs})
+    _department(db, user, body, current_type=q.type)
     _apply(q, body)
     _check_on_save(q)
     q.version += 1
@@ -346,11 +367,12 @@ def check_reference(body: CheckIn, user: User = Depends(AUTHOR)):
 
 
 @router.post("/questions/import")
-async def import_mcqs(file: UploadFile = File(...), user: User = Depends(AUTHOR), db: Session = Depends(get_db)):
+async def import_mcqs(file: UploadFile = File(...), department_id: str = Form(...), user: User = Depends(AUTHOR), db: Session = Depends(get_db)):
     """CSV/XLSX columns: title, option_a, option_b, option_c, option_d, correct (e.g. 'a' or 'a,c'),
     marks, negative, difficulty, skills (semicolon separated)."""
     import csv
     import io
+    _department(db, user, QuestionIn(department_id=department_id, type="mcq_single", title="import"))
     data = await file.read()
     rows: List[List[str]] = []
     if file.filename.lower().endswith(".xlsx"):
@@ -369,7 +391,7 @@ async def import_mcqs(file: UploadFile = File(...), user: User = Depends(AUTHOR)
         title, a, b, c_, d, correct, marks, neg, diff, skills = r[0], r[1], r[2], r[3], r[4], r[5], r[6], r[7], r[8], r[9]
         opts = [(k, v) for k, v in zip("abcd", (a, b, c_, d)) if v.strip()]
         cor = {x.strip().lower() for x in correct.split(",") if x.strip()}
-        body = QuestionIn(type="mcq_multi" if len(cor) > 1 else "mcq_single", title=title[:250], body=f"<p>{title}</p>",
+        body = QuestionIn(department_id=department_id, type="mcq_multi" if len(cor) > 1 else "mcq_single", title=title[:250], body=f"<p>{title}</p>",
                           difficulty=diff.lower() if diff.lower() in ("easy", "medium", "hard") else "medium",
                           skills=[s for s in skills.split(";") if s.strip()], marks=float(marks or 1),
                           negative_marks=float(neg or 0),

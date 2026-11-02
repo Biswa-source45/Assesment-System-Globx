@@ -105,6 +105,19 @@ class OtpCode(Base):
     created_at: Mapped[datetime] = mapped_column(TS, default=now)
 
 
+# ------------------------------------------------------------------ departments
+class Department(Base):
+    """Who an exam is for (Technical, HR, Finance, ...). It groups questions and exams, and decides which
+    question types authors can use there (for example coding and SQL only for Technical)."""
+    __tablename__ = "departments"
+    __table_args__ = (UniqueConstraint("org_id", "name", name="uq_department_org_name"),)
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=uid)
+    org_id: Mapped[str] = mapped_column(ForeignKey("organizations.id"), index=True)
+    name: Mapped[str] = mapped_column(String(80))
+    question_types: Mapped[list] = mapped_column(JSON, default=list)
+    created_at: Mapped[datetime] = mapped_column(TS, default=now)
+
+
 # ------------------------------------------------------------------ question library
 class QuestionGroup(Base):
     """Stimulus shared by Linked MCQs (passage / case study / table / code)."""
@@ -123,6 +136,7 @@ class Question(Base):
     __table_args__ = (Index("ix_q_org_type_status", "org_id", "type", "status"),)
     id: Mapped[str] = mapped_column(String(32), primary_key=True, default=uid)
     org_id: Mapped[str] = mapped_column(ForeignKey("organizations.id"), index=True)
+    department_id: Mapped[Optional[str]] = mapped_column(ForeignKey("departments.id"), nullable=True, index=True)
     type: Mapped[str] = mapped_column(String(16))
     title: Mapped[str] = mapped_column(String(255))
     body: Mapped[str] = mapped_column(Text, default="")
@@ -160,6 +174,7 @@ class Test(Base):
     __tablename__ = "tests"
     id: Mapped[str] = mapped_column(String(32), primary_key=True, default=uid)
     org_id: Mapped[str] = mapped_column(ForeignKey("organizations.id"), index=True)
+    department_id: Mapped[Optional[str]] = mapped_column(ForeignKey("departments.id"), nullable=True, index=True)
     title: Mapped[str] = mapped_column(String(255))
     description: Mapped[str] = mapped_column(Text, default="")
     instructions: Mapped[str] = mapped_column(Text, default="")

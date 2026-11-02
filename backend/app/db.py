@@ -4,10 +4,12 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Iterator
 
-from sqlalchemy import create_engine, event
+from alembic import command
+from alembic.config import Config
+from sqlalchemy import create_engine, event, inspect, text
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 
-from app.core.config import get_settings
+from app.core.config import BACKEND_DIR, get_settings
 
 _s = get_settings()
 if _s.is_sqlite:
@@ -37,3 +39,21 @@ def get_db() -> Iterator[Session]:
         yield db
     finally:
         db.close()
+
+
+def migrate() -> None:
+    """Bring the database schema up to date (the app does this on start). A database created before migrations
+    existed is adopted as revision 0001 first, so existing data is kept."""
+    cfg = Config(str(BACKEND_DIR / "alembic.ini"))
+    cfg.set_main_option("script_location", str(BACKEND_DIR / "migrations"))  # works from any working directory
+    tables = set(inspect(engine).get_table_names())
+    if "organizations" in tables and "alembic_version" not in tables:
+        command.stamp(cfg, "0001")
+    command.upgrade(cfg, "head")
+
+
+def reset_schema() -> None:
+    """Drop every table, including the migration history. Development and tests only (seed --reset)."""
+    Base.metadata.drop_all(engine)
+    with engine.begin() as conn:
+        conn.execute(text("DROP TABLE IF EXISTS alembic_version"))

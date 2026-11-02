@@ -21,6 +21,7 @@ from app.models import (ROLES, Answer, Assignment, Attempt, AttemptQuestion, Aud
 from app.sandbox.languages import REGISTRY, refresh_all
 from app.sandbox.sql import SQL_ENGINES
 from app.services import ai
+from app.services.departments import create_defaults
 from app.services.attempts import _text_of, grade_answer, recompute_totals
 from app.services.reports import attempt_report
 
@@ -304,6 +305,8 @@ def create_org(body: OrgIn, request: Request, user: User = Depends(SUPER), db: S
     o = Organization(id=uid(), name=body.name, slug=body.slug, plan=body.plan, credits=body.credits,
                      data_region=body.data_region, status=body.status)
     db.add(o)
+    db.flush()
+    create_defaults(db, o.id)  # every organisation starts with the standard departments
     audit(db, user, "create", "organization", o.id, request=request)
     db.commit()
     return {"id": o.id}
