@@ -122,3 +122,13 @@ def test_generate_cases_expected_output_comes_from_reference(client, monkeypatch
     out = client.post(url, headers=creator, json={"count": 3}).json()
     assert [(c["input"], c["expected"]) for c in out["cases"]] == [("0\n", "0"), ("1000\n", "2000")]
     assert out["dropped"] == 1
+
+
+def test_generated_inputs_must_keep_the_examples_shape():
+    from app.api.library import keep_same_shape
+    gen = [{"input": "5\n"}, {"input": "2\n2\n2\n"}, {"input": "1000000\n"}]
+    kept, off = keep_same_shape(gen, ["4\n", "0\n"])  # examples are single-line
+    assert [c["input"] for c in kept] == ["5\n", "1000000\n"] and off == 1
+    kept, off = keep_same_shape(gen, ["3\n1 2 3\n", "1\n7\n"])  # examples are two-line
+    assert kept == [] and off == 3
+    assert keep_same_shape(gen, ["4\n", "2\n1 2\n"]) == (gen, 0)  # examples differ: no filtering

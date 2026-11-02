@@ -251,6 +251,17 @@ def validate_reference(qid: str, request: Request, user: User = Depends(AUTHOR),
     return {"ok": ok, "result": res}
 
 
+def keep_same_shape(proposed: List[Dict], examples: List[str]) -> tuple:
+    """When every example input has the same number of lines, drop generated inputs with a different line count:
+    the model sometimes invents inputs outside the problem's format, which the reference solution would silently accept."""
+    lines = lambda t: len(t.strip().splitlines())
+    shapes = {lines(e) for e in examples if e.strip()}
+    if len(shapes) != 1:
+        return proposed, 0
+    kept = [c for c in proposed if lines(c["input"]) in shapes]
+    return kept, len(proposed) - len(kept)
+
+
 class GenerateIn(BaseModel):
     count: int = 10
 
@@ -272,11 +283,13 @@ def generate_cases(qid: str, body: GenerateIn, request: Request, user: User = De
     ref = cfg.get("reference") or {}
     if not (ref.get("source") or "").strip():
         raise HTTPException(422, "Add a reference solution (language + source) first")
+    examples = [c.input for c in q.cases]
     try:
         proposed = ai.ai_generate_inputs(re.sub(r"<[^>]+>", " ", q.body or ""), cfg.get("constraints", ""),
-                                         ref["source"], body.count)
+                                         ref["source"], body.count, examples)
     except Exception as e:
         raise HTTPException(502, f"AI request failed: {e}")
+    proposed, off_shape = keep_same_shape(proposed, examples)
     try:
         ran = run_reference(cfg, ref.get("language", "python"), ref["source"], [c["input"] for c in proposed])
     except ValueError as e:
@@ -285,7 +298,7 @@ def generate_cases(qid: str, body: GenerateIn, request: Request, user: User = De
              for r, p in zip(ran, proposed) if r["ok"]]
     audit(db, user, "generate_cases", "question", q.id, {"proposed": len(proposed), "kept": len(cases)}, request)
     db.commit()
-    return {"cases": cases, "dropped": len(ran) - len(cases)}
+    return {"cases": cases, "dropped": off_shape + len(ran) - len(cases)}
 
 
 @router.post("/questions/import")
