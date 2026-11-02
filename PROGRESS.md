@@ -4,11 +4,11 @@ Read at the start of every task; update after every change. Plan and decisions: 
 
 ## Current state (2026-11-02)
 
-- Codebase: FastAPI backend (`backend/app`) and a React **JSX** frontend (`frontend/`: Vite, Tailwind, shadcn/ui). 29 pytest tests and 19 Playwright browser tests pass.
+- Codebase: FastAPI backend (`backend/app`) and a React **JSX** frontend (`frontend/`: Vite, Tailwind, shadcn/ui). 32 pytest tests and 24 Playwright browser tests pass.
 - Built and browser-tested: login (staff email or candidate username); admin Exams list; **question bank** (list, filter, create/edit/archive MCQ, short,
   explained, coding and **SQL** questions; coding has a case table, reference-solution check and "Generate with AI", both working on the unsaved form; saving returns to the bank with the question at the top); **candidate flow** (home, camera check-in with
   MediaPipe face gate and consent, exam runner with section tabs, palette, mark for review, autosave, server timer, CodeMirror editor with Run/Submit,
-  proctoring client, done page; SQL questions with an editor and the schema and sample data shown as tables; per-case loaders, Success/Failed labels and Time Limit Exceeded etc.; private cases as plain non-expandable blocks). Admin Results, Live monitor, exam setup and participant screens are still placeholders or missing.
+  proctoring client, done page; SQL questions with an editor and the schema and sample data shown as tables; per-case loaders, Success/Failed labels and Time Limit Exceeded etc.; private cases as plain non-expandable blocks). **Exam setup** (create/edit an exam: schedule, time allowed, pass mark, shuffle, show-result, proctoring rules; sections with optional timers; pick questions from the bank; publish with a server-side list of what is missing; published exams are frozen) with **participants** (one login per name, one-time printable/CSV credentials sheet, list with extend time, end exam, re-open, new password, cancel) and a **live monitor** (polls every 5 s: status, time left, answered, window leaves, face issues, risk, last signal, latest camera snapshot, same actions). Admin Results/review is still a placeholder.
 - Run frontend: `cd frontend && npm install && npm run dev` (port 5173, proxies /api to 8000) or `npm run build` (backend serves `frontend/dist`).
   `SECRET_KEY` is required in `.env`. OpenAI is configured in `.env` (`LLM_PROVIDER=openai`, model `gpt-4o-mini`, key git-ignored); restart the backend after changing it.
 - Browser tests: `cd frontend && npx playwright test` (starts its own API on :8001 with the throw-away `oap_test` database and Vite on :5174; add `RUN_AI=1` to include the
@@ -26,8 +26,8 @@ Read at the start of every task; update after every change. Plan and decisions: 
 
 ## Next
 
-1. Admin: exam setup (title, schedule, duration, proctoring settings, sections, pick questions, publish), participants with printable credentials and reset/unban,
-   then results/review (AI marks + override, proctoring timeline, snapshots) and the live monitor.
+1. Admin results and review: candidate list with scores, per-answer view with AI marks and override ("accept all AI marks"), proctoring timeline and snapshots, export.
+   The exam editor does not yet expose linked groups, random pools, per-question mark overrides or reordering (the API supports them).
 2. Docker judge container (the API still runs candidate code in-process: not safe for real candidates), compose, Caddy HTTPS, backups.
 3. Check on a real laptop with a real face: MediaPipe false positives/negatives (`minDetectionConfidence` is 0.5 in `frontend/src/lib/faces.js`), fullscreen behaviour,
    camera permission prompt on the office HTTPS address.
@@ -35,6 +35,22 @@ Read at the start of every task; update after every change. Plan and decisions: 
    through the judge container once it exists; old email-OTP/invite flow still in the backend; bundle is one 1.4 MB chunk (split later); rotate the OpenAI key.
 
 ## Log
+
+### 2026-11-02 (exam setup, participants, live monitor, SQL colours)
+- **SQL editor had no colours.** Root cause: for SQL questions `lang` is the engine key (`sqlite`), so the language lookup `EXT[lang]` matched nothing and no language was loaded. Now the language
+  comes from the SQL dialect (`SQLite`/`PostgreSQL`/`MySQL`) in `CodeView.jsx`. Test asserts keywords get a colour in upper and lower case and was confirmed to fail on the old lookup.
+- **Found while planning: no question authored in the new editors could be published.** `publish_errors` needs `config.validated` for coding/SQL, set only by the old validate endpoint. Now the server
+  decides on every save (`_check_on_save` in `library.py`): SQL expected output is computed from the solution query; coding runs the reference solution on every case. A forged `validated` from the
+  client is ignored. The redundant `POST /questions/{id}/validate` was removed.
+- Backend: `GET /tests/{id}/monitor` (`reports.monitor_rows`), `GET /attempts/{id}/clock`, action `terminate` (end a running exam; reason required, 409 if not running), `username` in the candidates table,
+  sections/questions of a published exam are frozen (409), unpublish refused while someone is taking the exam, generated participants no longer get their own `expires_at` (the exam window decides).
+- Candidate exam page now follows the server clock (`syncClock`, every 15 s and on a 423): an admin's time extension reaches the countdown (before, the page would have submitted at the old
+  deadline) and an admin ending the exam sends the candidate to the done page ("Exam ended") within seconds.
+- Frontend: `ExamEditor` (tabs Details / Questions / Participants), `ExamDetails`, `ExamQuestions` (+ picker), `ExamParticipants`, shared `components/AssignmentActions`, `Monitor`, new `Exams` list,
+  `lib/html.js` (shared text<->HTML helpers, were duplicated), `lib/labels.js`. Print styles for the logins sheet. `api()` got `raw` responses for snapshots (fetched with the login header, no token in URLs).
+- Test-writing lessons: leftover candidates from other specs make global counts unreliable (assert non-zero, not exact); a face problem must visibly end before the next starts.
+- Tests: 32 pytest (+3: save-time validation and publishing, monitor/clock/extend/end, frozen exams), 24 Playwright (+5: build and publish an exam then a candidate takes it, schedule/proctoring settings,
+  monitor with extend and end and re-open, locked candidate, new password; plus SQL colour assertions).
 
 ### 2026-11-02 (white screen on SQL questions)
 - User got a blank page opening a SQL question as a candidate: `SqlSamples` did `c.tables.map` and `tables` was undefined. Cause: the running backend predated the change that adds
