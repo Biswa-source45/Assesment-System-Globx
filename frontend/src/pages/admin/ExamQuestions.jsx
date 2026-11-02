@@ -1,8 +1,11 @@
 import { useEffect, useState } from "react"
 import { toast } from "sonner"
-import { Plus, Trash2 } from "lucide-react"
+import { Plus, Shuffle, Trash2 } from "lucide-react"
 import { del, get, post, put } from "@/lib/api"
+import { useDepartments } from "@/lib/useDepartments"
+import AutoPopulate from "@/pages/admin/AutoPopulate"
 import { TYPE_LABEL } from "@/pages/admin/Questions"
+import { useConfirm } from "@/components/ConfirmDialog"
 import { Alert } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -16,16 +19,21 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 const needsReference = (q) => (q.type === "coding" || q.type === "sql") && !q.validated
 
 // Pick questions from the bank for one section. Questions already in the exam are shown but cannot be picked again.
-function QuestionPicker({ section, used, onClose, onAdded }) {
+function QuestionPicker({ section, test, used, onClose, onAdded }) {
+  const { departments } = useDepartments()
+  const [department, setDepartment] = useState("any")
   const [rows, setRows] = useState(null)
   const [search, setSearch] = useState("")
   const [type, setType] = useState("all")
   const [picked, setPicked] = useState([])
   const [busy, setBusy] = useState(false)
 
+  useEffect(() => { if (section) setDepartment(test.department_id ?? "any") }, [section, test.department_id])  // starts with the exam's own department
   useEffect(() => {
-    if (section) { setPicked([]); get("/questions?standalone=true").then(setRows).catch((e) => toast.error(e.message)) }
-  }, [section])
+    if (!section) return
+    setPicked([])
+    get("/questions?standalone=true" + (department === "any" ? "" : `&department_id=${department}`)).then(setRows).catch((e) => toast.error(e.message))
+  }, [section, department])
 
   const shown = (rows ?? []).filter((q) => (type === "all" || q.type === type) && q.title.toLowerCase().includes(search.toLowerCase()))
   const toggle = (id) => setPicked((p) => (p.includes(id) ? p.filter((x) => x !== id) : [...p, id]))
@@ -52,6 +60,13 @@ function QuestionPicker({ section, used, onClose, onAdded }) {
           <DialogDescription>Choose from the question bank. Coding and SQL questions marked "Not validated" cannot be published until their solution passes every test case.</DialogDescription>
         </DialogHeader>
         <div className="flex gap-2">
+          <Select value={department} onValueChange={setDepartment}>
+            <SelectTrigger className="w-44" aria-label="Department filter"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="any">All departments</SelectItem>
+              {(departments ?? []).map((d) => <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>)}
+            </SelectContent>
+          </Select>
           <Input aria-label="Search the bank" placeholder="Search by title" value={search} onChange={(e) => setSearch(e.target.value)} />
           <Select value={type} onValueChange={setType}>
             <SelectTrigger className="w-48" aria-label="Question type filter"><SelectValue /></SelectTrigger>
@@ -90,7 +105,8 @@ function itemTitle(it) {
   return `Random pool: ${it.pool?.draw ?? "?"} questions`
 }
 
-function SectionCard({ section, test, setTest, locked, onPick }) {
+function SectionCard({ section, test, setTest, locked, onPick, onPopulate }) {
+  const confirm = useConfirm()
   const [title, setTitle] = useState(section.title)
   const [timer, setTimer] = useState(section.timer_min ?? "")
 
@@ -103,11 +119,14 @@ function SectionCard({ section, test, setTest, locked, onPick }) {
     try { setTest(await put(`/sections/${section.id}`, body)) } catch (e) { toast.error(e.message) }
   }
   async function removeSection() {
-    if (!confirm(`Remove the section "${section.title}" and its questions from this exam?`)) return
+    const yes = await confirm({ title: "Remove this section?", description: `"${section.title}" and the ${section.items.length} questions in it are removed from this exam. The questions stay in the bank.`, action: "Remove section", destructive: true })
+    if (!yes) return
     try { setTest(await del(`/sections/${section.id}`)) } catch (e) { toast.error(e.message) }
   }
-  async function removeItem(id) {
-    try { setTest(await del(`/items/${id}`)) } catch (e) { toast.error(e.message) }
+  async function removeItem(it) {
+    const yes = await confirm({ title: "Remove this question?", description: `"${itemTitle(it)}" is removed from this section. It stays in the bank.`, action: "Remove", destructive: true })
+    if (!yes) return
+    try { setTest(await del(`/items/${it.id}`)) } catch (e) { toast.error(e.message) }
   }
 
   return (
@@ -127,11 +146,16 @@ function SectionCard({ section, test, setTest, locked, onPick }) {
             {it.question && needsReference(it.question) && <Badge className="bg-destructive text-white">Not validated</Badge>}
             {it.question && <Badge variant="secondary">{TYPE_LABEL[it.question.type] ?? it.question.type}</Badge>}
             {it.question && <span className="w-16 text-right text-xs text-muted-foreground">{it.question.marks} marks</span>}
-            {!locked && <Button variant="ghost" size="icon" className="size-8" aria-label={`Remove ${itemTitle(it)}`} onClick={() => removeItem(it.id)}><Trash2 /></Button>}
+            {!locked && <Button variant="ghost" size="icon" className="size-8" aria-label={`Remove ${itemTitle(it)}`} onClick={() => removeItem(it)}><Trash2 /></Button>}
           </div>
         ))}
         {!section.items.length && <p className="text-sm text-muted-foreground">No questions yet.</p>}
-        {!locked && <div><Button variant="outline" size="sm" onClick={() => onPick(section)}><Plus /> Add questions</Button></div>}
+        {!locked && (
+          <div className="flex flex-wrap gap-2">
+            <Button variant="outline" size="sm" onClick={() => onPick(section)}><Plus /> Add questions</Button>
+            <Button variant="outline" size="sm" onClick={() => onPopulate(section)}><Shuffle /> Auto populate</Button>
+          </div>
+        )}
       </CardContent>
     </Card>
   )
@@ -141,6 +165,7 @@ export default function ExamQuestions({ test, setTest }) {
   const locked = test.status !== "draft"
   const [newTitle, setNewTitle] = useState("")
   const [pickFor, setPickFor] = useState(null)
+  const [populateFor, setPopulateFor] = useState(null)
   const used = new Set(test.sections.flatMap((s) => s.items.map((i) => i.question?.id).filter(Boolean)))
 
   async function addSection(e) {
@@ -157,14 +182,15 @@ export default function ExamQuestions({ test, setTest }) {
     <div className="grid max-w-3xl gap-4">
       {locked && <Alert className="p-3">This exam is published, so its sections and questions are frozen. Unpublish it to change them.</Alert>}
       <p className="text-sm text-muted-foreground" data-testid="exam-totals">{test.question_count} questions, {test.total_marks} marks in total</p>
-      {test.sections.map((s) => <SectionCard key={s.id} section={s} test={test} setTest={setTest} locked={locked} onPick={setPickFor} />)}
+      {test.sections.map((s) => <SectionCard key={s.id} section={s} test={test} setTest={setTest} locked={locked} onPick={setPickFor} onPopulate={setPopulateFor} />)}
       {!locked && (
         <form onSubmit={addSection} className="flex gap-2">
           <Input aria-label="New section title" placeholder={`Section ${test.sections.length + 1}`} value={newTitle} onChange={(e) => setNewTitle(e.target.value)} />
           <Button type="submit" variant="outline"><Plus /> Add section</Button>
         </form>
       )}
-      <QuestionPicker section={pickFor} used={used} onClose={() => setPickFor(null)} onAdded={setTest} />
+      <QuestionPicker section={pickFor} test={test} used={used} onClose={() => setPickFor(null)} onAdded={setTest} />
+      {populateFor && <AutoPopulate test={test} section={populateFor} onClose={() => setPopulateFor(null)} onAdded={setTest} />}
     </div>
   )
 }

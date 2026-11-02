@@ -1,6 +1,12 @@
 import { expect, test } from "@playwright/test"
 import { candidateWindow, loginStaff, shot, staffRequest, startProctoredExam } from "./helpers"
 
+// Publishing asks for confirmation in the app's own dialog.
+const publish = async (page) => {
+  await page.getByRole("button", { name: "Publish" }).click()
+  await page.getByRole("dialog").getByRole("button", { name: "Publish" }).click()
+}
+
 const CODING = {
   type: "coding", title: "Setup: double it", body: "<p>Read n, print 2n.</p>", marks: 10,
   config: { languages: ["python"], reference: { language: "python", source: "n=int(input())\nprint(2*n)" } },
@@ -14,8 +20,9 @@ const SQL = {
 
 test("admin builds an exam, adds people, publishes it; a candidate then takes it with the rules set in the form", async ({ page, browser, request }) => {
   const api = await staffRequest(request)  // two bank questions, prepared quickly; the server validates them when it saves them
-  await api.post("/questions", CODING)
-  await api.post("/questions", SQL)
+  const technical = (await api.get("/departments")).find((d) => d.name === "Technical").id
+  await api.post("/questions", { ...CODING, department_id: technical })
+  await api.post("/questions", { ...SQL, department_id: technical })
 
   await loginStaff(page)
   await page.getByRole("link", { name: "New exam" }).click()
@@ -28,7 +35,7 @@ test("admin builds an exam, adds people, publishes it; a candidate then takes it
   await expect(page.getByTestId("exam-status")).toHaveText("draft")
 
   // an empty exam cannot be published, and the page says what is missing
-  await page.getByRole("button", { name: "Publish" }).click()
+  await publish(page)
   await expect(page.getByTestId("publish-problems")).toContainText("Add at least one section")
 
   await page.getByLabel("New section title").fill("Part 1")
@@ -61,7 +68,7 @@ test("admin builds an exam, adds people, publishes it; a candidate then takes it
   await expect(page.getByRole("row").filter({ hasText: "Asha Rao" }).filter({ hasText: "Not started" })).toHaveCount(1)  // the list, next to the one-time sheet
   await shot(page, "exam-participants")
 
-  await page.getByRole("button", { name: "Publish" }).click()
+  await publish(page)
   await expect(page.getByTestId("exam-status")).toHaveText("published")
   await page.getByRole("tab", { name: "Questions" }).click()
   await expect(page.getByText(/sections and questions are frozen/)).toBeVisible()

@@ -4,6 +4,7 @@ import Login from "@/pages/Login"
 import AdminLayout from "@/pages/admin/AdminLayout"
 import Exams from "@/pages/admin/Exams"
 import ComingSoon from "@/pages/admin/ComingSoon"
+import Departments from "@/pages/admin/Departments"
 import ExamEditor from "@/pages/admin/ExamEditor"
 import Monitor from "@/pages/admin/Monitor"
 import Questions from "@/pages/admin/Questions"
@@ -33,6 +34,7 @@ export default function App() {
         <Route path="questions" element={<Questions />} />
         <Route path="questions/:id" element={<QuestionEditor />} />
         <Route path="results" element={<ComingSoon title="Results and review" />} />
+        <Route path="departments" element={<Departments />} />
         <Route path="monitor" element={<Monitor />} />
       </Route>
       <Route path="/exam" element={<Guard staff={false}><CandidateHome /></Guard>} />

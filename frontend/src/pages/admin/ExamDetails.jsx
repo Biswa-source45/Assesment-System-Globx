@@ -1,13 +1,15 @@
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { toast } from "sonner"
 import { post, put } from "@/lib/api"
 import { fromHtml, toHtml } from "@/lib/html"
 import { fromLocalInput, toLocalInput } from "@/lib/labels"
+import { useDepartments } from "@/lib/useDepartments"
 import { Alert } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Switch } from "@/components/ui/switch"
 import { Textarea } from "@/components/ui/textarea"
 
@@ -15,7 +17,7 @@ import { Textarea } from "@/components/ui/textarea"
 const PROCTORING = { enabled: true, webcam: true, fullscreen: true, tab_switch_limit: 3, face_limit: 5, face_min_seconds: 3, block_paste: true, snapshot_seconds: 15, block_multi_display: true }
 
 const toForm = (t) => ({
-  title: t?.title ?? "", description: t?.description ?? "", instructions: fromHtml(t?.instructions ?? ""),
+  department_id: t?.department_id ?? "", title: t?.title ?? "", description: t?.description ?? "", instructions: fromHtml(t?.instructions ?? ""),
   duration_min: t?.duration_min ?? 60, starts_at: toLocalInput(t?.starts_at), ends_at: toLocalInput(t?.ends_at), cutoff: t?.cutoff ?? 0,
   shuffle_questions: t?.shuffle_questions ?? true, shuffle_options: t?.shuffle_options ?? true,
   show_result: t?.settings?.show_result_to_candidate ?? true, proctoring: { ...PROCTORING, ...(t?.settings?.proctoring ?? {}) },
@@ -24,7 +26,7 @@ const toForm = (t) => ({
 function toBody(f, t) {
   const p = f.proctoring
   return {
-    title: f.title, description: f.description, instructions: toHtml(f.instructions), duration_min: Number(f.duration_min),
+    department_id: f.department_id, title: f.title, description: f.description, instructions: toHtml(f.instructions), duration_min: Number(f.duration_min),
     starts_at: fromLocalInput(f.starts_at), ends_at: fromLocalInput(f.ends_at), access_enabled: t?.access_enabled ?? true,
     cutoff: Number(f.cutoff) || 0, shuffle_questions: f.shuffle_questions, shuffle_options: f.shuffle_options,
     settings: {
@@ -62,9 +64,11 @@ function Field({ id, label, hint, ...props }) {
 // test === null creates a new exam; otherwise it edits that one. onSaved receives the exam the server returns.
 export default function ExamDetails({ test, onSaved }) {
   const [f, setF] = useState(() => toForm(test))
+  const { departments } = useDepartments()
   const [error, setError] = useState("")
   const [busy, setBusy] = useState(false)
   const set = (k, v) => setF((x) => ({ ...x, [k]: v }))
+  useEffect(() => { if (!test && departments?.length && !f.department_id) set("department_id", departments[0].id) }, [departments])  // eslint-disable-line react-hooks/exhaustive-deps
   const setP = (k, v) => setF((x) => ({ ...x, proctoring: { ...x.proctoring, [k]: v } }))
   const p = f.proctoring
 
@@ -88,6 +92,14 @@ export default function ExamDetails({ test, onSaved }) {
       <Card>
         <CardHeader><CardTitle>Exam</CardTitle></CardHeader>
         <CardContent className="grid gap-4">
+          <div className="grid gap-1.5">
+            <Label>Department</Label>
+            <Select value={f.department_id} onValueChange={(v) => set("department_id", v)}>
+              <SelectTrigger className="w-64" aria-label="Department"><SelectValue placeholder="Choose a department" /></SelectTrigger>
+              <SelectContent>{(departments ?? []).map((d) => <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>)}</SelectContent>
+            </Select>
+            <p className="text-xs text-muted-foreground">Who this exam is for. Auto populate and the question picker start with this department's questions.</p>
+          </div>
           <Field id="exam-title" label="Title" required value={f.title} onChange={(e) => set("title", e.target.value)} />
           <div className="grid gap-1.5">
             <Label htmlFor="exam-desc">Description</Label>

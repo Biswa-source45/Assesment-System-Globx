@@ -3,6 +3,8 @@ import { Link } from "react-router-dom"
 import { toast } from "sonner"
 import { Plus } from "lucide-react"
 import { del, get } from "@/lib/api"
+import { useDepartments } from "@/lib/useDepartments"
+import { useConfirm } from "@/components/ConfirmDialog"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -14,18 +16,25 @@ export const TYPE_LABEL = {
 }
 
 export default function Questions() {
+  const confirm = useConfirm()
+  const { departments, byId } = useDepartments()
   const [rows, setRows] = useState(null)
   const [type, setType] = useState("all")
+  const [department, setDepartment] = useState("all")
   const [search, setSearch] = useState("")
   const [error, setError] = useState("")
 
   const load = useCallback(() => {
-    get("/questions" + (type === "all" ? "" : `?type=${type}`)).then(setRows).catch((e) => setError(e.message))
-  }, [type])
+    const q = new URLSearchParams()
+    if (type !== "all") q.set("type", type)
+    if (department !== "all") q.set("department_id", department)
+    get(`/questions?${q}`).then(setRows).catch((e) => setError(e.message))
+  }, [type, department])
   useEffect(load, [load])
 
   async function archive(q) {
-    if (!confirm(`Archive "${q.title}"? It disappears from the bank but exams that already use it keep working.`)) return
+    const yes = await confirm({ title: "Archive this question?", description: `"${q.title}" disappears from the bank. Exams that already use it keep working.`, action: "Archive", destructive: true })
+    if (!yes) return
     try { await del(`/questions/${q.id}`); toast.success("Archived"); load() } catch (e) { toast.error(e.message) }
   }
 
@@ -38,6 +47,13 @@ export default function Questions() {
       </div>
       <div className="flex flex-wrap gap-2">
         <Input className="w-64" placeholder="Search by title" aria-label="Search questions" value={search} onChange={(e) => setSearch(e.target.value)} />
+        <Select value={department} onValueChange={setDepartment}>
+          <SelectTrigger className="w-52" aria-label="Filter by department"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All departments</SelectItem>
+            {(departments ?? []).map((d) => <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>)}
+          </SelectContent>
+        </Select>
         <Select value={type} onValueChange={setType}>
           <SelectTrigger className="w-52" aria-label="Filter by type"><SelectValue /></SelectTrigger>
           <SelectContent>
@@ -50,12 +66,13 @@ export default function Questions() {
       {shown && (
         <Table>
           <TableHeader>
-            <TableRow><TableHead>Title</TableHead><TableHead>Type</TableHead><TableHead>Difficulty</TableHead><TableHead>Marks</TableHead><TableHead>Cases</TableHead><TableHead /></TableRow>
+            <TableRow><TableHead>Title</TableHead><TableHead>Department</TableHead><TableHead>Type</TableHead><TableHead>Difficulty</TableHead><TableHead>Marks</TableHead><TableHead>Cases</TableHead><TableHead /></TableRow>
           </TableHeader>
           <TableBody>
             {shown.map((q) => (
               <TableRow key={q.id}>
                 <TableCell className="font-medium"><Link className="hover:underline" to={`/admin/questions/${q.id}`}>{q.title}</Link></TableCell>
+                <TableCell>{byId[q.department_id]?.name ?? "-"}</TableCell>
                 <TableCell><Badge variant="secondary">{TYPE_LABEL[q.type] ?? q.type}</Badge></TableCell>
                 <TableCell>{q.difficulty}</TableCell>
                 <TableCell>{q.marks}</TableCell>
@@ -66,7 +83,7 @@ export default function Questions() {
                 </TableCell>
               </TableRow>
             ))}
-            {!shown.length && <TableRow><TableCell colSpan={6} className="text-muted-foreground">No questions found.</TableCell></TableRow>}
+            {!shown.length && <TableRow><TableCell colSpan={7} className="text-muted-foreground">No questions found.</TableCell></TableRow>}
           </TableBody>
         </Table>
       )}

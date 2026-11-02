@@ -5,12 +5,14 @@ import { get, post } from "@/lib/api"
 import ExamDetails from "@/pages/admin/ExamDetails"
 import ExamParticipants from "@/pages/admin/ExamParticipants"
 import ExamQuestions from "@/pages/admin/ExamQuestions"
+import { useConfirm } from "@/components/ConfirmDialog"
 import { Alert } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 
 export default function ExamEditor() {
+  const confirm = useConfirm()
   const { id } = useParams()
   const navigate = useNavigate()
   const [params, setParams] = useSearchParams()
@@ -29,6 +31,8 @@ export default function ExamEditor() {
   const changed = (t) => { setTest(t); setProblems([]) }
 
   async function publish() {
+    const yes = await confirm({ title: "Publish this exam?", description: "Candidates can start it as soon as it is open. Its sections and questions are frozen until you unpublish it.", action: "Publish" })
+    if (!yes) return
     setBusy(true)
     setProblems([])
     try {
@@ -42,7 +46,8 @@ export default function ExamEditor() {
   }
 
   async function unpublish() {
-    if (!confirm("Unpublish this exam? Candidates will not be able to start it until you publish it again.")) return
+    const yes = await confirm({ title: "Unpublish this exam?", description: "Candidates will not be able to start it until you publish it again.", action: "Unpublish", destructive: true })
+    if (!yes) return
     try {
       setTest(await post(`/tests/${id}/unpublish`))
     } catch (e) {

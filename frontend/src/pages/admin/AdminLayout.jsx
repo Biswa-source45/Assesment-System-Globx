@@ -1,5 +1,5 @@
 import { NavLink, Outlet } from "react-router-dom"
-import { ClipboardList, FileQuestion, LogOut, MonitorPlay, Trophy } from "lucide-react"
+import { Building2, ClipboardList, FileQuestion, LogOut, MonitorPlay, Trophy } from "lucide-react"
 import { useAuth } from "@/lib/auth"
 import { Button } from "@/components/ui/button"
 import { Separator } from "@/components/ui/separator"
@@ -11,6 +11,7 @@ import {
 const NAV = [
   { to: "/admin", label: "Exams", icon: ClipboardList, end: true },
   { to: "/admin/questions", label: "Question bank", icon: FileQuestion },
+  { to: "/admin/departments", label: "Departments", icon: Building2 },
   { to: "/admin/monitor", label: "Live monitor", icon: MonitorPlay },
   { to: "/admin/results", label: "Results", icon: Trophy },
 ]

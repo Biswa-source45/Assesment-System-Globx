@@ -54,7 +54,8 @@ export async function staffRequest(request, email = "creator@globx.co.in") {
     expect(r.ok(), `${method} ${path}: ${await r.text()}`).toBeTruthy()
     return r.json()
   }
-  return { get: (p) => call("get", p), post: (p, d) => call("post", p, d) }
+  // `send` returns the raw response, for checking that the server refuses something
+  return { get: (p) => call("get", p), post: (p, d) => call("post", p, d), send: (method, path, data) => request[method](`/api/v1${path}`, { headers, data }) }
 }
 
 // A second browser window with its own login and a (fake) camera: the candidate, while the admin watches in the first.

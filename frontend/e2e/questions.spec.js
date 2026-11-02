@@ -38,8 +38,11 @@ test("saving a new MCQ returns to the question bank with the question at the top
 
   await page.getByLabel("Search questions").fill("E2E: capital")
   const row = page.getByRole("row").filter({ hasText: "E2E: capital of France" })
-  page.once("dialog", (d) => d.accept())
+  await row.getByRole("button", { name: "Archive" }).click()  // asks first, in the app's own dialog
+  await page.getByRole("dialog").getByRole("button", { name: "Cancel" }).click()
+  await expect(row).toBeVisible()
   await row.getByRole("button", { name: "Archive" }).click()
+  await page.getByRole("dialog").getByRole("button", { name: "Archive" }).click()
   await expect(page.getByText("Archived")).toBeVisible()
   await expect(row).toHaveCount(0)
 })

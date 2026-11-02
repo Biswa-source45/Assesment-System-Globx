@@ -6,6 +6,7 @@ import { java } from "@codemirror/lang-java"
 import { javascript } from "@codemirror/lang-javascript"
 import { cpp } from "@codemirror/lang-cpp"
 import { MySQL, PostgreSQL, SQLite, sql } from "@codemirror/lang-sql"
+import { githubDark } from "@uiw/codemirror-theme-github"
 import { Loader2 } from "lucide-react"
 import { get, post } from "@/lib/api"
 import { Alert } from "@/components/ui/alert"
@@ -143,7 +144,7 @@ export function CodeView({ q, r, onChange, attemptId, closed, blockPaste }) {
       {!langs.length && <Alert variant="destructive" className="p-3">Nothing is installed on the server to run this question. Tell the invigilator.</Alert>}
       <div className="overflow-hidden rounded-lg border" data-testid="code-editor">
         <CodeMirror value={src} height="340px" extensions={extensions} editable={!closed} onChange={setSrc}
-          basicSetup={{ foldGutter: false }} theme="light" />
+          basicSetup={{ foldGutter: false }} theme={githubDark} />
       </div>
       <div className="flex gap-2">
         <Button variant="outline" disabled={!!busy || closed || !langs.length} onClick={() => exec("run")}>{busy === "run" ? "Running..." : "Run on samples"}</Button>

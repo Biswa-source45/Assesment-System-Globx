@@ -8,6 +8,7 @@ import { Verdict } from "@/pages/candidate/CodeView"
 import SqlBuilder from "@/pages/admin/SqlBuilder"
 import { buildInserts, buildSchema, checkTables } from "@/lib/sqlbuild"
 import { fromHtml, toHtml } from "@/lib/html"
+import { useDepartments } from "@/lib/useDepartments"
 import { Alert } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -26,7 +27,7 @@ const blankOptions = () => Array.from({ length: 4 }, () => ({ id: rid(), text: "
 
 
 const blank = () => ({
-  type: "mcq_single", title: "", body: "", difficulty: "medium", marks: 1, negative_marks: 0, skills: "",
+  department_id: "", type: "mcq_single", title: "", body: "", difficulty: "medium", marks: 1, negative_marks: 0, skills: "",
   options: blankOptions(), model_answer: "", keywords: "", max_words: 150,
   languages: ["python"], time_limit_ms: 2000, memory_mb: 256, constraints: "", ref_lang: "python", ref_source: "", cases: [],
   tables: [], datasets: [], reference_sql: "", ordered: false, preview: null,  // SQL questions
@@ -35,7 +36,7 @@ const blank = () => ({
 function fromQuestion(q) {
   const c = q.config ?? {}
   return {
-    ...blank(), type: q.type, title: q.title, body: fromHtml(q.body), difficulty: q.difficulty, marks: q.marks, negative_marks: q.negative_marks,
+    ...blank(), department_id: q.department_id ?? "", type: q.type, title: q.title, body: fromHtml(q.body), difficulty: q.difficulty, marks: q.marks, negative_marks: q.negative_marks,
     skills: (q.skills ?? []).join(", "),
     options: q.type.startsWith("mcq") ? (c.options ?? []).map((o) => ({ id: o.id, text: o.text, correct: !!o.correct })) : blankOptions(),
     model_answer: c.model_answer ?? "", keywords: (c.keywords ?? []).join(", "), max_words: c.max_words ?? (q.type === "short" ? 150 : 800),
@@ -61,6 +62,7 @@ export default function QuestionEditor() {
   const { id } = useParams()
   const navigate = useNavigate()
   const [f, setF] = useState(blank)
+  const { departments, byId } = useDepartments()
   const [check, setCheck] = useState(null)  // verdict per case from "Check reference solution"
   const [error, setError] = useState("")
   const [busy, setBusy] = useState("")
@@ -77,6 +79,17 @@ export default function QuestionEditor() {
     setF((x) => ({ ...x, type: t, marks: DEFAULT_MARKS[t], max_words: t === "short" ? 150 : 800 }))
   }
 
+  // The department decides which types can be created. A new question whose type the department does not offer switches to one it does.
+  const dept = byId[f.department_id]
+  const allowed = TYPES.filter((t) => !dept || dept.question_types.includes(t) || t === f.type)
+  useEffect(() => { if (id === "new" && departments?.length && !f.department_id) set("department_id", departments[0].id) }, [departments])  // eslint-disable-line react-hooks/exhaustive-deps
+  function pickDepartment(did) {
+    const offered = byId[did]?.question_types ?? TYPES
+    setF((x) => (id !== "new" || offered.includes(x.type)
+      ? { ...x, department_id: did }
+      : { ...x, department_id: did, type: offered[0], marks: DEFAULT_MARKS[offered[0]], max_words: offered[0] === "short" ? 150 : 800 }))
+  }
+
   const setOption = (i, patch) => set("options", f.options.map((o, j) => (j === i ? { ...o, ...patch } : o)))
   const setCase = (i, patch) => { setCheck(null); set("cases", f.cases.map((c, j) => (j === i ? { ...c, ...patch } : c))) }
 
@@ -84,7 +97,7 @@ export default function QuestionEditor() {
     const bad = checkTables(f.tables)
     if (bad) throw new Error(bad)
     return {
-      type: "sql", title: f.title, body: toHtml(f.body), difficulty: f.difficulty, marks: Number(f.marks), negative_marks: 0,
+      department_id: f.department_id, type: "sql", title: f.title, body: toHtml(f.body), difficulty: f.difficulty, marks: Number(f.marks), negative_marks: 0,
       skills: f.skills.split(",").map((s) => s.trim()).filter(Boolean), status: "approved",
       config: { schema: buildSchema(f.tables), seed: "", engines: ["sqlite"], ordered: f.ordered, reference_sql: f.reference_sql },
       cases: f.datasets.map((d, i) => ({ ordinal: i + 1, visibility: d.visibility, input: buildInserts(f.tables, d.rows), expected: "", weight: Number(d.weight) || 1, purpose: d.purpose })),
@@ -106,7 +119,7 @@ export default function QuestionEditor() {
       if (f.ref_source.trim()) config.reference = { language: f.ref_lang, source: f.ref_source }
     }
     return {
-      type: f.type, title: f.title, body: toHtml(f.body), difficulty: f.difficulty, marks: Number(f.marks), negative_marks: Number(f.negative_marks),
+      department_id: f.department_id, type: f.type, title: f.title, body: toHtml(f.body), difficulty: f.difficulty, marks: Number(f.marks), negative_marks: Number(f.negative_marks),
       skills: f.skills.split(",").map((s) => s.trim()).filter(Boolean), status: "approved", config,
       cases: f.type === "coding" ? f.cases.map((c, i) => ({ ordinal: i + 1, visibility: c.visibility, input: c.input, expected: c.expected, weight: Number(c.weight) || 1, purpose: c.purpose })) : undefined,
     }
@@ -172,12 +185,19 @@ export default function QuestionEditor() {
 
       <Card>
         <CardContent className="grid gap-4 pt-6">
-          <div className="grid gap-4 md:grid-cols-2">
+          <div className="grid gap-4 md:grid-cols-3">
+            <div className="grid gap-2">
+              <Label>Department</Label>
+              <Select value={f.department_id} onValueChange={pickDepartment}>
+                <SelectTrigger aria-label="Department"><SelectValue placeholder="Choose a department" /></SelectTrigger>
+                <SelectContent>{(departments ?? []).map((d) => <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>)}</SelectContent>
+              </Select>
+            </div>
             <div className="grid gap-2">
               <Label>Type</Label>
               <Select value={f.type} onValueChange={pickType} disabled={id !== "new"}>
                 <SelectTrigger aria-label="Question type"><SelectValue /></SelectTrigger>
-                <SelectContent>{TYPES.map((t) => <SelectItem key={t} value={t}>{TYPE_LABEL[t]}</SelectItem>)}</SelectContent>
+                <SelectContent>{allowed.map((t) => <SelectItem key={t} value={t}>{TYPE_LABEL[t]}</SelectItem>)}</SelectContent>
               </Select>
             </div>
             <div className="grid gap-2">

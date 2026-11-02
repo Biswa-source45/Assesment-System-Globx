@@ -3,11 +3,13 @@ import { Link } from "react-router-dom"
 import { Plus } from "lucide-react"
 import { get } from "@/lib/api"
 import { fmtDate } from "@/lib/labels"
+import { useDepartments } from "@/lib/useDepartments"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 
 export default function Exams() {
+  const { byId } = useDepartments()
   const [rows, setRows] = useState(null)
   const [error, setError] = useState("")
 
@@ -26,7 +28,7 @@ export default function Exams() {
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Title</TableHead><TableHead>Status</TableHead><TableHead>Opens</TableHead><TableHead>Time</TableHead>
+              <TableHead>Title</TableHead><TableHead>Department</TableHead><TableHead>Status</TableHead><TableHead>Opens</TableHead><TableHead>Time</TableHead>
               <TableHead>Questions</TableHead><TableHead>Marks</TableHead><TableHead>Invited</TableHead><TableHead>Taken</TableHead><TableHead />
             </TableRow>
           </TableHeader>
@@ -34,6 +36,7 @@ export default function Exams() {
             {rows.map((t) => (
               <TableRow key={t.id}>
                 <TableCell className="font-medium"><Link className="hover:underline" to={`/admin/exams/${t.id}`}>{t.title}</Link></TableCell>
+                <TableCell>{byId[t.department_id]?.name ?? "-"}</TableCell>
                 <TableCell><Badge variant={t.status === "published" ? "default" : "secondary"}>{t.status}</Badge></TableCell>
                 <TableCell>{fmtDate(t.starts_at)}</TableCell>
                 <TableCell>{t.duration_min} min</TableCell>
@@ -47,7 +50,7 @@ export default function Exams() {
                 </TableCell>
               </TableRow>
             ))}
-            {!rows.length && <TableRow><TableCell colSpan={9} className="text-muted-foreground">No exams yet. Create one to get started.</TableCell></TableRow>}
+            {!rows.length && <TableRow><TableCell colSpan={10} className="text-muted-foreground">No exams yet. Create one to get started.</TableCell></TableRow>}
           </TableBody>
         </Table>
       )}
