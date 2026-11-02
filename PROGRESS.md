@@ -4,18 +4,18 @@ Read at the start of every task; update after every change. Plan and decisions: 
 
 ## Current state (2026-11-02)
 
-- Codebase: FastAPI backend (`backend/app`) and a React **JSX** frontend (`frontend/`: Vite, Tailwind, shadcn/ui). 32 pytest tests and 24 Playwright browser tests pass.
+- Codebase: FastAPI backend (`backend/app`) and a React **JSX** frontend (`frontend/`: Vite, Tailwind, shadcn/ui). 36 pytest tests and 30 Playwright browser tests pass.
 - Built and browser-tested: login (staff email or candidate username); admin Exams list; **question bank** (list, filter, create/edit/archive MCQ, short,
   explained, coding and **SQL** questions; coding has a case table, reference-solution check and "Generate with AI", both working on the unsaved form; saving returns to the bank with the question at the top); **candidate flow** (home, camera check-in with
   MediaPipe face gate and consent, exam runner with section tabs, palette, mark for review, autosave, server timer, CodeMirror editor with Run/Submit,
-  proctoring client, done page; SQL questions with an editor and the schema and sample data shown as tables; per-case loaders, Success/Failed labels and Time Limit Exceeded etc.; private cases as plain non-expandable blocks). **Exam setup** (create/edit an exam: schedule, time allowed, pass mark, shuffle, show-result, proctoring rules; sections with optional timers; pick questions from the bank; publish with a server-side list of what is missing; published exams are frozen) with **participants** (one login per name, one-time printable/CSV credentials sheet, list with extend time, end exam, re-open, new password, cancel) and a **live monitor** (polls every 5 s: status, time left, answered, window leaves, face issues, risk, last signal, latest camera snapshot, same actions). Admin Results/review is still a placeholder.
+  proctoring client, done page; SQL questions with an editor and the schema and sample data shown as tables; per-case loaders, Success/Failed labels and Time Limit Exceeded etc.; private cases as plain non-expandable blocks). **Exam setup** (create/edit an exam: schedule, time allowed, pass mark, shuffle, show-result, proctoring rules; sections with optional timers; pick questions from the bank; publish with a server-side list of what is missing; published exams are frozen) with **participants** (one login per name, one-time printable/CSV credentials sheet, list with extend time, end exam, re-open, new password, cancel) and a **live monitor** (polls every 5 s: status, time left, answered, window leaves, face issues, risk, last signal, latest camera snapshot, same actions). **Departments** (Technical, HR, Finance, Operations, General, or your own; each decides which question types authors can use; every question and exam belongs to one; the bank and the picker filter by it) and **auto populate** (per section: choose department, types, how many easy/medium/hard, optional tags; the server picks random approved questions that are not already in the exam and are publishable; you review, drop or pick again, then add; shortfalls are explained). All confirmations (archive, remove, unpublish, publish, delete department) use one in-app dialog, no browser boxes. Code editors are black. Admin Results/review is still a placeholder.
 - Run frontend: `cd frontend && npm install && npm run dev` (port 5173, proxies /api to 8000) or `npm run build` (backend serves `frontend/dist`).
   `SECRET_KEY` is required in `.env`. OpenAI is configured in `.env` (`LLM_PROVIDER=openai`, model `gpt-4o-mini`, key git-ignored); restart the backend after changing it.
 - Browser tests: `cd frontend && npx playwright test` (starts its own API on :8001 with the throw-away `oap_test` database and Vite on :5174; add `RUN_AI=1` to include the
   real OpenAI call). Screenshots land in `frontend/test-results/screens/`. A dev-only hook `window.__faceCount` lets tests pin the face count (the fake camera is an animated picture).
 - Theme: light/white only, black text, blue (`--primary`) for buttons and labels, green for success, red for warnings. Fonts (bundled, work offline): Inter body, Poppins headings, Montserrat brand.
 - Dev logins after `python -m app.seed --reset`: staff as in `backend/data/seeded_accounts.txt`; candidates `rahul` / `sneha` / `amit`. All demo passwords are random per seed and live only in that file.
-- Schema changes need a reseed (`python -m app.seed --reset`, wipes the `oap` database) until Alembic is added: `create_all` never alters existing tables.
+- Schema changes: Alembic. The app upgrades the database on start (an old database is adopted and keeps its data). After editing `models.py`: `cd backend && .venv/Scripts/alembic revision --autogenerate -m "what changed"`, check the file, commit it. `seed --reset` still wipes and rebuilds.
 - Local database: PostgreSQL 18, port 5433, local `postgres` account (credentials only in the git-ignored `.env`), databases `oap` (dev) and `oap_test` (tests). Config in repo-root `.env` (git-ignored).
 - Run backend (from `backend/`): `.venv/Scripts/python -m app.seed` then `.venv/Scripts/python -m uvicorn app.main:app --port 8000 --reload`.
   `backend/.venv` exists (git-ignored).
@@ -26,7 +26,7 @@ Read at the start of every task; update after every change. Plan and decisions: 
 
 ## Next
 
-1. Admin results and review: candidate list with scores, per-answer view with AI marks and override ("accept all AI marks"), proctoring timeline and snapshots, export.
+1. Department-specific question patterns (the department design supports them; only the type list differs per department today): numeric answer with tolerance (Finance, Operations), situational judgement with scored options (HR), rating scales. Then admin results and review: candidate list with scores, per-answer view with AI marks and override ("accept all AI marks"), proctoring timeline and snapshots, export.
    The exam editor does not yet expose linked groups, random pools, per-question mark overrides or reordering (the API supports them).
 2. Docker judge container (the API still runs candidate code in-process: not safe for real candidates), compose, Caddy HTTPS, backups.
 3. Check on a real laptop with a real face: MediaPipe false positives/negatives (`minDetectionConfidence` is 0.5 in `frontend/src/lib/faces.js`), fullscreen behaviour,
@@ -35,6 +35,22 @@ Read at the start of every task; update after every change. Plan and decisions: 
    through the judge container once it exists; old email-OTP/invite flow still in the backend; bundle is one 1.4 MB chunk (split later); rotate the OpenAI key.
 
 ## Log
+
+### 2026-11-02 (departments, auto populate, migrations, dialogs, black editor)
+- **Global, not only technical.** New `Department` model (`departments` table); `questions.department_id` and `tests.department_id`; the department's `question_types` decide what an author can create
+  (HR/Finance/Operations/General offer MCQ single/multiple, short and explained; only Technical also offers coding and SQL). `GET/POST/PUT/DELETE /departments` (delete refused while used), department filters on the
+  question list and the exam picker, `Departments` admin page. New organisations get the default departments (`services/departments.py`). The seed adds about 13 sample HR, Finance and Operations questions.
+- **Alembic introduced** (it was promised for production and the schema now changes): `0001_baseline` (generated from the old models), `0002_departments` (hand-finished: names its constraints, files all existing
+  questions and exams under Technical, creates the defaults per organisation). `db.migrate()` runs on start and from the seed; a database from before migrations is stamped 0001 first. Verified on real old-schema data,
+  downgrade and re-upgrade; `test_migrations.py` covers adoption and fails if models and migrations disagree.
+- **Auto populate** (`POST /tests/{id}/auto-populate`, `services/populate.py`, `AutoPopulate.jsx`): random questions by difficulty mix, department, types and tags; never a question already in the exam, a group child or an
+  unvalidated coding/SQL question; preview only, nothing saved until the admin adds; shortfall reported. A fixed paper for everyone (order is still shuffled per candidate). Per-candidate random draws (pools) exist in
+  the backend but were left out: totals break when marks differ.
+- **Dialogs, not browser boxes:** `ConfirmDialog.jsx` (`useConfirm`) replaced the three native `confirm()` calls and now also guards removing a question, publishing and deleting a department. The shared `Dialog` scrolls
+  when taller than the screen (the populate dialog buttons were cut off on a 720px screen; the test was proven to fail without the fix).
+- **Black code editor** (`@uiw/codemirror-theme-github` dark) in the exam. Reading "some black coding" as the editor theme; to be confirmed with the user.
+- Tests: 36 pytest (+4: departments, auto populate, two migration tests), 30 Playwright (+6: departments, department-driven types and filters, server refusal, auto populate x2, small-screen dialog).
+- Restart the backend after pulling this: it upgrades the database itself.
 
 ### 2026-11-02 (exam setup, participants, live monitor, SQL colours)
 - **SQL editor had no colours.** Root cause: for SQL questions `lang` is the engine key (`sqlite`), so the language lookup `EXT[lang]` matched nothing and no language was loaded. Now the language

@@ -113,13 +113,15 @@ Every event is stored with a timestamp, plus when and why the exam ended. Browse
 ## 10. Backups and updates [planned]
 
 - Nightly database dump to a folder outside the Docker volume, kept for 30 days; also copy snapshots and uploads.
-- Migrations: tables are created on startup during development. Add Alembic before the first real data goes into production.
+- Migrations: Alembic (`backend/migrations`). The app runs `alembic upgrade head` on every start; a database from before migrations is adopted as revision 0001 and keeps its data.
+  After changing `app/models.py`, write a migration (`alembic revision --autogenerate`); a test fails if the models and migrations disagree. Back up before upgrading production.
 - Never deploy during a live exam.
 - Snapshots and answers are personal data; delete them after the retention period the company agrees.
 
 ## 11. Build checklist
 
-- [done] Local PostgreSQL database and seed data
+- [done] Local PostgreSQL database and seed data; Alembic migrations (departments is revision 0002)
+- [done] Departments (Technical, HR, Finance, Operations, General, or your own) decide question types; auto populate for exam sections; in-app confirmation dialogs
 - [done] SQL sandbox cannot open other databases; staff cannot read other organisations' submissions
 - [done] Backend: participant credentials, coding case rules, proctoring rules (tab and face), AI JSON mode, test-case generator
 - [done] Frontend scaffold (Vite, React JSX, shadcn/ui): login, admin shell, exams list, candidate home

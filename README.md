@@ -13,7 +13,7 @@ Production will run in Docker (app + database); there is no Docker setup yet.
 # 2. backend
 cd backend
 python -m venv .venv && .venv/Scripts/pip install -r requirements.txt
-.venv/Scripts/python -m app.seed                                   # tables + demo data
+.venv/Scripts/python -m app.seed                                   # applies migrations + demo data (--reset wipes first)
 .venv/Scripts/python -m uvicorn app.main:app --port 8000 --reload  # http://localhost:8000/api/docs
 ```
 
@@ -50,7 +50,8 @@ online-assessment-platform/
 │   │   ├── sandbox/          process limits, per-language sandboxes, SQL engines, judge, self-test
 │   │   ├── services/         attempts & grading, jobs (queue + sweeper), proctoring, plagiarism, invites, reports, mail, AI
 │   │   ├── api/              auth, library, tests, candidate, staff routers (/api/v1, docs at /api/docs)
-│   │   └── seed.py           demo organisation, users, 21 questions, sample + practice tests
+│   │   └── seed.py           demo organisation, departments, users, about 34 questions, sample + practice tests
+│   ├── migrations/           Alembic: the app upgrades the database on start; after editing models.py run `alembic revision --autogenerate -m "what changed"`
 │   ├── tests/                pytest: scoring, risk, plagiarism, every sandbox, full API flow
 │   └── requirements.txt
 └── frontend/
