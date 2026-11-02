@@ -164,7 +164,8 @@ def public_view(result: Dict, show_hidden_counts: bool = True) -> Dict:
         if c["visibility"] == "open":
             opn.append(c)
         else:
-            hid.append({"ordinal": c["ordinal"], "verdict": "Passed" if c["passed"] else "Failed",
+            # the verdict code (AC, WA, TLE, ...) says how it went, never what the test case contains
+            hid.append({"ordinal": c["ordinal"], "verdict": c["verdict"],
                         "passed": c["passed"], "weight": c["weight"], "time_ms": c.get("time_ms"),
                         "memory_kb": c.get("memory_kb")})
     res["open"] = opn

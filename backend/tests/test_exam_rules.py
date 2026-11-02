@@ -104,24 +104,44 @@ def test_coding_cases_any_count_weights_follow_marks(client):
     assert client.post("/api/v1/questions", headers=creator, json=body).status_code == 422
 
 
-def test_generate_cases_expected_output_comes_from_reference(client, monkeypatch):
+def test_generate_and_check_work_on_the_unsaved_form(client, monkeypatch):
     from app.services import ai
     creator = _login(client, "creator@globx.co.in", PW["creator@globx.co.in"])
-    body = {"type": "coding", "title": "Double", "body": "<p>Read n, print 2n.</p>", "marks": 10,
-            "config": {"languages": ["python"], "constraints": "0 <= n <= 1000",
-                       "reference": {"language": "python", "source": "n=int(input())\nprint(2*n)"}},
-            "cases": [{"visibility": "open", "input": "1\n", "expected": "2"},
-                      {"visibility": "hidden", "input": "2\n", "expected": "4"}]}
-    qid = client.post("/api/v1/questions", headers=creator, json=body).json()["id"]
-    url = f"/api/v1/questions/{qid}/generate-cases"
-    assert client.post(url, headers=creator, json={}).status_code == 400  # AI not configured
+    draft = {"statement": "<p>Read n, print 2n.</p>", "constraints": "0 <= n <= 1000", "count": 3,
+             "reference": {"language": "python", "source": "n=int(input())\nprint(2*n)"}, "examples": ["1\n"]}
+    url = "/api/v1/questions/generate-cases"
+    assert client.post(url, headers=creator, json=draft).status_code == 400  # AI not configured
     monkeypatch.setattr(ai, "llm_enabled", lambda: True)
-    # the model's "answers" are never used; one proposed input is invalid for the reference and must be dropped
-    monkeypatch.setattr(ai, "ai_generate_inputs", lambda *a, **k: [
-        {"input": "0\n", "purpose": "min"}, {"input": "1000\n", "purpose": "max"}, {"input": "abc\n", "purpose": "bad"}])
-    out = client.post(url, headers=creator, json={"count": 3}).json()
+    seen = {}
+    def fake(statement, constraints, reference, n, examples):
+        seen["examples"] = examples
+        # the model's "answers" are never used; "abc" breaks the reference and must be dropped; the 3-line input is off shape
+        return [{"input": "0\n", "purpose": "min"}, {"input": "1000\n", "purpose": "max"}, {"input": "abc\n", "purpose": "bad"},
+                {"input": "5\n5\n5\n", "purpose": "off shape"}]
+    monkeypatch.setattr(ai, "ai_generate_inputs", fake)
+    out = client.post(url, headers=creator, json=draft).json()
+    assert seen["examples"] == ["1\n"]  # the samples reach the model as format examples
     assert [(c["input"], c["expected"]) for c in out["cases"]] == [("0\n", "0"), ("1000\n", "2000")]
-    assert out["dropped"] == 1
+    assert out["dropped"] == 2
+    assert client.post(url, headers=creator, json={**draft, "reference": {"language": "python", "source": ""}}).status_code == 422
+
+    check = {"reference": draft["reference"], "cases": [
+        {"visibility": "open", "input": "2\n", "expected": "4"}, {"visibility": "hidden", "input": "3\n", "expected": "7"}]}
+    r = client.post("/api/v1/questions/check-reference", headers=creator, json=check).json()
+    assert (r["passed"], r["total"], r["verdicts"]) == (1, 2, ["AC", "WA"])  # the wrong expected output is caught
+
+
+def test_sql_sample_tables_and_candidate_verdicts():
+    from app.sandbox.judge import public_view
+    from app.sandbox.sql import describe_tables
+    t = describe_tables("CREATE TABLE a(id INTEGER, name TEXT);", "", "INSERT INTO a VALUES (1, 'x'), (2, 'y');")
+    assert t == [{"name": "a", "columns": ["id", "name"], "rows": [[1, "x"], [2, "y"]]}]
+    assert describe_tables("not sql at all (", "", "") == []
+    res = {"cases": [{"ordinal": 1, "visibility": "open", "verdict": "AC", "passed": True, "weight": 1},
+                     {"ordinal": 2, "visibility": "hidden", "verdict": "TLE", "passed": False, "weight": 2, "input": "SECRET", "expected": "SECRET"}]}
+    view = public_view(res)
+    assert view["hidden"]["cases"][0]["verdict"] == "TLE" and view["hidden"]["passed"] == 0
+    assert "SECRET" not in str(view)  # hidden inputs and outputs never reach the candidate
 
 
 def test_generated_inputs_must_keep_the_examples_shape():

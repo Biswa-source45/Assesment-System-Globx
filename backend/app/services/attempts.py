@@ -15,7 +15,7 @@ from app.domain import scoring
 from app.models import (Answer, Assignment, Attempt, AttemptQuestion, CodeSubmission, Evaluation, Question,
                         QuestionGroup, Section, Test, aware, now, uid)
 from app.sandbox.languages import get_language
-from app.sandbox.sql import SQL_ENGINES
+from app.sandbox.sql import SQL_ENGINES, describe_tables
 from app.services import ai
 
 log = logging.getLogger("oap.attempts")
@@ -141,7 +141,8 @@ def candidate_question(aq: AttemptQuestion, db: Session) -> Dict:
         out.update({"schema": c.get("schema", ""), "seed": c.get("seed", ""), "ordered": bool(c.get("ordered")),
                     "engines": [{"key": e, "name": SQL_ENGINES[e].name} for e in engines],
                     "open_cases": [{"ordinal": t.ordinal, "input": t.input,
-                                    "expected": json.loads(t.expected or "{}"), "weight": t.weight}
+                                    "expected": json.loads(t.expected or "{}"), "weight": t.weight,
+                                    "tables": describe_tables(c.get("schema", ""), c.get("seed", ""), t.input)}
                                    for t in q.cases if t.visibility == "open"],
                     "hidden_weights": [t.weight for t in q.cases if t.visibility == "hidden"]})
     return out

@@ -262,43 +262,70 @@ def keep_same_shape(proposed: List[Dict], examples: List[str]) -> tuple:
     return kept, len(proposed) - len(kept)
 
 
+class RefIn(BaseModel):
+    language: str = "python"
+    source: str = ""
+
+
 class GenerateIn(BaseModel):
+    """The unsaved form: the admin can generate and check cases before saving the question."""
     count: int = 10
+    statement: str = ""
+    constraints: str = ""
+    reference: RefIn = RefIn()
+    examples: List[str] = []
+    time_limit_ms: int = 2000
+    memory_mb: int = 256
 
 
-@router.post("/questions/{qid}/generate-cases")
-def generate_cases(qid: str, body: GenerateIn, request: Request, user: User = Depends(AUTHOR),
-                   db: Session = Depends(get_db)):
+class CheckIn(BaseModel):
+    reference: RefIn = RefIn()
+    cases: List[CaseIn] = []
+    time_limit_ms: int = 2000
+    memory_mb: int = 256
+
+
+def _need_reference(ref: RefIn) -> None:
+    if not ref.source.strip():
+        raise HTTPException(422, "Add a reference solution (language + source) first")
+
+
+@router.post("/questions/generate-cases")
+def generate_cases(body: GenerateIn, request: Request, user: User = Depends(AUTHOR), db: Session = Depends(get_db)):
     """AI proposes test inputs; the reference solution produces the expected outputs. Nothing is saved:
-    the admin reviews the proposal and saves the cases they want with PUT /questions/{id}."""
-    q = db.get(Question, qid)
-    if not q:
-        raise HTTPException(404, "Question not found")
-    same_org(user, q.org_id)
-    if q.type != "coding":
-        raise HTTPException(400, "Only programming questions have generated cases")
+    the admin reviews the proposal and saves the cases they want with the question."""
     if not ai.llm_enabled():
         raise HTTPException(400, "No AI provider is configured (set LLM_PROVIDER and the API key in .env)")
-    cfg = q.config or {}
-    ref = cfg.get("reference") or {}
-    if not (ref.get("source") or "").strip():
-        raise HTTPException(422, "Add a reference solution (language + source) first")
-    examples = [c.input for c in q.cases]
+    _need_reference(body.reference)
     try:
-        proposed = ai.ai_generate_inputs(re.sub(r"<[^>]+>", " ", q.body or ""), cfg.get("constraints", ""),
-                                         ref["source"], body.count, examples)
+        proposed = ai.ai_generate_inputs(re.sub(r"<[^>]+>", " ", body.statement), body.constraints, body.reference.source,
+                                         body.count, body.examples)
     except Exception as e:
         raise HTTPException(502, f"AI request failed: {e}")
-    proposed, off_shape = keep_same_shape(proposed, examples)
+    proposed, off_shape = keep_same_shape(proposed, body.examples)
+    cfg = {"time_limit_ms": body.time_limit_ms, "memory_mb": body.memory_mb}
     try:
-        ran = run_reference(cfg, ref.get("language", "python"), ref["source"], [c["input"] for c in proposed])
+        ran = run_reference(cfg, body.reference.language, body.reference.source, [c["input"] for c in proposed])
     except ValueError as e:
         raise HTTPException(422, str(e))
-    cases = [{"input": r["input"], "expected": r["expected"], "purpose": p["purpose"]}
-             for r, p in zip(ran, proposed) if r["ok"]]
-    audit(db, user, "generate_cases", "question", q.id, {"proposed": len(proposed), "kept": len(cases)}, request)
+    cases = [{"input": r["input"], "expected": r["expected"], "purpose": p["purpose"]} for r, p in zip(ran, proposed) if r["ok"]]
+    audit(db, user, "generate_cases", "question", "", {"proposed": len(proposed), "kept": len(cases)}, request)
     db.commit()
     return {"cases": cases, "dropped": off_shape + len(ran) - len(cases)}
+
+
+@router.post("/questions/check-reference")
+def check_reference(body: CheckIn, user: User = Depends(AUTHOR)):
+    """Run the reference solution against the cases in the form; one verdict per case (AC = the expected output matches)."""
+    _need_reference(body.reference)
+    cases = [{"ordinal": i + 1, "visibility": c.visibility, "input": c.input, "expected": c.expected, "weight": 1.0}
+             for i, c in enumerate(body.cases)]
+    res = judge_code({"time_limit_ms": body.time_limit_ms, "memory_mb": body.memory_mb}, cases, body.reference.language,
+                     body.reference.source, "validate")
+    if res.get("status") != "done":
+        raise HTTPException(422, res.get("error", "The reference solution could not be run"))
+    return {"passed": res["passed"], "total": res["total"], "verdicts": [c["verdict"] for c in res["cases"]],
+            "message": (res.get("compile") or {}).get("message", "") if not (res.get("compile") or {}).get("ok", True) else ""}
 
 
 @router.post("/questions/import")
