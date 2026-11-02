@@ -7,6 +7,7 @@ import { TYPE_LABEL } from "@/pages/admin/Questions"
 import { Verdict } from "@/pages/candidate/CodeView"
 import SqlBuilder from "@/pages/admin/SqlBuilder"
 import { buildInserts, buildSchema, checkTables } from "@/lib/sqlbuild"
+import { fromHtml, toHtml } from "@/lib/html"
 import { Alert } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -23,11 +24,6 @@ const LANGS = [["python", "Python"], ["java", "Java"], ["javascript", "JavaScrip
 const rid = () => Math.random().toString(36).slice(2, 8)
 const blankOptions = () => Array.from({ length: 4 }, () => ({ id: rid(), text: "", correct: false }))
 
-const esc = (s) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
-const unesc = (s) => s.replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&amp;/g, "&")
-// Plain text becomes paragraphs; text that already contains HTML tags is sent as it is (the server sanitises it).
-const toHtml = (t) => (/<[a-z][\s\S]*>/i.test(t) ? t : t.split(/\n{2,}/).filter((p) => p.trim()).map((p) => `<p>${esc(p).replace(/\n/g, "<br>")}</p>`).join(""))
-const fromHtml = (h) => (/^(<p>[^<]*(<br>[^<]*)*<\/p>)*$/.test(h || "") ? unesc((h || "").replace(/<\/p><p>/g, "\n\n").replace(/<br>/g, "\n").replace(/<\/?p>/g, "")) : h)
 
 const blank = () => ({
   type: "mcq_single", title: "", body: "", difficulty: "medium", marks: 1, negative_marks: 0, skills: "",

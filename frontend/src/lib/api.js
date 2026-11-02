@@ -32,7 +32,7 @@ async function refresh() {
   return refreshing
 }
 
-export async function api(path, { method, body, form } = {}, retry = true) {
+export async function api(path, { method, body, form, raw } = {}, retry = true) {
   const headers = {}
   if (tokens?.access_token) headers.Authorization = "Bearer " + tokens.access_token
   let payload
@@ -40,7 +40,11 @@ export async function api(path, { method, body, form } = {}, retry = true) {
   else if (body !== undefined) { headers["Content-Type"] = "application/json"; payload = JSON.stringify(body) }
   const r = await fetch(BASE + path, { method: method || (payload ? "POST" : "GET"), headers, body: payload })
   if (r.status === 401 && retry && tokens?.refresh_token && !path.startsWith("/auth/login")) {
-    if (await refresh()) return api(path, { method, body, form }, false)
+    if (await refresh()) return api(path, { method, body, form, raw }, false)
+  }
+  if (raw) {
+    if (!r.ok) throw new ApiError(r.status, r.statusText)
+    return r
   }
   const text = await r.text()
   let data = null

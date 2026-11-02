@@ -1,0 +1,149 @@
+import { useState } from "react"
+import { toast } from "sonner"
+import { post, put } from "@/lib/api"
+import { fromHtml, toHtml } from "@/lib/html"
+import { fromLocalInput, toLocalInput } from "@/lib/labels"
+import { Alert } from "@/components/ui/alert"
+import { Button } from "@/components/ui/button"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { Switch } from "@/components/ui/switch"
+import { Textarea } from "@/components/ui/textarea"
+
+// What the server assumes when a setting is missing (see proctoring_config in services/attempts.py).
+const PROCTORING = { enabled: true, webcam: true, fullscreen: true, tab_switch_limit: 3, face_limit: 5, face_min_seconds: 3, block_paste: true, snapshot_seconds: 15, block_multi_display: true }
+
+const toForm = (t) => ({
+  title: t?.title ?? "", description: t?.description ?? "", instructions: fromHtml(t?.instructions ?? ""),
+  duration_min: t?.duration_min ?? 60, starts_at: toLocalInput(t?.starts_at), ends_at: toLocalInput(t?.ends_at), cutoff: t?.cutoff ?? 0,
+  shuffle_questions: t?.shuffle_questions ?? true, shuffle_options: t?.shuffle_options ?? true,
+  show_result: t?.settings?.show_result_to_candidate ?? true, proctoring: { ...PROCTORING, ...(t?.settings?.proctoring ?? {}) },
+})
+
+function toBody(f, t) {
+  const p = f.proctoring
+  return {
+    title: f.title, description: f.description, instructions: toHtml(f.instructions), duration_min: Number(f.duration_min),
+    starts_at: fromLocalInput(f.starts_at), ends_at: fromLocalInput(f.ends_at), access_enabled: t?.access_enabled ?? true,
+    cutoff: Number(f.cutoff) || 0, shuffle_questions: f.shuffle_questions, shuffle_options: f.shuffle_options,
+    settings: {
+      ...(t?.settings ?? {}), show_result_to_candidate: f.show_result,
+      proctoring: {
+        ...(t?.settings?.proctoring ?? {}), ...p, tab_switch_limit: Number(p.tab_switch_limit), face_limit: Number(p.face_limit),
+        face_min_seconds: Number(p.face_min_seconds), snapshot_seconds: Number(p.snapshot_seconds),
+      },
+    },
+  }
+}
+
+function Toggle({ id, label, hint, checked, onChange, disabled }) {
+  return (
+    <div className="flex items-start justify-between gap-4">
+      <div className="grid gap-0.5">
+        <Label htmlFor={id}>{label}</Label>
+        {hint && <p className="text-xs text-muted-foreground">{hint}</p>}
+      </div>
+      <Switch id={id} checked={checked} onCheckedChange={onChange} disabled={disabled} />
+    </div>
+  )
+}
+
+function Field({ id, label, hint, ...props }) {
+  return (
+    <div className="grid gap-1.5">
+      <Label htmlFor={id}>{label}</Label>
+      <Input id={id} {...props} />
+      {hint && <p className="text-xs text-muted-foreground">{hint}</p>}
+    </div>
+  )
+}
+
+// test === null creates a new exam; otherwise it edits that one. onSaved receives the exam the server returns.
+export default function ExamDetails({ test, onSaved }) {
+  const [f, setF] = useState(() => toForm(test))
+  const [error, setError] = useState("")
+  const [busy, setBusy] = useState(false)
+  const set = (k, v) => setF((x) => ({ ...x, [k]: v }))
+  const setP = (k, v) => setF((x) => ({ ...x, proctoring: { ...x.proctoring, [k]: v } }))
+  const p = f.proctoring
+
+  async function save(e) {
+    e.preventDefault()
+    setBusy(true)
+    setError("")
+    try {
+      const out = test ? await put(`/tests/${test.id}`, toBody(f, test)) : await post("/tests", toBody(f, null))
+      toast.success(test ? "Exam saved" : "Exam created. Now add its questions.")
+      onSaved(out)
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <form onSubmit={save} className="grid max-w-3xl gap-4">
+      <Card>
+        <CardHeader><CardTitle>Exam</CardTitle></CardHeader>
+        <CardContent className="grid gap-4">
+          <Field id="exam-title" label="Title" required value={f.title} onChange={(e) => set("title", e.target.value)} />
+          <div className="grid gap-1.5">
+            <Label htmlFor="exam-desc">Description</Label>
+            <Textarea id="exam-desc" value={f.description} onChange={(e) => set("description", e.target.value)} />
+          </div>
+          <div className="grid gap-1.5">
+            <Label htmlFor="exam-instr">Instructions shown to candidates before they start</Label>
+            <Textarea id="exam-instr" className="min-h-28" value={f.instructions} onChange={(e) => set("instructions", e.target.value)} />
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader><CardTitle>Schedule and rules</CardTitle><CardDescription>Candidates can start only between the start and end time. Leave both empty to keep the exam open whenever it is published.</CardDescription></CardHeader>
+        <CardContent className="grid gap-4">
+          <div className="grid gap-4 md:grid-cols-2">
+            <Field id="exam-start" label="Opens at" type="datetime-local" value={f.starts_at} onChange={(e) => set("starts_at", e.target.value)} />
+            <Field id="exam-end" label="Closes at" type="datetime-local" value={f.ends_at} onChange={(e) => set("ends_at", e.target.value)} />
+            <Field id="exam-duration" label="Time allowed per candidate (minutes)" type="number" min="1" max="600" value={f.duration_min} onChange={(e) => set("duration_min", e.target.value)} />
+            <Field id="exam-cutoff" label="Pass mark (total marks)" type="number" min="0" step="0.5" value={f.cutoff} onChange={(e) => set("cutoff", e.target.value)} />
+          </div>
+          <Toggle id="shuffle-q" label="Shuffle question order" checked={f.shuffle_questions} onChange={(v) => set("shuffle_questions", v)} />
+          <Toggle id="shuffle-o" label="Shuffle answer options" checked={f.shuffle_options} onChange={(v) => set("shuffle_options", v)} />
+          <Toggle id="show-result" label="Show the result to the candidate" hint="Off: they only see that their answers were received." checked={f.show_result} onChange={(v) => set("show_result", v)} />
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader><CardTitle>Proctoring</CardTitle><CardDescription>Applies to everyone who takes this exam.</CardDescription></CardHeader>
+        <CardContent className="grid gap-4">
+          <Toggle id="p-enabled" label="Proctoring on" checked={p.enabled} onChange={(v) => setP("enabled", v)} />
+          {p.enabled && (
+            <>
+              <Toggle id="p-webcam" label="Camera and face check" hint="Needs exactly one face before the exam starts and during it." checked={p.webcam} onChange={(v) => setP("webcam", v)} />
+              <Toggle id="p-fs" label="Full screen" checked={p.fullscreen} onChange={(v) => setP("fullscreen", v)} />
+              <Toggle id="p-paste" label="Block copy, paste and right-click" checked={p.block_paste} onChange={(v) => setP("block_paste", v)} />
+              <Toggle id="p-display" label="Block a second screen" checked={p.block_multi_display} onChange={(v) => setP("block_multi_display", v)} />
+              <div className="grid gap-4 md:grid-cols-2">
+                <Field id="p-tab" label="Window or full-screen leaves allowed" type="number" min="0" max="20" value={p.tab_switch_limit} onChange={(e) => setP("tab_switch_limit", e.target.value)}
+                  hint="Each one shows a warning. The next one ends the exam. 0 turns the rule off." />
+                {p.webcam && (
+                  <>
+                    <Field id="p-face" label="Face warnings before the exam ends and the login is locked" type="number" min="0" max="20" value={p.face_limit} onChange={(e) => setP("face_limit", e.target.value)}
+                      hint="Counts no face, or more than one face. 0 turns the rule off." />
+                    <Field id="p-facesec" label="Seconds a face problem must last to count" type="number" min="1" max="30" value={p.face_min_seconds} onChange={(e) => setP("face_min_seconds", e.target.value)} />
+                    <Field id="p-snap" label="Camera snapshot every (seconds)" type="number" min="5" max="120" value={p.snapshot_seconds} onChange={(e) => setP("snapshot_seconds", e.target.value)} />
+                  </>
+                )}
+              </div>
+            </>
+          )}
+        </CardContent>
+      </Card>
+
+      {error && <Alert variant="destructive" className="p-3">{error}</Alert>}
+      <div><Button type="submit" disabled={busy}>{busy ? "Saving..." : test ? "Save exam" : "Create exam"}</Button></div>
+    </form>
+  )
+}

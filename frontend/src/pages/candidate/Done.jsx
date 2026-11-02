@@ -7,6 +7,7 @@ const MESSAGES = {
   force_submit: ["Exam ended", "You left the exam window more times than allowed, so your exam was ended and your answers were submitted."],
   ban: ["Exam terminated", "Your face was not visible too many times. Your exam was ended and your login is locked. Please speak to the invigilator."],
   time: ["Time is up", "Your answers were submitted automatically."],
+  ended: ["Exam ended", "The invigilator ended your exam. The answers you had given were submitted."],
 }
 
 export default function Done() {

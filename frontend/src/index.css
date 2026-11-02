@@ -107,3 +107,10 @@
 .q-html pre { background: var(--muted); border-radius: 0.5rem; padding: 0.75rem; overflow: auto; font-size: 0.8rem; margin: 0 0 0.6rem; }
 .q-html code { font-family: ui-monospace, Menlo, Consolas, monospace; }
 .q-html ul, .q-html ol { margin: 0 0 0.6rem 1.25rem; list-style: revert; }
+
+/* printing the logins sheet: only the .print-area card is printed */
+@media print {
+  body * { visibility: hidden; }
+  .print-area, .print-area * { visibility: visible; }
+  .print-area { position: absolute; left: 0; top: 0; width: 100%; border: 0; box-shadow: none; }
+}

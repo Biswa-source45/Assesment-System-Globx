@@ -37,6 +37,7 @@ export default function Exam() {
   const [endOpen, setEndOpen] = useState(false)
   const [busy, setBusy] = useState(false)
   const [info, setInfo] = useState({})
+  const [deadline, setDeadline] = useState(null)  // the server's deadline, refreshed by syncClock
   const [faces, setFaces] = useState(null)
   const respRef = useRef({})
   const flagRef = useRef({})
@@ -61,6 +62,7 @@ export default function Exam() {
         setResp(r)
         setFlags(f)
         setInfo({ violations: d.attempt.violations })
+        setDeadline(d.attempt.deadline_at)
         setSt(d)
       })
       .catch((e) => setError(e.message))
@@ -70,7 +72,7 @@ export default function Exam() {
   const sections = st?.sections ?? []
   const curSec = sections[sec]
   const q = curSec?.questions[qi]
-  const left = useCountdown(st?.attempt.deadline_at, skew.current)
+  const left = useCountdown(deadline, skew.current)
   const secLeft = useCountdown(curSec?.deadline, skew.current)
 
   // ---- saving
@@ -82,7 +84,7 @@ export default function Exam() {
       setSaved(new Date().toLocaleTimeString())
     } catch (e) {
       if (e.status === 409) dirty.current.delete(qid)
-      else if (e.status === 423) latest.current.finish("time")
+      else if (e.status === 423) latest.current.syncClock()  // time is over, or an admin ended the exam: the clock says which
       else if (e.status === 403) { dirty.current.delete(qid); toast.error(e.message) }
       else setSaved("offline, retrying")
     }
@@ -121,6 +123,24 @@ export default function Exam() {
     if (document.fullscreenElement) document.exitFullscreen().catch(() => {})
     stopCamera()
   }
+  // Ask the server what the clock says. An admin may have extended the time or ended the exam.
+  const REASON = { admin_ended: "ended", time_over: "time", violation_limit: "force_submit", face_violation: "ban" }
+  async function syncClock() {
+    try {
+      const c = await get(`/attempts/${attemptId}/clock`)
+      if (c.status === "in_progress") {
+        skew.current = new Date(c.server_time).getTime() - Date.now()
+        setDeadline(c.deadline_at)
+        return
+      }
+      if (finished.current) return
+      finished.current = true  // the server already ended it: no submit, just leave
+      proctor.current?.stop()
+      leaveExam()
+      navigate(`/exam/done/${attemptId}?why=${REASON[c.reason] ?? "submitted"}`, { replace: true })
+    } catch { /* offline: the next tick tries again */ }
+  }
+
   async function finish(why) {
     if (finished.current) return
     finished.current = true
@@ -143,13 +163,14 @@ export default function Exam() {
       navigate(`/exam/done/${attemptId}?why=${r.action}`, { replace: true })
     }
   }
-  latest.current = { finish, onProctor, flushAll }
+  latest.current = { finish, onProctor, flushAll, syncClock }
 
   useEffect(() => { if (st) enterSection(0) }, [!!st])  // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { if (st && left === 0) finish("time") }, [left])  // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
-    const id = setInterval(() => latest.current.flushAll(), 10000)
-    return () => clearInterval(id)
+    const save = setInterval(() => latest.current.flushAll(), 10000)
+    const clock = setInterval(() => latest.current.syncClock(), 15000)
+    return () => { clearInterval(save); clearInterval(clock) }
   }, [])
   useEffect(() => {  // a section whose timer ran out closes; move on to the next open one
     if (!st || !curSec?.deadline || secLeft !== 0) return

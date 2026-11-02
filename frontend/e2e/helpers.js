@@ -44,3 +44,19 @@ export async function newParticipant(request, name) {
   const out = await (await request.post(`/api/v1/tests/${exam.id}/participants`, { headers, data: { names: [name] } })).json()
   return out.participants[0]  // { username, password, ... }
 }
+
+// Calls the API as a staff member, the way a script would, to prepare data quickly. Fails the test on any error.
+export async function staffRequest(request, email = "creator@globx.co.in") {
+  const auth = await (await request.post("/api/v1/auth/login", { data: { email, password: creds()[email] } })).json()
+  const headers = { Authorization: "Bearer " + auth.access_token }
+  const call = async (method, path, data) => {
+    const r = await request[method](`/api/v1${path}`, { headers, data })
+    expect(r.ok(), `${method} ${path}: ${await r.text()}`).toBeTruthy()
+    return r.json()
+  }
+  return { get: (p) => call("get", p), post: (p, d) => call("post", p, d) }
+}
+
+// A second browser window with its own login and a (fake) camera: the candidate, while the admin watches in the first.
+export const BASE_URL = "http://localhost:5174"
+export const candidateWindow = (browser) => browser.newContext({ baseURL: BASE_URL, permissions: ["camera"] }).then((ctx) => ctx.newPage().then((page) => ({ ctx, page })))

@@ -5,7 +5,7 @@ import { python } from "@codemirror/lang-python"
 import { java } from "@codemirror/lang-java"
 import { javascript } from "@codemirror/lang-javascript"
 import { cpp } from "@codemirror/lang-cpp"
-import { sql } from "@codemirror/lang-sql"
+import { MySQL, PostgreSQL, SQLite, sql } from "@codemirror/lang-sql"
 import { Loader2 } from "lucide-react"
 import { get, post } from "@/lib/api"
 import { Alert } from "@/components/ui/alert"
@@ -68,7 +68,10 @@ export function SqlSamples({ q }) {
   )
 }
 
-const EXT = { python, java, javascript, c: cpp, cpp, sql }
+const EXT = { python, java, javascript, c: cpp, cpp }
+const DIALECT = { sqlite: SQLite, postgresql: PostgreSQL, mysql: MySQL }
+// For SQL questions `lang` is the engine key (sqlite, postgresql, mysql), so the language comes from the dialect, not from EXT.
+const languageFor = (lang, isSql) => (isSql ? sql({ dialect: DIALECT[lang] }) : EXT[lang]?.() ?? [])
 
 // One placeholder row per test case while the judge works.
 function Running({ samples, privateCases }) {
@@ -121,7 +124,7 @@ export function CodeView({ q, r, onChange, attemptId, closed, blockPaste }) {
   }
 
   const extensions = [
-    EXT[lang]?.() ?? [],
+    languageFor(lang, isSql),
     EditorView.lineWrapping,
     ...(blockPaste ? [EditorView.domEventHandlers({ paste: (e) => { e.preventDefault(); return true }, drop: (e) => { e.preventDefault(); return true } })] : []),
   ]

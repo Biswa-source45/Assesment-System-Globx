@@ -4,6 +4,12 @@ import { login, loginCandidate, newParticipant, shot, startProctoredExam } from 
 const SUM_OK = "a,b=map(int,input().split())\nprint(a+b)"
 const SQL_OK = "SELECT c.name AS customer_name, SUM(o.amount) AS total FROM customers c JOIN orders o ON o.customer_id = c.id WHERE o.order_date >= '2025-01-01' AND o.order_date < '2026-01-01' GROUP BY c.name ORDER BY total DESC, customer_name LIMIT 3"
 
+// Text in the editor that has a colour other than the plain text colour: the tokens the syntax highlighting recognised.
+const colouredTokens = (page) => page.locator(".cm-content").evaluate((el) => {
+  const plain = getComputedStyle(el).color
+  return [...el.querySelectorAll("span")].filter((s) => getComputedStyle(s).color !== plain).map((s) => s.textContent)
+})
+
 async function typeCode(page, code) {
   await page.locator(".cm-content").click()
   await page.keyboard.press("Control+A")
@@ -131,7 +137,10 @@ test("SQL question: formatted tables, an editor, Failed then Success, private ca
   await page.getByRole("button", { name: "Run on samples" }).click()
   await expect(results.getByText("Failed")).toHaveCount(3, { timeout: 30_000 })
 
+  await typeCode(page, "select 1 as x from customers")  // lower case counts too
+  expect(await colouredTokens(page)).toEqual(expect.arrayContaining(["select", "as", "from"]))
   await typeCode(page, SQL_OK)
+  expect(await colouredTokens(page)).toEqual(expect.arrayContaining(["SELECT", "FROM", "WHERE", "GROUP", "ORDER", "LIMIT"]))  // SQL gets colours like the other languages
   await page.getByRole("button", { name: "Run on samples" }).click()
   await expect(results.getByText("Success")).toHaveCount(3, { timeout: 30_000 })
   await results.locator("details").first().locator("summary").click()
