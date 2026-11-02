@@ -4,11 +4,11 @@ Read at the start of every task; update after every change. Plan and decisions: 
 
 ## Current state (2026-11-02)
 
-- Codebase: FastAPI backend (`backend/app`) and a React **JSX** frontend (`frontend/`: Vite, Tailwind, shadcn/ui). 27 pytest tests and 12 Playwright browser tests pass.
+- Codebase: FastAPI backend (`backend/app`) and a React **JSX** frontend (`frontend/`: Vite, Tailwind, shadcn/ui). 28 pytest tests and 14 Playwright browser tests pass.
 - Built and browser-tested: login (staff email or candidate username); admin Exams list; **question bank** (list, filter, create/edit/archive MCQ, short,
-  explained and coding questions; coding has a case table, reference-solution check and "Generate with AI"); **candidate flow** (home, camera check-in with
+  explained and coding questions; coding has a case table, reference-solution check and "Generate with AI", both working on the unsaved form; saving returns to the bank with the question at the top); **candidate flow** (home, camera check-in with
   MediaPipe face gate and consent, exam runner with section tabs, palette, mark for review, autosave, server timer, CodeMirror editor with Run/Submit,
-  proctoring client, done page). Admin Results, Live monitor, exam setup and participant screens are still placeholders or missing.
+  proctoring client, done page; SQL questions with an editor and the schema and sample data shown as tables; per-case loaders, Success/Failed labels and Time Limit Exceeded etc.; private cases as plain non-expandable blocks). Admin Results, Live monitor, exam setup and participant screens are still placeholders or missing.
 - Run frontend: `cd frontend && npm install && npm run dev` (port 5173, proxies /api to 8000) or `npm run build` (backend serves `frontend/dist`).
   `SECRET_KEY` is required in `.env`. OpenAI is configured in `.env` (`LLM_PROVIDER=openai`, model `gpt-4o-mini`, key git-ignored); restart the backend after changing it.
 - Browser tests: `cd frontend && npx playwright test` (starts its own API on :8001 with the throw-away `oap_test` database and Vite on :5174; add `RUN_AI=1` to include the
@@ -35,6 +35,19 @@ Read at the start of every task; update after every change. Plan and decisions: 
    through the judge container once it exists; old email-OTP/invite flow still in the backend; bundle is one 1.4 MB chunk (split later); rotate the OpenAI key.
 
 ## Log
+
+### 2026-11-02 (user's real-laptop test: fixes)
+- User tested on a real laptop with a real face: face gate, warnings, incident counts, code Run/Submit all worked. Reported and fixed:
+  1. Saving a question now returns to the question bank (new/updated question shown first). To allow that, `POST /questions/generate-cases` and
+     `POST /questions/check-reference` are stateless (they take the form contents), replacing the per-question generate endpoint. The editor shows Success/Failed per case after the check.
+  2. SQL questions had no editor in the exam. `CodeView.jsx` now handles coding and SQL (engine select, CodeMirror SQL). `describe_tables` (sandbox/sql.py) builds the
+     schema and sample data per sample case; the candidate payload carries `tables`; the exam shows them as formatted tables plus the expected output.
+  3. Test results: placeholder row with spinner per case while running (3 samples on Run, 3 samples + private on Submit), verdict codes shown as Success (green) / Failed,
+     Time Limit Exceeded, Memory Limit Exceeded, Runtime Error, Compilation Error (red); private cases use the same block style but cannot be expanded.
+     `public_view` now returns the real verdict code for private cases (never their input or output).
+- Tests: 28 pytest (new: stateless generate/check, SQL tables, hidden verdicts without leaking data), 14 Playwright (new: redirect after save, loaders, labels, private blocks,
+  TLE, SQL question end to end; new participants are made through the participants API). Specs renamed: `questions.spec.js`, `exam.spec.js`, `proctoring.spec.js`.
+- Committed in logical commits (no push, no attribution).
 
 ### 2026-11-02 (question bank + candidate exam + theme)
 - OpenAI key put in the git-ignored `.env` and verified through the app (JSON mode). Advised to rotate it because it was pasted in chat.
