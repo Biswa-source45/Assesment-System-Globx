@@ -1,5 +1,5 @@
 import { NavLink, Outlet } from "react-router-dom"
-import { Building2, ClipboardList, FileQuestion, LogOut, MonitorPlay, Trophy } from "lucide-react"
+import { Building2, ClipboardList, FileQuestion, LogOut, MonitorPlay, Trophy, Users } from "lucide-react"
 import { useAuth } from "@/lib/auth"
 import { Button } from "@/components/ui/button"
 import { Separator } from "@/components/ui/separator"
@@ -8,12 +8,14 @@ import {
   SidebarMenu, SidebarMenuButton, SidebarMenuItem, SidebarProvider, SidebarTrigger,
 } from "@/components/ui/sidebar"
 
+// `can` is the permission the server grants (see /auth/me): a person only sees the screens they may use.
 const NAV = [
-  { to: "/admin", label: "Exams", icon: ClipboardList, end: true },
-  { to: "/admin/questions", label: "Question bank", icon: FileQuestion },
-  { to: "/admin/departments", label: "Departments", icon: Building2 },
-  { to: "/admin/monitor", label: "Live monitor", icon: MonitorPlay },
-  { to: "/admin/results", label: "Results", icon: Trophy },
+  { to: "/admin", label: "Exams", icon: ClipboardList, end: true, can: "view" },
+  { to: "/admin/questions", label: "Question bank", icon: FileQuestion, can: "bank" },
+  { to: "/admin/departments", label: "Departments", icon: Building2, can: "view" },
+  { to: "/admin/monitor", label: "Live monitor", icon: MonitorPlay, can: "view" },
+  { to: "/admin/results", label: "Results", icon: Trophy, can: "view" },
+  { to: "/admin/users", label: "Users", icon: Users, can: "admin" },
 ]
 
 export default function AdminLayout() {
@@ -26,7 +28,7 @@ export default function AdminLayout() {
           <SidebarGroup>
             <SidebarGroupContent>
               <SidebarMenu>
-                {NAV.map(({ to, label, icon: Icon, end }) => (
+                {NAV.filter((n) => user.can[n.can]).map(({ to, label, icon: Icon, end }) => (
                   <SidebarMenuItem key={to}>
                     <NavLink to={to} end={end}>
                       {({ isActive }) => (

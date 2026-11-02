@@ -38,12 +38,32 @@ def current_user(request: Request, db: Session = Depends(get_db)) -> User:
     return u
 
 
+# Who may do what. The one place to read or change it: every router uses these groups, and /auth/me sends the same answers to the
+# browser (`can`), so a screen shows exactly the buttons the server will accept. A Super Admin always passes.
+ROLE_GROUPS = {
+    "author": ("test_creator", "org_admin"),                          # create and edit exams, questions, departments; publish
+    "recruit": ("recruiter", "test_creator", "org_admin"),            # participants and their logins, extend/end/re-open, export
+    "view": ("recruiter", "test_creator", "evaluator", "org_admin"),  # see exams, the live monitor, candidates and reports
+    "bank": ("test_creator", "evaluator", "org_admin"),               # read questions with their answer keys
+    "evaluate": ("evaluator", "org_admin"),                           # mark answers and override AI marks
+    "admin": ("org_admin",),                                          # users, audit log, mail outbox
+}
+
+
 def require(*roles: str) -> Callable:
     def dep(user: User = Depends(current_user)) -> User:
         if user.has("super_admin") or user.has(*roles):
             return user
         raise HTTPException(403, "You do not have permission for this action")
     return dep
+
+
+AUTHOR, RECRUIT, VIEW, BANK, EVAL, ADMIN = (require(*ROLE_GROUPS[g]) for g in ("author", "recruit", "view", "bank", "evaluate", "admin"))
+SUPER = require("super_admin")
+
+
+def permissions(user: User) -> dict:
+    return {**{g: user.has("super_admin", *roles) for g, roles in ROLE_GROUPS.items()}, "super": user.has("super_admin")}
 
 
 def staff(user: User = Depends(current_user)) -> User:

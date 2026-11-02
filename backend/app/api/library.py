@@ -10,7 +10,7 @@ from pydantic import BaseModel
 from sqlalchemy import and_, or_, select
 from sqlalchemy.orm import Session
 
-from app.core.deps import audit, require, same_org
+from app.core.deps import AUTHOR, BANK, audit, same_org
 from app.db import get_db
 from app.models import QTYPES, Answer, Department, Question, QuestionGroup, Section, SectionItem, Test, TestCase, User, aware, uid
 from app.sandbox.judge import judge_code, run_reference, sql_expected_for
@@ -21,8 +21,6 @@ from app.services.attempts import sync_live_attempts
 from app.services.sanitize import sanitize_html
 
 router = APIRouter(tags=["library"])
-AUTHOR = require("test_creator", "org_admin")
-READ = require("test_creator", "org_admin", "recruiter", "evaluator")
 
 
 class CaseIn(BaseModel):
@@ -200,7 +198,7 @@ def _in_published_exam(db: Session, q: Question) -> bool:
 @router.get("/questions")
 def list_questions(type: Optional[str] = None, department_id: Optional[str] = None, skill: Optional[str] = None, difficulty: Optional[str] = None,
                    q: Optional[str] = None, status: Optional[str] = None, group_id: Optional[str] = None,
-                   standalone: bool = False, user: User = Depends(READ), db: Session = Depends(get_db)):
+                   standalone: bool = False, user: User = Depends(BANK), db: Session = Depends(get_db)):
     stmt = select(Question).where(Question.org_id == user.org_id)
     if type:
         stmt = stmt.where(Question.type == type)
@@ -240,7 +238,7 @@ def create_question(body: QuestionIn, request: Request, user: User = Depends(AUT
 
 
 @router.get("/questions/{qid}")
-def get_question(qid: str, user: User = Depends(READ), db: Session = Depends(get_db)):
+def get_question(qid: str, user: User = Depends(BANK), db: Session = Depends(get_db)):
     q = db.get(Question, qid)
     if not q:
         raise HTTPException(404, "Question not found")
@@ -424,7 +422,7 @@ async def import_mcqs(file: UploadFile = File(...), department_id: str = Form(..
 
 # ------------------------------------------------------------------ Linked MCQ groups
 @router.get("/groups")
-def list_groups(user: User = Depends(READ), db: Session = Depends(get_db)):
+def list_groups(user: User = Depends(BANK), db: Session = Depends(get_db)):
     gs = db.scalars(select(QuestionGroup).where(QuestionGroup.org_id == user.org_id).order_by(QuestionGroup.created_at.desc())).all()
     return [{"id": g.id, "title": g.title, "stimulus": g.stimulus, "skills": g.skills,
              "questions": [q_out(q, full=False) for q in g.questions if q.status != "archived"]} for g in gs]

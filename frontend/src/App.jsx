@@ -8,6 +8,7 @@ import Departments from "@/pages/admin/Departments"
 import ExamEditor from "@/pages/admin/ExamEditor"
 import Monitor from "@/pages/admin/Monitor"
 import Questions from "@/pages/admin/Questions"
+import Users from "@/pages/admin/Users"
 import { QuestionPage } from "@/pages/admin/QuestionEditor"
 import CandidateHome from "@/pages/candidate/Home"
 import CheckIn from "@/pages/candidate/CheckIn"
@@ -15,13 +16,30 @@ import Exam from "@/pages/candidate/Exam"
 import Done from "@/pages/candidate/Done"
 import ErrorBoundary from "@/components/ErrorBoundary"
 
+// The screens need the permission list the server sends with the user. A backend that was not restarted after an update does not send it.
+function ServerTooOld() {
+  return (
+    <div className="mx-auto grid max-w-lg gap-2 p-8">
+      <h1 className="text-xl font-semibold">The server needs a restart</h1>
+      <p className="text-muted-foreground">This screen is newer than the backend that is running. Stop the backend, restart the backend (<code>python -m uvicorn app.main:app --port 8000 --reload</code> in the backend folder), then reload this page.</p>
+    </div>
+  )
+}
+
 // Sends signed-out visitors to /login and keeps candidates out of the admin area (and staff out of the exam area).
 function Guard({ staff, children }) {
   const { user, loading } = useAuth()
   if (loading) return <div className="p-8 text-muted-foreground">Loading...</div>
   if (!user) return <Navigate to="/login" replace />
   if (staff !== user.is_staff) return <Navigate to={user.is_staff ? "/admin" : "/exam"} replace />
+  if (user.is_staff && !user.can) return <ServerTooOld />
   return children
+}
+
+// Keeps a screen away from people the server would refuse anyway (a typed-in address, an old bookmark).
+function Need({ can, children }) {
+  const { user } = useAuth()
+  return user.can[can] ? children : <Navigate to="/admin" replace />
 }
 
 export default function App() {
@@ -31,11 +49,12 @@ export default function App() {
       <Route path="/admin" element={<Guard staff><AdminLayout /></Guard>}>
         <Route index element={<Exams />} />
         <Route path="exams/:id" element={<ExamEditor />} />
-        <Route path="questions" element={<Questions />} />
-        <Route path="questions/:id" element={<QuestionPage />} />
+        <Route path="questions" element={<Need can="bank"><Questions /></Need>} />
+        <Route path="questions/:id" element={<Need can="author"><QuestionPage /></Need>} />
         <Route path="results" element={<ComingSoon title="Results and review" />} />
         <Route path="departments" element={<Departments />} />
         <Route path="monitor" element={<Monitor />} />
+        <Route path="users" element={<Need can="admin"><Users /></Need>} />
       </Route>
       <Route path="/exam" element={<Guard staff={false}><CandidateHome /></Guard>} />
       <Route path="/exam/:assignmentId/start" element={<Guard staff={false}><CheckIn /></Guard>} />

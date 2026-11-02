@@ -10,7 +10,7 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
-from app.core.deps import STAFF, audit, current_user
+from app.core.deps import STAFF, audit, current_user, permissions
 from app.core.security import (hash_otp, hash_password, jwt_encode, new_otp, new_token, new_totp_secret,
                                password_policy_error, sha256, totp_uri, totp_verify, verify_password)
 from app.db import get_db
@@ -50,7 +50,7 @@ def user_out(u: User, db: Session) -> dict:
     org = db.get(Organization, u.org_id)
     return {"id": u.id, "email": u.email, "name": u.name, "roles": u.role_names, "org_id": u.org_id,
             "org_name": org.name if org else "", "mfa_enabled": u.mfa_enabled,
-            "is_staff": bool(set(u.role_names) & STAFF)}
+            "is_staff": bool(set(u.role_names) & STAFF), "can": permissions(u)}
 
 
 def issue_tokens(db: Session, u: User, single_session: bool = False) -> dict:

@@ -2,6 +2,7 @@ import { useState } from "react"
 import { toast } from "sonner"
 import { Pencil, Plus, Trash2 } from "lucide-react"
 import { del, post, put } from "@/lib/api"
+import { useAuth } from "@/lib/auth"
 import { useDepartments } from "@/lib/useDepartments"
 import { TYPE_LABEL } from "@/pages/admin/Questions"
 import { useConfirm } from "@/components/ConfirmDialog"
@@ -70,6 +71,7 @@ function DepartmentDialog({ target, onClose, onSaved }) {
 
 export default function Departments() {
   const confirm = useConfirm()
+  const author = useAuth().user.can.author
   const { departments, reload } = useDepartments()
   const [target, setTarget] = useState(null)  // "new", a department being edited, or null
 
@@ -86,7 +88,7 @@ export default function Departments() {
           <h1 className="text-2xl font-semibold">Departments</h1>
           <p className="text-sm text-muted-foreground">Each exam and each question belongs to a department. The department decides which question types its authors can use.</p>
         </div>
-        <Button onClick={() => setTarget("new")}><Plus /> New department</Button>
+        {author && <Button onClick={() => setTarget("new")}><Plus /> New department</Button>}
       </div>
       {departments && (
         <Table>
@@ -99,8 +101,8 @@ export default function Departments() {
                 <TableCell>{d.questions}</TableCell>
                 <TableCell>{d.exams}</TableCell>
                 <TableCell className="text-right">
-                  <Button variant="ghost" size="icon" aria-label={`Edit ${d.name}`} onClick={() => setTarget(d)}><Pencil /></Button>
-                  <Button variant="ghost" size="icon" aria-label={`Delete ${d.name}`} onClick={() => remove(d)}><Trash2 /></Button>
+                  {author && <Button variant="ghost" size="icon" aria-label={`Edit ${d.name}`} onClick={() => setTarget(d)}><Pencil /></Button>}
+                  {author && <Button variant="ghost" size="icon" aria-label={`Delete ${d.name}`} onClick={() => remove(d)}><Trash2 /></Button>}
                 </TableCell>
               </TableRow>
             ))}

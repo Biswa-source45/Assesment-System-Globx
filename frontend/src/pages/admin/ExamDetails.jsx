@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react"
 import { toast } from "sonner"
 import { post, put } from "@/lib/api"
+import { useAuth } from "@/lib/auth"
 import { fromHtml, toHtml } from "@/lib/html"
 import { fromLocalInput, toLocalInput } from "@/lib/labels"
 import { useDepartments } from "@/lib/useDepartments"
@@ -65,6 +66,7 @@ function Field({ id, label, hint, ...props }) {
 export default function ExamDetails({ test, onSaved }) {
   const [f, setF] = useState(() => toForm(test))
   const { departments } = useDepartments()
+  const author = useAuth().user.can.author  // everyone else may look, not change
   const [error, setError] = useState("")
   const [busy, setBusy] = useState(false)
   const set = (k, v) => setF((x) => ({ ...x, [k]: v }))
@@ -88,7 +90,7 @@ export default function ExamDetails({ test, onSaved }) {
   }
 
   return (
-    <form onSubmit={save} className="grid max-w-3xl gap-4">
+    <form onSubmit={save} className="max-w-3xl"><fieldset disabled={!author} className="m-0 grid min-w-0 gap-4 border-0 p-0">
       <Card>
         <CardHeader><CardTitle>Exam</CardTitle></CardHeader>
         <CardContent className="grid gap-4">
@@ -155,7 +157,7 @@ export default function ExamDetails({ test, onSaved }) {
       </Card>
 
       {error && <Alert variant="destructive" className="p-3">{error}</Alert>}
-      <div><Button type="submit" disabled={busy}>{busy ? "Saving..." : test ? "Save exam" : "Create exam"}</Button></div>
-    </form>
+      {author && <div><Button type="submit" disabled={busy}>{busy ? "Saving..." : test ? "Save exam" : "Create exam"}</Button></div>}
+    </fieldset></form>
   )
 }

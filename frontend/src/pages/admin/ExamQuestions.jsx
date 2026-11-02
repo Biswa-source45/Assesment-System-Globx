@@ -2,6 +2,7 @@ import { useEffect, useState } from "react"
 import { toast } from "sonner"
 import { Pencil, Plus, Shuffle, Sparkles, Trash2 } from "lucide-react"
 import { del, get, post, put } from "@/lib/api"
+import { useAuth } from "@/lib/auth"
 import { useDepartments } from "@/lib/useDepartments"
 import AutoPopulate from "@/pages/admin/AutoPopulate"
 import QuestionEditor from "@/pages/admin/QuestionEditor"
@@ -149,7 +150,7 @@ function SectionCard({ section, test, setTest, locked, onPick, onPopulate, onEdi
             {it.question && needsReference(it.question) && <Badge className="bg-destructive text-white">Not validated</Badge>}
             {it.question && <Badge variant="secondary">{TYPE_LABEL[it.question.type] ?? it.question.type}</Badge>}
             {it.question && <span className="w-16 text-right text-xs text-muted-foreground">{it.question.marks} marks</span>}
-            {it.question && <Button variant="ghost" size="icon" className="size-8" aria-label={`Edit ${it.question.title}`} onClick={() => onEdit(it.question.id)}><Pencil /></Button>}
+            {it.question && onEdit && <Button variant="ghost" size="icon" className="size-8" aria-label={`Edit ${it.question.title}`} onClick={() => onEdit(it.question.id)}><Pencil /></Button>}
             {!locked && <Button variant="ghost" size="icon" className="size-8" aria-label={`Remove ${itemTitle(it)}`} onClick={() => removeItem(it)}><Trash2 /></Button>}
           </div>
         ))}
@@ -166,7 +167,8 @@ function SectionCard({ section, test, setTest, locked, onPick, onPopulate, onEdi
 }
 
 export default function ExamQuestions({ test, setTest }) {
-  const locked = test.status !== "draft"
+  const readOnly = !useAuth().user.can.author  // only authors change an exam's questions
+  const locked = test.status !== "draft" || readOnly
   const [newTitle, setNewTitle] = useState("")
   const [pickFor, setPickFor] = useState(null)
   const [populateFor, setPopulateFor] = useState(null)
@@ -186,12 +188,12 @@ export default function ExamQuestions({ test, setTest }) {
 
   return (
     <div className="grid max-w-3xl gap-4">
-      {locked && <Alert className="p-3">This exam is published, so its sections and questions are frozen. Unpublish it to change them.</Alert>}
+      {test.status !== "draft" && <Alert className="p-3">This exam is published, so its sections and questions are frozen. Unpublish it to change them.</Alert>}
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="text-sm text-muted-foreground" data-testid="exam-totals">{test.question_count} questions, {test.total_marks} marks in total</p>
         {!locked && <Button variant="outline" size="sm" onClick={() => setPackOpen(true)}><Sparkles /> Build with AI</Button>}
       </div>
-      {test.sections.map((s) => <SectionCard key={s.id} section={s} test={test} setTest={setTest} locked={locked} onPick={setPickFor} onPopulate={setPopulateFor} onEdit={setEditId} />)}
+      {test.sections.map((s) => <SectionCard key={s.id} section={s} test={test} setTest={setTest} locked={locked} onPick={setPickFor} onPopulate={setPopulateFor} onEdit={readOnly ? null : setEditId} />)}
       {!locked && (
         <form onSubmit={addSection} className="flex gap-2">
           <Input aria-label="New section title" placeholder={`Section ${test.sections.length + 1}`} value={newTitle} onChange={(e) => setNewTitle(e.target.value)} />

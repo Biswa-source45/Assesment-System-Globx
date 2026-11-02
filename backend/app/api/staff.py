@@ -8,16 +8,16 @@ from typing import Any, Dict, List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
-from app.core.deps import audit, require, same_org, staff
+from app.core.deps import ADMIN, EVAL, SUPER, VIEW, audit, same_org, staff
 from app.core.security import hash_password, password_policy_error
 from app.db import get_db
 from app.domain import scoring
 from app.models import (ROLES, Answer, Assignment, Attempt, AttemptQuestion, AuditLog, CodeSubmission, Evaluation,
-                        MailOutbox, Organization, ProctorSnapshot, Question, Test, User, UserRole, aware, now, uid)
+                        MailOutbox, Organization, ProctorSnapshot, Question, RefreshToken, Test, User, UserRole, aware, now, uid)
 from app.sandbox.languages import REGISTRY, refresh_all
 from app.sandbox.sql import SQL_ENGINES
 from app.services import ai
@@ -26,10 +26,6 @@ from app.services.attempts import _text_of, grade_answer, recompute_totals
 from app.services.reports import attempt_report
 
 router = APIRouter(tags=["staff"])
-EVAL = require("evaluator", "org_admin")
-VIEW = require("recruiter", "org_admin", "test_creator", "evaluator")
-ADMIN = require("org_admin")
-SUPER = require("super_admin")
 
 
 class EvalIn(BaseModel):
@@ -40,12 +36,13 @@ class EvalIn(BaseModel):
 
 
 class UserIn(BaseModel):
-    email: str
+    email: str = ""
     name: str = ""
     roles: List[str] = []
     password: Optional[str] = None
     org_id: Optional[str] = None
-    status: str = "active"
+    status: Optional[str] = None  # left out on an edit: unchanged
+    unlock: bool = False
 
 
 class OrgIn(BaseModel):
@@ -222,40 +219,71 @@ def dashboard(user: User = Depends(staff), db: Session = Depends(get_db)):
 
 
 # ------------------------------------------------------------------ administration
-def _user_out(u: User) -> dict:
-    return {"id": u.id, "email": u.email, "name": u.name, "roles": u.role_names, "org_id": u.org_id, "status": u.status,
-            "mfa_enabled": u.mfa_enabled, "locked": u.failed_logins >= 10,
-            "last_login_at": aware(u.last_login_at).isoformat() if u.last_login_at else None}
+STAFF_ROLES = [r for r in ROLES if r != "candidate"]
+
+
+def _user_out(u: User, exams: Optional[List[str]] = None) -> dict:
+    out = {"id": u.id, "email": u.email, "username": u.username, "name": u.name, "roles": u.role_names, "org_id": u.org_id, "status": u.status,
+           "mfa_enabled": u.mfa_enabled, "locked": u.failed_logins >= 10,
+           "created_at": aware(u.created_at).isoformat() if u.created_at else None,
+           "last_login_at": aware(u.last_login_at).isoformat() if u.last_login_at else None}
+    if exams is not None:
+        out["exams"] = exams
+    return out
 
 
 @router.get("/users")
 def list_users(role: Optional[str] = None, org_id: Optional[str] = None, user: User = Depends(ADMIN), db: Session = Depends(get_db)):
+    """Staff by default; role=candidate lists the people who sit exams, with the exams they were given."""
     oid = org_id if (org_id and user.has("super_admin")) else user.org_id
-    us = db.scalars(select(User).where(User.org_id == oid).order_by(User.created_at)).all()
+    us = db.scalars(select(User).where(User.org_id == oid).order_by(User.created_at.desc())).all()
     if role:
         us = [u for u in us if role in u.role_names]
     else:
         us = [u for u in us if set(u.role_names) - {"candidate"}]
-    return [_user_out(u) for u in us]
+    if role != "candidate":
+        return [_user_out(u) for u in us]
+    taken: Dict[str, List[str]] = {}
+    for cid, title in db.execute(select(Assignment.candidate_id, Test.title).join(Test, Test.id == Assignment.test_id).order_by(Test.created_at)).all():
+        taken.setdefault(cid, []).append(title)
+    return [_user_out(u, taken.get(u.id, [])) for u in us]
+
+
+def _staff_roles(user: User, wanted: List[str]) -> List[str]:
+    roles = [r for r in STAFF_ROLES if r in wanted]
+    if "super_admin" in roles and not user.has("super_admin"):
+        raise HTTPException(403, "Only a Super Admin can grant Super Admin")
+    return roles
+
+
+def _check_password(pw: str) -> None:
+    err = password_policy_error(pw)
+    if err:
+        raise HTTPException(422, err)
+
+
+def _sign_out_everywhere(db: Session, u: User) -> None:
+    """A new password, or a disabled account, must also end the sessions that are already open."""
+    db.execute(update(RefreshToken).where(RefreshToken.user_id == u.id).values(revoked=True))
 
 
 @router.post("/users")
 def create_user(body: UserIn, request: Request, user: User = Depends(ADMIN), db: Session = Depends(get_db)):
     oid = body.org_id if (body.org_id and user.has("super_admin")) else user.org_id
-    roles = [r for r in body.roles if r in ROLES]
-    if "super_admin" in roles and not user.has("super_admin"):
-        raise HTTPException(403, "Only a Super Admin can grant Super Admin")
+    roles = _staff_roles(user, body.roles)
     if not roles:
         raise HTTPException(422, "Choose at least one role")
     email = body.email.strip().lower()
+    if "@" not in email or " " in email:
+        raise HTTPException(422, "Enter a valid email address")
+    if not body.name.strip():
+        raise HTTPException(422, "Enter the person's name")
     if db.scalar(select(User).where(User.org_id == oid, User.email == email)):
         raise HTTPException(409, "A user with this email already exists in the organisation")
     if not body.password:
         raise HTTPException(422, "Set an initial password")
-    err = password_policy_error(body.password)
-    if err:
-        raise HTTPException(422, err)
-    u = User(id=uid(), org_id=oid, email=email, name=body.name, password_hash=hash_password(body.password))
+    _check_password(body.password)
+    u = User(id=uid(), org_id=oid, email=email, name=body.name.strip(), password_hash=hash_password(body.password))
     u.roles = [UserRole(role=r) for r in roles]
     db.add(u)
     audit(db, user, "create", "user", u.id, {"roles": roles}, request)
@@ -265,24 +293,38 @@ def create_user(body: UserIn, request: Request, user: User = Depends(ADMIN), db:
 
 @router.put("/users/{uid_}")
 def update_user(uid_: str, body: UserIn, request: Request, user: User = Depends(ADMIN), db: Session = Depends(get_db)):
+    """Name, email, roles, status, a new password, unlock. Candidates keep their candidate role; only name, status and password change."""
     u = db.get(User, uid_)
     if not u:
         raise HTTPException(404, "User not found")
     same_org(user, u.org_id)
-    roles = [r for r in body.roles if r in ROLES]
-    if "super_admin" in roles and not user.has("super_admin"):
-        raise HTTPException(403, "Only a Super Admin can grant Super Admin")
+    is_super, candidate = user.has("super_admin"), u.has("candidate")
+    if u.has("super_admin") and not is_super:
+        raise HTTPException(403, "Only a Super Admin can change a Super Admin")
+    roles = [] if candidate else _staff_roles(user, body.roles)
+    status = body.status if body.status in ("active", "disabled") else u.status
+    if u.id == user.id and (status != "active" or (roles and not set(roles) & {"org_admin", "super_admin"})):
+        raise HTTPException(409, "You cannot disable yourself or remove your own admin access. Ask another administrator.")
+    if body.password:
+        _check_password(body.password)
+    email = body.email.strip().lower()
+    if email and not candidate and email != u.email:
+        if "@" not in email or " " in email:
+            raise HTTPException(422, "Enter a valid email address")
+        if db.scalar(select(User.id).where(User.org_id == u.org_id, User.email == email, User.id != u.id)):
+            raise HTTPException(409, "A user with this email already exists in the organisation")
+        u.email = email
     if roles:
         u.roles = [UserRole(role=r) for r in roles]
-    u.name = body.name or u.name
-    u.status = body.status if body.status in ("active", "disabled") else u.status
+    u.name = body.name.strip() or u.name
+    if status != u.status or body.password:
+        _sign_out_everywhere(db, u)
+    u.status = status
     if body.password:
-        err = password_policy_error(body.password)
-        if err:
-            raise HTTPException(422, err)
         u.password_hash = hash_password(body.password)
-    u.failed_logins = 0
-    audit(db, user, "update", "user", u.id, {"roles": roles, "status": u.status, "password_reset": bool(body.password)}, request)
+    if body.unlock or body.password:
+        u.failed_logins = 0
+    audit(db, user, "update", "user", u.id, {"roles": roles, "status": u.status, "password_reset": bool(body.password), "unlock": body.unlock}, request)
     db.commit()
     return _user_out(u)
 

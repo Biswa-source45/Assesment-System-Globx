@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react"
 import { toast } from "sonner"
 import { Download, Printer } from "lucide-react"
 import { get, post } from "@/lib/api"
+import { useAuth } from "@/lib/auth"
 import { STATUS } from "@/lib/labels"
 import AssignmentActions from "@/components/AssignmentActions"
 import { Badge } from "@/components/ui/badge"
@@ -22,6 +23,7 @@ function downloadCsv(list, title) {
 }
 
 export default function ExamParticipants({ test }) {
+  const recruit = useAuth().user.can.recruit  // others may only look at the list
   const [names, setNames] = useState("")
   const [created, setCreated] = useState(null)  // the only time the passwords are visible
   const [rows, setRows] = useState(null)
@@ -50,7 +52,7 @@ export default function ExamParticipants({ test }) {
 
   return (
     <div className="grid max-w-4xl gap-4">
-      <Card>
+      {recruit && <Card>
         <CardHeader>
           <CardTitle>Add participants</CardTitle>
           <CardDescription>One name per line. Each person gets their own username and password for this exam.</CardDescription>
@@ -62,7 +64,7 @@ export default function ExamParticipants({ test }) {
             <div><Button type="submit" disabled={busy || !names.trim()}>{busy ? "Creating..." : "Create logins"}</Button></div>
           </form>
         </CardContent>
-      </Card>
+      </Card>}
 
       {created && (
         <Card className="print-area" data-testid="credentials">

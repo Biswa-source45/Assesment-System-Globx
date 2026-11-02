@@ -3,6 +3,7 @@ import { Link } from "react-router-dom"
 import { toast } from "sonner"
 import { Plus } from "lucide-react"
 import { del, get } from "@/lib/api"
+import { useAuth } from "@/lib/auth"
 import { useDepartments } from "@/lib/useDepartments"
 import { useConfirm } from "@/components/ConfirmDialog"
 import { Badge } from "@/components/ui/badge"
@@ -18,6 +19,7 @@ export const TYPE_LABEL = {
 export default function Questions() {
   const confirm = useConfirm()
   const { departments, byId } = useDepartments()
+  const author = useAuth().user.can.author  // other roles that may read the bank cannot change it
   const [rows, setRows] = useState(null)
   const [type, setType] = useState("all")
   const [department, setDepartment] = useState("all")
@@ -43,7 +45,7 @@ export default function Questions() {
     <div className="grid gap-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h1 className="text-2xl font-semibold">Question bank</h1>
-        <Button asChild><Link to="/admin/questions/new"><Plus /> New question</Link></Button>
+        {author && <Button asChild><Link to="/admin/questions/new"><Plus /> New question</Link></Button>}
       </div>
       <div className="flex flex-wrap gap-2">
         <Input className="w-64" placeholder="Search by title" aria-label="Search questions" value={search} onChange={(e) => setSearch(e.target.value)} />
@@ -71,15 +73,15 @@ export default function Questions() {
           <TableBody>
             {shown.map((q) => (
               <TableRow key={q.id}>
-                <TableCell className="font-medium"><Link className="hover:underline" to={`/admin/questions/${q.id}`}>{q.title}</Link></TableCell>
+                <TableCell className="font-medium">{author ? <Link className="hover:underline" to={`/admin/questions/${q.id}`}>{q.title}</Link> : q.title}</TableCell>
                 <TableCell>{byId[q.department_id]?.name ?? "-"}</TableCell>
                 <TableCell><Badge variant="secondary">{TYPE_LABEL[q.type] ?? q.type}</Badge></TableCell>
                 <TableCell>{q.difficulty}</TableCell>
                 <TableCell>{q.marks}</TableCell>
                 <TableCell>{q.case_count || "-"}</TableCell>
                 <TableCell className="text-right">
-                  <Button asChild variant="ghost" size="sm"><Link to={`/admin/questions/${q.id}`}>Edit</Link></Button>
-                  <Button variant="ghost" size="sm" onClick={() => archive(q)}>Archive</Button>
+                  {author && <Button asChild variant="ghost" size="sm"><Link to={`/admin/questions/${q.id}`}>Edit</Link></Button>}
+                  {author && <Button variant="ghost" size="sm" onClick={() => archive(q)}>Archive</Button>}
                 </TableCell>
               </TableRow>
             ))}

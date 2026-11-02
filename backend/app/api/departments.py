@@ -8,13 +8,11 @@ from pydantic import BaseModel
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.core.deps import audit, require
+from app.core.deps import AUTHOR, VIEW, audit
 from app.db import get_db
 from app.models import QTYPES, Department, Question, Test, User
 
 router = APIRouter(tags=["departments"])
-AUTHOR = require("test_creator", "org_admin")
-VIEW = require("recruiter", "org_admin", "test_creator", "evaluator")
 
 
 class DepartmentIn(BaseModel):

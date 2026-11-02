@@ -2,6 +2,7 @@ import { useEffect, useState } from "react"
 import { Link } from "react-router-dom"
 import { Plus } from "lucide-react"
 import { get } from "@/lib/api"
+import { useAuth } from "@/lib/auth"
 import { fmtDate } from "@/lib/labels"
 import { useDepartments } from "@/lib/useDepartments"
 import { Badge } from "@/components/ui/badge"
@@ -10,6 +11,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 
 export default function Exams() {
   const { byId } = useDepartments()
+  const { user } = useAuth()
   const [rows, setRows] = useState(null)
   const [error, setError] = useState("")
 
@@ -21,7 +23,7 @@ export default function Exams() {
     <div className="grid gap-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h1 className="text-2xl font-semibold">Exams</h1>
-        <Button asChild><Link to="/admin/exams/new"><Plus /> New exam</Link></Button>
+        {user.can.author && <Button asChild><Link to="/admin/exams/new"><Plus /> New exam</Link></Button>}
       </div>
       {error && <p className="text-sm text-destructive">{error}</p>}
       {rows && (

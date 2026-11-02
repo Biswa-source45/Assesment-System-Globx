@@ -2,6 +2,7 @@ import { useEffect, useState } from "react"
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom"
 import { toast } from "sonner"
 import { get, post } from "@/lib/api"
+import { useAuth } from "@/lib/auth"
 import ExamDetails from "@/pages/admin/ExamDetails"
 import ExamParticipants from "@/pages/admin/ExamParticipants"
 import ExamQuestions from "@/pages/admin/ExamQuestions"
@@ -13,6 +14,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 
 export default function ExamEditor() {
   const confirm = useConfirm()
+  const author = useAuth().user.can.author
   const { id } = useParams()
   const navigate = useNavigate()
   const [params, setParams] = useSearchParams()
@@ -71,8 +73,8 @@ export default function ExamEditor() {
         <div className="flex gap-2">
           <Button variant="ghost" asChild><Link to="/admin">All exams</Link></Button>
           {test?.status === "published" && <Button variant="outline" asChild><Link to={`/admin/monitor?exam=${test.id}`}>Live monitor</Link></Button>}
-          {test?.status === "draft" && <Button onClick={publish} disabled={busy}>{busy ? "Publishing..." : "Publish"}</Button>}
-          {test?.status === "published" && <Button variant="outline" onClick={unpublish}>Unpublish</Button>}
+          {author && test?.status === "draft" && <Button onClick={publish} disabled={busy}>{busy ? "Publishing..." : "Publish"}</Button>}
+          {author && test?.status === "published" && <Button variant="outline" onClick={unpublish}>Unpublish</Button>}
         </div>
       </div>
 

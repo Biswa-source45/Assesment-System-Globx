@@ -2,6 +2,7 @@ import { useState } from "react"
 import { toast } from "sonner"
 import { MoreHorizontal } from "lucide-react"
 import { post } from "@/lib/api"
+import { useAuth } from "@/lib/auth"
 import { Alert } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
@@ -27,7 +28,7 @@ function available(status, assignmentStatus) {
 }
 
 // row: { id, name, username, status, assignmentStatus }. onDone runs after anything changed, so the page can reload.
-export default function AssignmentActions({ row, onDone }) {
+function Actions({ row, onDone }) {
   const [dialog, setDialog] = useState(null)  // { kind } or { kind: "password", password }
   const [minutes, setMinutes] = useState(10)
   const [reason, setReason] = useState("")
@@ -99,4 +100,10 @@ export default function AssignmentActions({ row, onDone }) {
       </Dialog>
     </>
   )
+}
+
+// Only people who may manage participants get the menu; the server refuses everyone else anyway.
+export default function AssignmentActions(props) {
+  const { user } = useAuth()
+  return user.can.recruit ? <Actions {...props} /> : null
 }

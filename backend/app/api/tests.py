@@ -10,7 +10,7 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.core.deps import audit, require, same_org
+from app.core.deps import AUTHOR, RECRUIT, VIEW, audit, same_org
 from app.db import get_db
 from app.api.library import q_out
 from app.models import (Assignment, Attempt, Department, PlagiarismMatch, Question, QuestionGroup, Section, SectionItem, Test,
@@ -21,9 +21,6 @@ from app.services.populate import pick_questions
 from app.services.sanitize import sanitize_html
 
 router = APIRouter(tags=["tests"])
-AUTHOR = require("test_creator", "org_admin")
-RECRUIT = require("recruiter", "org_admin", "test_creator")
-VIEW = require("recruiter", "org_admin", "test_creator", "evaluator")
 
 
 class TestIn(BaseModel):
