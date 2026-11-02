@@ -4,9 +4,9 @@ Read at the start of every task; update after every change. Plan and decisions: 
 
 ## Current state (2026-11-02)
 
-- Codebase: FastAPI backend (`backend/app`) and a React **JSX** frontend (`frontend/`: Vite, Tailwind, shadcn/ui). 28 pytest tests and 14 Playwright browser tests pass.
+- Codebase: FastAPI backend (`backend/app`) and a React **JSX** frontend (`frontend/`: Vite, Tailwind, shadcn/ui). 29 pytest tests and 17 Playwright browser tests pass.
 - Built and browser-tested: login (staff email or candidate username); admin Exams list; **question bank** (list, filter, create/edit/archive MCQ, short,
-  explained and coding questions; coding has a case table, reference-solution check and "Generate with AI", both working on the unsaved form; saving returns to the bank with the question at the top); **candidate flow** (home, camera check-in with
+  explained, coding and **SQL** questions; coding has a case table, reference-solution check and "Generate with AI", both working on the unsaved form; saving returns to the bank with the question at the top); **candidate flow** (home, camera check-in with
   MediaPipe face gate and consent, exam runner with section tabs, palette, mark for review, autosave, server timer, CodeMirror editor with Run/Submit,
   proctoring client, done page; SQL questions with an editor and the schema and sample data shown as tables; per-case loaders, Success/Failed labels and Time Limit Exceeded etc.; private cases as plain non-expandable blocks). Admin Results, Live monitor, exam setup and participant screens are still placeholders or missing.
 - Run frontend: `cd frontend && npm install && npm run dev` (port 5173, proxies /api to 8000) or `npm run build` (backend serves `frontend/dist`).
@@ -35,6 +35,15 @@ Read at the start of every task; update after every change. Plan and decisions: 
    through the judge container once it exists; old email-OTP/invite flow still in the backend; bundle is one 1.4 MB chunk (split later); rotate the OpenAI key.
 
 ## Log
+
+### 2026-11-02 (SQL question authoring)
+- User noticed the question bank had no SQL type (the one SQL question came from the seed) and wanted SQL authored as tables, not code. Added a "SQL" type with a table builder:
+  `SqlBuilder.jsx` (tables with column names and types from dropdowns; datasets whose rows are typed into grids; sample or hidden, weight, duplicate) and `lib/sqlbuild.js`
+  (turns the grids into CREATE TABLE and INSERT statements, validates names). The only SQL the author writes is the solution query.
+- Expected output is computed, never typed: `_fill_sql_expected` runs the solution query on every dataset when the question is saved (a broken query is refused with "Dataset N: ..."),
+  and `POST /questions/sql-preview` shows it in the editor before saving. `describe_tables` now returns column types, and `GET /questions/{id}` returns `sql_tables` so any
+  existing SQL question (including the seeded one) opens as grids. Limitation: constraints such as PRIMARY KEY are not kept when a question is edited and saved in the builder.
+- Engines for authored SQL questions are SQLite only. Tests: 29 pytest (+1), 17 Playwright (+3: author from scratch and reopen, bad names and broken query, seeded question round trip).
 
 ### 2026-11-02 (user's real-laptop test: fixes)
 - User tested on a real laptop with a real face: face gate, warnings, incident counts, code Run/Submit all worked. Reported and fixed:
