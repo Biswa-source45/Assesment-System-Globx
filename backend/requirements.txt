@@ -1,0 +1,14 @@
+# Core runtime (versions match the GLOBX shared py-env, tested on Python 3.10-3.13)
+fastapi==0.115.5
+starlette==0.41.3
+uvicorn==0.32.1
+sqlalchemy==2.0.40
+pydantic>=2.9,<3
+pydantic-settings==2.7.0
+python-multipart==0.0.20
+psutil>=6.0
+openpyxl==3.1.5
+httpx==0.28.1
+psycopg[binary]==3.2.3
+# tests
+pytest>=8.0
