@@ -58,6 +58,7 @@ Candidates can do none of the above: they only open and answer the exams given t
 ```
 online-assessment-platform/
 ├── .env.example              all settings (copy to .env)
+├── user-assets/              camera pictures and uploaded answer files of real exams (git-ignored; back it up with the database)
 ├── backend/
 │   ├── app/
 │   │   ├── main.py           FastAPI app, serves frontend/dist

@@ -113,11 +113,11 @@ def face_incidents(db: Session, at: Attempt, cfg: Dict) -> int:
 def save_snapshot(db: Session, at: Attempt, kind: str, data: bytes, client_faces: Optional[int]) -> Dict:
     s = get_settings()
     kind = kind if kind in ("webcam", "screen", "audio") else "webcam"
-    folder = os.path.join(s.storage_dir, "proctor", at.id)
-    os.makedirs(folder, exist_ok=True)
     ext = {"webcam": "jpg", "screen": "jpg", "audio": "webm"}[kind]
     sid = uid()
-    path = os.path.join(folder, f"{now().strftime('%Y%m%dT%H%M%S')}_{kind}_{sid[:6]}.{ext}")
+    rel = f"proctor/{at.id}/{now().strftime('%Y%m%dT%H%M%S')}_{kind}_{sid[:6]}.{ext}"  # stored relative to the storage folder, so the folder can move
+    path = os.path.join(s.storage_dir, *rel.split("/"))
+    os.makedirs(os.path.dirname(path), exist_ok=True)
     with open(path, "wb") as f:
         f.write(data[: 6 * 1024 * 1024])
     faces = face_count(data) if kind == "webcam" else None
@@ -133,7 +133,7 @@ def save_snapshot(db: Session, at: Attempt, kind: str, data: bytes, client_faces
         elif faces > 1:
             flags.append("multiple_faces")
             events.append({"type": "multi_face", "duration_ms": 0, "payload": {"source": "snapshot"}})
-    db.add(ProctorSnapshot(id=sid, attempt_id=at.id, kind=kind, path=path, face_count=faces, flags=flags))
+    db.add(ProctorSnapshot(id=sid, attempt_id=at.id, kind=kind, path=rel, face_count=faces, flags=flags))
     out = ingest_events(db, at, events) if events else {"risk_score": at.risk_score, "risk_level": at.risk_level}
     out.update({"snapshot_id": sid, "faces": faces, "flags": flags})
     return out

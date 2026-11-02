@@ -183,8 +183,8 @@ def snapshot_file(sid: str, user: User = Depends(VIEW), db: Session = Depends(ge
         raise HTTPException(404, "Not found")
     _attempt(db, s.attempt_id, user)
     root = os.path.realpath(get_settings().storage_dir)
-    p = os.path.realpath(s.path)
-    if not p.startswith(root) or not os.path.exists(p):
+    p = os.path.realpath(os.path.join(root, s.path))  # a relative path; an absolute one (older rows) is used as it is
+    if os.path.commonpath([root, p]) != root or not os.path.exists(p):
         raise HTTPException(404, "File missing")
     return FileResponse(p)
 

@@ -4,7 +4,7 @@ Read at the start of every task; update after every change. Plan and decisions: 
 
 ## Current state (2026-11-02)
 
-- Codebase: FastAPI backend (`backend/app`) and a React **JSX** frontend (`frontend/`: Vite, Tailwind, shadcn/ui). 48 pytest tests and 44 Playwright browser tests pass.
+- Codebase: FastAPI backend (`backend/app`) and a React **JSX** frontend (`frontend/`: Vite, Tailwind, shadcn/ui). 49 pytest tests and 44 Playwright browser tests pass.
 - Built and browser-tested: login (staff email or candidate username); admin Exams list; **question bank** (list, filter, create/edit/archive MCQ, short,
   explained, coding and **SQL** questions; coding has a case table, reference-solution check and "Generate with AI", both working on the unsaved form; saving returns to the bank with the question at the top); **candidate flow** (home, camera check-in with
   MediaPipe face gate and consent, exam runner with section tabs, palette, mark for review, autosave, server timer, CodeMirror editor with Run/Submit,
@@ -35,6 +35,14 @@ Read at the start of every task; update after every change. Plan and decisions: 
    through the judge container once it exists; old email-OTP/invite flow still in the backend; bundle is one 1.4 MB chunk (split later); rotate the OpenAI key.
 
 ## Log
+
+### 2026-11-02 (where exam images are stored)
+- **What the images are:** one webcam picture every 15 s (exam setting) per candidate: the server counts faces in it and staff see it in the live monitor and the candidate report (`GET /snapshots/{id}`, staff only). The database table `proctor_snapshots` holds the attempt, time, face count, flags and the file path; the picture itself is a file.
+- **Now stored in `user-assets/` at the project root** (git-ignored): `user-assets/proctor/<attempt id>/<time>_webcam_<id>.jpg`, answer files in `user-assets/uploads/<attempt id>/`. Setting `STORAGE_DIR` moves it. The database keeps the path **relative** to that folder (so the folder can move to Docker or another disk); older absolute rows still resolve; a path that escapes the folder is refused (404).
+- **Cleaned:** the 69 folders (121 green fake-camera pictures) left by Playwright runs were deleted (they had no database row); the 3 real sessions (Rahul, Amit, Sneha, 97 pictures) were moved to `user-assets` and their database paths rewritten. Cause: the browser-test server wrote into the real storage folder while its database was wiped on every run. `e2e_server.py` now uses a throw-away folder in the system temp directory (`oap-e2e-storage`, emptied at each start); pytest already did.
+- Open: no retention rule yet (pictures are never deleted); decide how long to keep them.
+- Tests: 49 pytest (+1: stored under the folder by relative path, byte-identical, staff only, outside paths refused, old absolute rows still served). Browser monitor tests re-run: real folder untouched.
+- Restart the backend after pulling this (new storage location).
 
 ### 2026-11-02 (roles, permissions and user management)
 - **What existed:** roles in the database (`super_admin, org_admin, test_creator, recruiter, evaluator, candidate`), checked on every API route by `require(...)` (Super Admin always passes), but the same role lists were copied into four files and the screens showed every button to every staff role (a recruiter saw the question bank and a Save button that answered 403). A basic users API existed with no screen.

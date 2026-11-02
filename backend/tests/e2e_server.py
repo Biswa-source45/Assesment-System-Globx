@@ -2,11 +2,18 @@
 and serves the API on port 8001. The generated demo passwords are written to the JSON file given as argument."""
 import json
 import os
+import shutil
 import sys
+import tempfile
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from app.core.config import get_settings  # noqa: E402
+
+# the browser tests write camera pictures too: into a throw-away folder, never into the real user-assets
+e2e_storage = Path(tempfile.gettempdir()) / "oap-e2e-storage"
+shutil.rmtree(e2e_storage, ignore_errors=True)
+os.environ["STORAGE_DIR"] = str(e2e_storage)
 
 base, _, name = get_settings().database_url.rpartition("/")
 os.environ["DATABASE_URL"] = f"{base}/{name}" if name.endswith("_test") else f"{base}/{name}_test"

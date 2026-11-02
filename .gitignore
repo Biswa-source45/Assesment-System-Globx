@@ -9,6 +9,7 @@ __pycache__/
 .pytest_cache/
 backend/.venv/
 backend/data/
+user-assets/
 backups/
 .oap-python
 
