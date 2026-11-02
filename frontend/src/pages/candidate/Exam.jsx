@@ -10,12 +10,14 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
-import { CodeView, Html, McqView, TextView } from "@/pages/candidate/questions"
+import { CodeView, SqlSamples } from "@/pages/candidate/CodeView"
+import { Html, McqView, TextView } from "@/pages/candidate/questions"
 
+const isCode = (q) => q.type === "coding" || q.type === "sql"
 const isAnswered = (q, r) => {
   if (!r) return false
   if (q.type.startsWith("mcq")) return (r.selected ?? []).length > 0
-  if (q.type === "coding") return !!(r.submitted || r.best_submission_id)
+  if (isCode(q)) return !!(r.submitted || r.best_submission_id)
   return (r.text ?? "").trim() !== ""
 }
 const goFullscreen = () => document.documentElement.requestFullscreen().catch(() => toast.error("Your browser blocked full screen. Press F11."))
@@ -231,7 +233,7 @@ export default function Exam() {
       </div>
 
         {q && (
-          <div className={q.type === "coding" ? "grid gap-4 lg:grid-cols-[2fr_3fr]" : "grid gap-4"}>
+          <div className={isCode(q) ? "grid gap-4 lg:grid-cols-[2fr_3fr]" : "grid gap-4"}>
             <Card>
               <CardContent className="grid gap-3 pt-6">
                 <div className="flex flex-wrap items-start justify-between gap-2">
@@ -244,6 +246,7 @@ export default function Exam() {
                 </div>
                 {q.group && <div className="rounded-md border bg-muted p-3"><h3 className="font-medium">{q.group.title}</h3><Html html={q.group.stimulus} /></div>}
                 <Html html={q.body} />
+                {q.type === "sql" && <SqlSamples q={q} />}
                 {q.type === "coding" && q.open_cases.map((c) => (
                   <div key={c.ordinal} className="grid gap-1 text-xs">
                     <b className="text-sm">Sample {c.ordinal}</b>
@@ -258,7 +261,7 @@ export default function Exam() {
                 {(q.type === "short" || q.type === "long") && <TextView key={q.id} q={q} r={resp[q.id] ?? {}} closed={curSec.closed} onChange={(p, imm) => update(q.id, p, imm)} />}
               </CardContent>
             </Card>
-            {q.type === "coding" && (
+            {isCode(q) && (
               <Card>
                 <CardContent className="pt-6">
                   <CodeView key={q.id} q={q} r={resp[q.id] ?? {}} attemptId={attemptId} closed={curSec.closed} blockPaste={!!cfg.block_paste}

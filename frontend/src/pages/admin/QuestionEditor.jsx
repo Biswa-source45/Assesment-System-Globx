@@ -4,6 +4,7 @@ import { toast } from "sonner"
 import { Plus, Sparkles, Trash2 } from "lucide-react"
 import { get, post, put } from "@/lib/api"
 import { TYPE_LABEL } from "@/pages/admin/Questions"
+import { Verdict } from "@/pages/candidate/CodeView"
 import { Alert } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -49,7 +50,7 @@ export default function QuestionEditor() {
   const { id } = useParams()
   const navigate = useNavigate()
   const [f, setF] = useState(blank)
-  const [saved, setSaved] = useState(id !== "new")  // coding helpers need a saved question
+  const [check, setCheck] = useState(null)  // verdict per case from "Check reference solution"
   const [error, setError] = useState("")
   const [busy, setBusy] = useState("")
   const set = (k, v) => setF((x) => ({ ...x, [k]: v }))
@@ -66,7 +67,7 @@ export default function QuestionEditor() {
   }
 
   const setOption = (i, patch) => set("options", f.options.map((o, j) => (j === i ? { ...o, ...patch } : o)))
-  const setCase = (i, patch) => set("cases", f.cases.map((c, j) => (j === i ? { ...c, ...patch } : c)))
+  const setCase = (i, patch) => { setCheck(null); set("cases", f.cases.map((c, j) => (j === i ? { ...c, ...patch } : c))) }
 
   function payload() {
     const config = {}
@@ -92,16 +93,9 @@ export default function QuestionEditor() {
     setBusy("save")
     setError("")
     try {
-      if (id === "new") {
-        const q = await post("/questions", payload())
-        setSaved(true)  // the page stays mounted when the URL changes, so unlock the coding helpers here
-        toast.success("Question created")
-        navigate(`/admin/questions/${q.id}`, { replace: true })
-      } else {
-        await put(`/questions/${id}`, payload())
-        setSaved(true)
-        toast.success("Saved")
-      }
+      if (id === "new") { await post("/questions", payload()); toast.success("Question created") }
+      else { await put(`/questions/${id}`, payload()); toast.success("Question saved") }
+      navigate("/admin/questions")  // the bank shows the new or updated question at the top
     } catch (e) {
       setError(e.message)
     } finally {
@@ -112,7 +106,12 @@ export default function QuestionEditor() {
   async function generate() {
     setBusy("ai")
     try {
-      const out = await post(`/questions/${id}/generate-cases`, { count: 8 })
+      const samples = [...f.cases.filter((c) => c.visibility === "open"), ...f.cases.filter((c) => c.visibility !== "open")]
+      const out = await post("/questions/generate-cases", {
+        count: 8, statement: toHtml(f.body), constraints: f.constraints, examples: samples.map((c) => c.input),
+        reference: { language: f.ref_lang, source: f.ref_source }, time_limit_ms: Number(f.time_limit_ms), memory_mb: Number(f.memory_mb),
+      })
+      setCheck(null)
       set("cases", [...f.cases, ...out.cases.map((c) => ({ ...c, visibility: "hidden", weight: 1 }))])
       toast.success(`${out.cases.length} cases added as hidden${out.dropped ? ` (${out.dropped} dropped: the reference solution failed on them)` : ""}. Review them, then Save.`)
     } catch (e) {
@@ -125,9 +124,12 @@ export default function QuestionEditor() {
   async function validate() {
     setBusy("check")
     try {
-      const out = await post(`/questions/${id}/validate`)
-      const r = out.result
-      out.ok ? toast.success(`Reference solution passes all ${r.total} cases`) : toast.error(`Reference solution passes ${r.passed ?? 0} of ${r.total ?? "?"} cases${r.error ? ": " + r.error : ""}`)
+      const out = await post("/questions/check-reference", {
+        reference: { language: f.ref_lang, source: f.ref_source }, time_limit_ms: Number(f.time_limit_ms), memory_mb: Number(f.memory_mb),
+        cases: f.cases.map((c) => ({ visibility: c.visibility, input: c.input, expected: c.expected })),
+      })
+      setCheck(out.verdicts)
+      out.passed === out.total ? toast.success(`Reference solution passes all ${out.total} cases`) : toast.error(`Reference solution passes ${out.passed} of ${out.total} cases. The failing ones are marked below.`)
     } catch (e) {
       toast.error(e.message)
     } finally {
@@ -135,6 +137,7 @@ export default function QuestionEditor() {
     }
   }
 
+  const ready = !!f.ref_source.trim() && f.cases.length > 0
   const toggleLang = (k) => set("languages", f.languages.includes(k) ? f.languages.filter((x) => x !== k) : [...f.languages, k])
 
   return (
@@ -253,10 +256,10 @@ export default function QuestionEditor() {
             <CardContent className="grid gap-3">
               <div className="flex flex-wrap gap-2">
                 <Button variant="outline" size="sm" onClick={() => set("cases", [...f.cases, { input: "", expected: "", visibility: f.cases.length ? "hidden" : "open", weight: 1, purpose: "" }])}><Plus /> Add case</Button>
-                <Button variant="outline" size="sm" disabled={!saved || !f.ref_source.trim() || busy === "ai"} onClick={generate}><Sparkles /> {busy === "ai" ? "Generating..." : "Generate with AI"}</Button>
-                <Button variant="outline" size="sm" disabled={!saved || busy === "check"} onClick={validate}>Check reference solution</Button>
+                <Button variant="outline" size="sm" disabled={!ready || busy === "ai"} onClick={generate}><Sparkles /> {busy === "ai" ? "Generating..." : "Generate with AI"}</Button>
+                <Button variant="outline" size="sm" disabled={!ready || busy === "check"} onClick={validate}>Check reference solution</Button>
               </div>
-              {!saved && <p className="text-xs text-muted-foreground">Save the question first. The AI helper and the check use the saved reference solution.</p>}
+              {!ready && <p className="text-xs text-muted-foreground">Add a reference solution and at least one sample case to use the AI helper and the check.</p>}
               {f.cases.map((c, i) => (
                 <div key={i} className="grid gap-2 rounded-lg border p-3" data-testid="case-row">
                   <div className="flex items-center gap-2">
@@ -264,9 +267,10 @@ export default function QuestionEditor() {
                       <SelectTrigger className="w-36" aria-label={`Case ${i + 1} visibility`}><SelectValue /></SelectTrigger>
                       <SelectContent><SelectItem value="open">Sample (visible)</SelectItem><SelectItem value="hidden">Hidden</SelectItem></SelectContent>
                     </Select>
+                    {check?.[i] && <Verdict v={check[i]} />}
                     <Input className="w-24" type="number" step="0.5" min="0.5" aria-label={`Case ${i + 1} weight`} value={c.weight} onChange={(e) => setCase(i, { weight: e.target.value })} />
                     <Input aria-label={`Case ${i + 1} note`} placeholder="Note (what it tests)" value={c.purpose} onChange={(e) => setCase(i, { purpose: e.target.value })} />
-                    <Button variant="ghost" size="icon" aria-label={`Remove case ${i + 1}`} onClick={() => set("cases", f.cases.filter((_, j) => j !== i))}><Trash2 /></Button>
+                    <Button variant="ghost" size="icon" aria-label={`Remove case ${i + 1}`} onClick={() => { setCheck(null); set("cases", f.cases.filter((_, j) => j !== i)) }}><Trash2 /></Button>
                   </div>
                   <div className="grid gap-2 md:grid-cols-2">
                     <Textarea aria-label={`Case ${i + 1} input`} placeholder="Input" className="min-h-16 font-mono text-xs" value={c.input} onChange={(e) => setCase(i, { input: e.target.value })} />
