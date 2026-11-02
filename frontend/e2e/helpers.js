@@ -17,7 +17,7 @@ export const loginCandidate = (page, user) => login(page, user, creds().candidat
 export const shot = (page, name) => page.screenshot({ path: `test-results/screens/${name}.png`, fullPage: true })
 
 // Opens a proctored exam as a candidate and returns once the exam screen is showing.
-export async function startProctoredExam(page, user, examTitle = "GLOBX Full-Stack Screening (Sample)", password = creds().candidate) {
+export async function startProctoredExam(page, user, examTitle = "GLOBX Full-Stack Screening (Sample)", password = creds().candidate, expectRunner = true) {
   await login(page, user, password)
   await page.getByRole("heading", { name: "Your exams" }).waitFor()
   // dev-server test hook: pin the face count to exactly one. The fake camera is an animated test picture, so the real
@@ -31,7 +31,7 @@ export async function startProctoredExam(page, user, examTitle = "GLOBX Full-Sta
   await page.getByLabel(/I understand and agree/).click()
   await page.getByRole("button", { name: "Start exam" }).click()
   await expect(page).toHaveURL(/\/exam\/attempt\//)
-  await expect(page.getByText("Proctoring on")).toBeVisible()
+  if (expectRunner) await expect(page.getByText("Proctoring on")).toBeVisible()
 }
 
 // A brand-new candidate on the sample exam, made through the participants API (the way an admin would).

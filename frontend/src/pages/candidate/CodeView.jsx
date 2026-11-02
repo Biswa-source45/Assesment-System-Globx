@@ -56,7 +56,7 @@ export function SqlSamples({ q }) {
         <div key={c.ordinal} className="grid gap-2">
           <b className="text-sm">Sample {c.ordinal}</b>
           <div className="text-xs text-muted-foreground">Input tables</div>
-          {c.tables.map((t) => (
+          {(c.tables ?? []).map((t) => (
             <div key={t.name} className="grid gap-1"><span className="text-xs font-medium">{t.name}</span><DataTable data={t} /></div>
           ))}
           <div className="text-xs text-muted-foreground">Expected output</div>

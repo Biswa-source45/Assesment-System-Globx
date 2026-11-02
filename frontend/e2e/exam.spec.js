@@ -142,3 +142,41 @@ test("SQL question: formatted tables, an editor, Failed then Success, private ca
   await expect(page.getByTestId("private-case")).toHaveCount(3, { timeout: 30_000 })
   await expect(results.getByText("Score 10 / 10")).toBeVisible()
 })
+
+// Rewrites the exam state the server sends, to play out an older or broken server.
+async function tamperWithAttemptState(page, change) {
+  await page.route(/\/api\/v1\/attempts\/[0-9a-f]+$/, async (route) => {
+    if (route.request().method() !== "GET") return route.continue()
+    const res = await route.fetch()
+    const data = await res.json()
+    change(data)
+    await route.fulfill({ response: res, json: data })
+  })
+}
+
+test("a SQL question from an older server (no sample tables) still opens", async ({ page, request }) => {
+  const p = await newParticipant(request, "Old Server")
+  await tamperWithAttemptState(page, (d) => d.sections.forEach((s) => s.questions.forEach((q) => {
+    if (q.type === "sql") q.open_cases.forEach((c) => { delete c.tables })
+  })))
+  const errors = []
+  page.on("pageerror", (e) => errors.push(e.message))
+  await startProctoredExam(page, p.username, "GLOBX Full-Stack Screening (Sample)", p.password)
+  await page.getByRole("button", { name: /F - SQL/ }).click()
+  await expect(page.getByRole("heading", { name: "Top customers by revenue (2025)" })).toBeVisible()
+  await expect(page.getByTestId("code-editor")).toBeVisible()
+  await expect(page.getByText("Sample 1").first()).toBeVisible()
+  expect(errors).toEqual([])
+})
+
+test("a question that cannot be drawn shows a message and a Reload button, never a blank page", async ({ page, request }) => {
+  const p = await newParticipant(request, "Broken Payload")
+  await tamperWithAttemptState(page, (d) => d.sections.forEach((s) => s.questions.forEach((q) => {
+    if (q.type.startsWith("mcq")) q.options = null
+  })))
+  await startProctoredExam(page, p.username, "GLOBX Full-Stack Screening (Sample)", p.password, false)
+  await expect(page.getByRole("heading", { name: "Something went wrong on this screen" })).toBeVisible()
+  await expect(page.getByText("Your answers are saved")).toBeVisible()
+  await expect(page.getByRole("button", { name: "Reload" })).toBeVisible()
+  await shot(page, "exam-crash-message")
+})

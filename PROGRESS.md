@@ -4,7 +4,7 @@ Read at the start of every task; update after every change. Plan and decisions: 
 
 ## Current state (2026-11-02)
 
-- Codebase: FastAPI backend (`backend/app`) and a React **JSX** frontend (`frontend/`: Vite, Tailwind, shadcn/ui). 29 pytest tests and 17 Playwright browser tests pass.
+- Codebase: FastAPI backend (`backend/app`) and a React **JSX** frontend (`frontend/`: Vite, Tailwind, shadcn/ui). 29 pytest tests and 19 Playwright browser tests pass.
 - Built and browser-tested: login (staff email or candidate username); admin Exams list; **question bank** (list, filter, create/edit/archive MCQ, short,
   explained, coding and **SQL** questions; coding has a case table, reference-solution check and "Generate with AI", both working on the unsaved form; saving returns to the bank with the question at the top); **candidate flow** (home, camera check-in with
   MediaPipe face gate and consent, exam runner with section tabs, palette, mark for review, autosave, server timer, CodeMirror editor with Run/Submit,
@@ -35,6 +35,13 @@ Read at the start of every task; update after every change. Plan and decisions: 
    through the judge container once it exists; old email-OTP/invite flow still in the backend; bundle is one 1.4 MB chunk (split later); rotate the OpenAI key.
 
 ## Log
+
+### 2026-11-02 (white screen on SQL questions)
+- User got a blank page opening a SQL question as a candidate: `SqlSamples` did `c.tables.map` and `tables` was undefined. Cause: the running backend predated the change that adds
+  `tables` to the candidate payload (backend not restarted), and the frontend trusted the field. Fixed: `(c.tables ?? [])` in `CodeView.jsx`; and a new `ErrorBoundary.jsx` around the exam route
+  so any render error shows "Something went wrong on this screen / Your answers are saved / Reload" instead of a blank page (answers autosave on the server).
+- Tests: `exam.spec.js` rewrites the attempt state in flight (`tamperWithAttemptState`) to play out an older server (no `tables`) and a broken question (`options: null`); the first test was
+  confirmed to fail without the fix. Rule of thumb: restart the backend after every pull/commit, because the frontend and backend change together.
 
 ### 2026-11-02 (SQL question authoring)
 - User noticed the question bank had no SQL type (the one SQL question came from the seed) and wanted SQL authored as tables, not code. Added a "SQL" type with a table builder:

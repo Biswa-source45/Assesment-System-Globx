@@ -10,6 +10,7 @@ import CandidateHome from "@/pages/candidate/Home"
 import CheckIn from "@/pages/candidate/CheckIn"
 import Exam from "@/pages/candidate/Exam"
 import Done from "@/pages/candidate/Done"
+import ErrorBoundary from "@/components/ErrorBoundary"
 
 // Sends signed-out visitors to /login and keeps candidates out of the admin area (and staff out of the exam area).
 function Guard({ staff, children }) {
@@ -33,7 +34,7 @@ export default function App() {
       </Route>
       <Route path="/exam" element={<Guard staff={false}><CandidateHome /></Guard>} />
       <Route path="/exam/:assignmentId/start" element={<Guard staff={false}><CheckIn /></Guard>} />
-      <Route path="/exam/attempt/:attemptId" element={<Guard staff={false}><Exam /></Guard>} />
+      <Route path="/exam/attempt/:attemptId" element={<Guard staff={false}><ErrorBoundary><Exam /></ErrorBoundary></Guard>} />
       <Route path="/exam/done/:attemptId" element={<Guard staff={false}><Done /></Guard>} />
       <Route path="*" element={<Navigate to="/login" replace />} />
     </Routes>
