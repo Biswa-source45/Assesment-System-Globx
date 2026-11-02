@@ -1,0 +1,146 @@
+import { useEffect, useRef, useState } from "react"
+import { Link, useNavigate, useParams } from "react-router-dom"
+import { Camera } from "lucide-react"
+import { get, post } from "@/lib/api"
+import { countFaces, loadFaceDetector } from "@/lib/faces"
+import { getCamera, stopCamera, systemCheck } from "@/lib/media"
+import { Alert } from "@/components/ui/alert"
+import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Checkbox } from "@/components/ui/checkbox"
+import { Label } from "@/components/ui/label"
+
+const STABLE_CHECKS = 3  // consecutive 0.5 s checks with exactly one face before Start is allowed
+
+export default function CheckIn() {
+  const { assignmentId } = useParams()
+  const navigate = useNavigate()
+  const video = useRef(null)
+  const started = useRef(false)
+  const [item, setItem] = useState(null)
+  const [error, setError] = useState("")
+  const [cameraOn, setCameraOn] = useState(false)
+  const [faces, setFaces] = useState(null)
+  const [stable, setStable] = useState(false)
+  const [consent, setConsent] = useState(false)
+  const [busy, setBusy] = useState(false)
+
+  useEffect(() => {
+    get("/me/assignments")
+      .then((list) => setItem(list.find((x) => x.assignment_id === assignmentId) ?? false))
+      .catch((e) => setError(e.message))
+    loadFaceDetector().catch(() => {})  // warm up while the candidate reads the rules
+    return () => { if (!started.current) stopCamera() }
+  }, [assignmentId])
+
+  // Count faces twice a second while the camera is on.
+  useEffect(() => {
+    if (!cameraOn) return
+    let streak = 0
+    const id = setInterval(async () => {
+      try {
+        const n = await countFaces(video.current)
+        streak = n === 1 ? streak + 1 : 0
+        setFaces(n)
+        setStable(streak >= STABLE_CHECKS)
+      } catch {
+        setError("Face detection could not start. Refresh the page; if it keeps failing, tell the invigilator.")
+      }
+    }, 500)
+    return () => clearInterval(id)
+  }, [cameraOn])
+
+  async function enableCamera() {
+    setError("")
+    try {
+      const stream = await getCamera()
+      video.current.srcObject = stream
+      await video.current.play().catch(() => {})
+      setCameraOn(true)
+    } catch {
+      setError("The camera is blocked. Click the camera icon in the address bar, allow access, then try again.")
+    }
+  }
+
+  if (item === null && !error) return <div className="p-8 text-muted-foreground">Loading...</div>
+  if (item === false) return <div className="p-8">Exam not found. <Link className="text-primary underline" to="/exam">Back</Link></div>
+  if (!item) return <div className="p-8 text-destructive">{error}</div>
+
+  const cfg = item.test.proctoring
+  const needCamera = cfg.enabled && cfg.webcam
+  const extraScreen = cfg.enabled && cfg.block_multi_display && window.screen.isExtended === true
+  const ready = (!needCamera || (cameraOn && stable)) && (!cfg.enabled || consent) && !extraScreen
+  const faceLabel = faces === null ? "Waiting for camera" : faces === 1 ? "1 face detected" : faces === 0 ? "No face detected" : `${faces} faces detected`
+
+  async function start() {
+    setBusy(true)
+    setError("")
+    try {
+      if (cfg.enabled && cfg.fullscreen) await document.documentElement.requestFullscreen().catch(() => {})  // needs this click
+      const r = await post(`/assignments/${assignmentId}/start`, { consent: { accepted: true, text_version: "2026-10" }, system_check: systemCheck() })
+      started.current = true
+      navigate(`/exam/attempt/${r.attempt_id}`)
+    } catch (e) {
+      setError(e.message)
+      if (document.fullscreenElement) document.exitFullscreen().catch(() => {})
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div className="min-h-svh bg-muted/40 p-4 md:p-8">
+      <div className="mx-auto grid max-w-5xl gap-6 md:grid-cols-2">
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-xl">{item.test.title}</CardTitle>
+            <CardDescription>{item.test.duration_min} minutes</CardDescription>
+          </CardHeader>
+          <CardContent className="grid gap-4 text-sm">
+            {item.test.instructions && <div className="prose-sm" dangerouslySetInnerHTML={{ __html: item.test.instructions }} />}
+            {cfg.enabled ? (
+              <ul className="list-disc space-y-1.5 pl-5">
+                {cfg.fullscreen && <li>The exam runs in full screen. You may leave full screen or switch tabs <b>{cfg.tab_switch_limit} times</b>, each with a warning; the next time your exam ends.</li>}
+                {cfg.webcam && <li>Keep <b>exactly one face</b> in the camera. After <b>{cfg.face_limit} face warnings</b> your exam ends and your login is locked.</li>}
+                {cfg.block_paste && <li>Copy, paste and right-click are disabled.</li>}
+                <li>Your answers save automatically. When time is over the exam submits by itself.</li>
+              </ul>
+            ) : (
+              <p>This exam is not proctored.</p>
+            )}
+            {cfg.enabled && (
+              <div className="flex items-start gap-2">
+                <Checkbox id="consent" checked={consent} onCheckedChange={(v) => setConsent(v === true)} />
+                <Label htmlFor="consent" className="leading-snug">I understand and agree to be monitored by camera during this exam.</Label>
+              </div>
+            )}
+            {extraScreen && <Alert variant="destructive" className="p-3">Disconnect the second screen to continue.</Alert>}
+            {error && <Alert variant="destructive" className="p-3">{error}</Alert>}
+            {item.message && !item.can_start && <Alert className="p-3">{item.message}</Alert>}
+            <Button size="lg" disabled={!ready || busy || !item.can_start} onClick={start}>{busy ? "Starting..." : "Start exam"}</Button>
+          </CardContent>
+        </Card>
+
+        {needCamera && (
+          <Card>
+            <CardHeader>
+              <CardTitle>Camera check</CardTitle>
+              <CardDescription>Sit in good light, facing the camera, alone in the frame.</CardDescription>
+            </CardHeader>
+            <CardContent className="grid gap-3">
+              <div className="aspect-[4/3] overflow-hidden rounded-lg bg-black">
+                <video ref={video} muted playsInline className="size-full object-cover" />
+              </div>
+              {cameraOn ? (
+                <Badge data-testid="face-status" variant={faces === 1 ? "default" : "destructive"} className={"w-fit " + (faces === 1 ? "bg-green-600" : "")}>{faceLabel}</Badge>
+              ) : (
+                <Button variant="outline" onClick={enableCamera}><Camera /> Enable camera</Button>
+              )}
+            </CardContent>
+          </Card>
+        )}
+      </div>
+    </div>
+  )
+}

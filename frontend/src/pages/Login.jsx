@@ -37,7 +37,7 @@ export default function Login() {
     <div className="flex min-h-svh items-center justify-center bg-muted/40 p-4">
       <Card className="w-full max-w-sm">
         <CardHeader>
-          <CardTitle className="text-xl">GLOBX Assess</CardTitle>
+          <CardTitle className="font-brand text-xl font-bold">GLOBX <span className="text-primary">Assess</span></CardTitle>
           <CardDescription>Sign in with the username and password you were given.</CardDescription>
         </CardHeader>
         <CardContent>

@@ -4,7 +4,12 @@ import Login from "@/pages/Login"
 import AdminLayout from "@/pages/admin/AdminLayout"
 import Exams from "@/pages/admin/Exams"
 import ComingSoon from "@/pages/admin/ComingSoon"
+import Questions from "@/pages/admin/Questions"
+import QuestionEditor from "@/pages/admin/QuestionEditor"
 import CandidateHome from "@/pages/candidate/Home"
+import CheckIn from "@/pages/candidate/CheckIn"
+import Exam from "@/pages/candidate/Exam"
+import Done from "@/pages/candidate/Done"
 
 // Sends signed-out visitors to /login and keeps candidates out of the admin area (and staff out of the exam area).
 function Guard({ staff, children }) {
@@ -21,11 +26,15 @@ export default function App() {
       <Route path="/login" element={<Login />} />
       <Route path="/admin" element={<Guard staff><AdminLayout /></Guard>}>
         <Route index element={<Exams />} />
-        <Route path="questions" element={<ComingSoon title="Question bank" />} />
+        <Route path="questions" element={<Questions />} />
+        <Route path="questions/:id" element={<QuestionEditor />} />
         <Route path="results" element={<ComingSoon title="Results and review" />} />
         <Route path="monitor" element={<ComingSoon title="Live monitor" />} />
       </Route>
       <Route path="/exam" element={<Guard staff={false}><CandidateHome /></Guard>} />
+      <Route path="/exam/:assignmentId/start" element={<Guard staff={false}><CheckIn /></Guard>} />
+      <Route path="/exam/attempt/:attemptId" element={<Guard staff={false}><Exam /></Guard>} />
+      <Route path="/exam/done/:attemptId" element={<Guard staff={false}><Done /></Guard>} />
       <Route path="*" element={<Navigate to="/login" replace />} />
     </Routes>
   )

@@ -20,7 +20,7 @@ export default function AdminLayout() {
   return (
     <SidebarProvider>
       <Sidebar>
-        <SidebarHeader className="px-4 py-3 text-lg font-semibold">GLOBX Assess</SidebarHeader>
+        <SidebarHeader className="px-4 py-3"><span className="font-brand text-lg font-bold">GLOBX <span className="text-primary">Assess</span></span></SidebarHeader>
         <SidebarContent>
           <SidebarGroup>
             <SidebarGroupContent>
