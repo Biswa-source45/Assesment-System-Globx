@@ -21,7 +21,7 @@ An exam platform for hiring, used inside one office.
 |---|---|
 | Backend | Keep FastAPI (Python). The scoring, sandbox and tests already exist. |
 | Database | PostgreSQL. Local dev: the PostgreSQL 18 service on port **5433**, database `oap` (tests use `oap_test`). Production: PostgreSQL in Docker. |
-| Frontend | Rebuild on React + **JavaScript (JSX, no TypeScript)** + Tailwind + **shadcn/ui** (JS mode), Monaco for code. **[planned]** |
+| Frontend | React + **JavaScript (JSX, no TypeScript)** + Tailwind + **shadcn/ui** (JS mode), CodeMirror for code (lighter than Monaco, works offline). Light white theme, blue buttons, Inter/Poppins/Montserrat fonts. **[done]** |
 | Hosting | Docker only on the office server. No other software installed there. |
 | Address | `https://assessment.globx.co.in` pointing to the server's **private office IP**. Only reachable from the office network. (Confirm the domain spelling.) |
 | Why HTTPS | Browsers block the camera on plain `http://192.168.x.x`. A real HTTPS address fixes it. `localhost` is exempt, so development needs nothing. |
@@ -123,7 +123,8 @@ Every event is stored with a timestamp, plus when and why the exam ended. Browse
 - [done] SQL sandbox cannot open other databases; staff cannot read other organisations' submissions
 - [done] Backend: participant credentials, coding case rules, proctoring rules (tab and face), AI JSON mode, test-case generator
 - [done] Frontend scaffold (Vite, React JSX, shadcn/ui): login, admin shell, exams list, candidate home
-- [next] Frontend screens: question bank, exam setup, results, live monitor, candidate check-in, exam runner
+- [done] Frontend screens: question bank, candidate check-in (camera + face gate), exam runner, proctoring client; Playwright suite (12 tests)
+- [next] Frontend screens: exam setup, participants and credentials sheet, results and review, live monitor
 - [planned] Docker judge container
 - [planned] Docker compose, Caddy HTTPS, backups
 - [planned] LAN test with 2-3 PCs

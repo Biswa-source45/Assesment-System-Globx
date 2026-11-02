@@ -4,11 +4,16 @@ Read at the start of every task; update after every change. Plan and decisions: 
 
 ## Current state (2026-11-02)
 
-- Codebase: FastAPI backend (`backend/app`) and a new React **JSX** frontend (`frontend/`, Vite + Tailwind + shadcn/ui). 26 pytest tests pass on PostgreSQL.
-- Backend Day-1 work is done (credentials login, coding case rules, proctoring rules, AI JSON mode + test-case generator).
-- Frontend scaffold is done: login (staff email or candidate username), auth + API client, admin shell with sidebar, Exams list, candidate home
-  (lists assignments). Other admin pages are placeholders. Run: `cd frontend && npm install && npm run dev` (port 5173, proxies /api to 8000),
-  or `npm run build` and the backend serves `frontend/dist`. `SECRET_KEY` is now required in `.env`.
+- Codebase: FastAPI backend (`backend/app`) and a React **JSX** frontend (`frontend/`: Vite, Tailwind, shadcn/ui). 27 pytest tests and 12 Playwright browser tests pass.
+- Built and browser-tested: login (staff email or candidate username); admin Exams list; **question bank** (list, filter, create/edit/archive MCQ, short,
+  explained and coding questions; coding has a case table, reference-solution check and "Generate with AI"); **candidate flow** (home, camera check-in with
+  MediaPipe face gate and consent, exam runner with section tabs, palette, mark for review, autosave, server timer, CodeMirror editor with Run/Submit,
+  proctoring client, done page). Admin Results, Live monitor, exam setup and participant screens are still placeholders or missing.
+- Run frontend: `cd frontend && npm install && npm run dev` (port 5173, proxies /api to 8000) or `npm run build` (backend serves `frontend/dist`).
+  `SECRET_KEY` is required in `.env`. OpenAI is configured in `.env` (`LLM_PROVIDER=openai`, model `gpt-4o-mini`, key git-ignored); restart the backend after changing it.
+- Browser tests: `cd frontend && npx playwright test` (starts its own API on :8001 with the throw-away `oap_test` database and Vite on :5174; add `RUN_AI=1` to include the
+  real OpenAI call). Screenshots land in `frontend/test-results/screens/`. A dev-only hook `window.__faceCount` lets tests pin the face count (the fake camera is an animated picture).
+- Theme: light/white only, black text, blue (`--primary`) for buttons and labels, green for success, red for warnings. Fonts (bundled, work offline): Inter body, Poppins headings, Montserrat brand.
 - Dev logins after `python -m app.seed --reset`: staff as in `backend/data/seeded_accounts.txt`; candidates `rahul` / `sneha` / `amit`. All demo passwords are random per seed and live only in that file.
 - Schema changes need a reseed (`python -m app.seed --reset`, wipes the `oap` database) until Alembic is added: `create_all` never alters existing tables.
 - Local database: PostgreSQL 18, port 5433, local `postgres` account (credentials only in the git-ignored `.env`), databases `oap` (dev) and `oap_test` (tests). Config in repo-root `.env` (git-ignored).
@@ -16,20 +21,36 @@ Read at the start of every task; update after every change. Plan and decisions: 
   `backend/.venv` exists (git-ignored).
 - Run tests: `DATABASE_URL=postgresql+psycopg://USER:PASSWORD@localhost:5433/oap_test python -m pytest tests -q` from `backend/`.
 - Git: remote `origin` = github.com/Biswa-source45/Assesment-System-Globx, branch `main`. Commits are made locally; **the user pushes**. No Claude attribution in commits.
-- graphify: kept local only (`.claude/`, `CLAUDE.local.md`, `.graphifyignore`, `graphify-out/` are git-ignored). Graph build crashes (segfault, graphify 0.9.66), so it is unusable for now.
+- graphify: kept local only (`.claude/`, `CLAUDE.local.md`, `.graphifyignore`, `graphify-out/` are git-ignored). Upgraded to 0.9.100 (0.9.66 segfaulted); graph built (817 nodes). Refresh with `graphify update .`.
 - Tooling note: the PowerShell tool is broken in this environment; use Bash.
 
 ## Next
 
-1. Admin screens: question bank (MCQ, explained, coding with case table + "Generate with AI"), exam setup (schedule, questions, proctoring
-   settings, participants + printable credentials), results/review (AI marks + override), live monitor.
-2. Candidate screens: login, check-in (camera + MediaPipe face gate), exam runner (Monaco), proctoring client sending `face_missing`
-   (duration >= 3 s) / `multi_face` events and handling `warn` / `force_submit` / `ban` actions.
-3. Docker judge container (the API currently runs candidate code in-process: not safe for real candidates), compose, Caddy HTTPS, backups.
-4. Smaller gaps noted: "accept all AI marks" bulk action; camera-lost heartbeat; second-solution cross-check for generated cases;
-   `run_reference` and judge calls must go through the judge container once it exists; old email-OTP/invite flow is still in the code (remove later).
+1. Admin: exam setup (title, schedule, duration, proctoring settings, sections, pick questions, publish), participants with printable credentials and reset/unban,
+   then results/review (AI marks + override, proctoring timeline, snapshots) and the live monitor.
+2. Docker judge container (the API still runs candidate code in-process: not safe for real candidates), compose, Caddy HTTPS, backups.
+3. Check on a real laptop with a real face: MediaPipe false positives/negatives (`minDetectionConfidence` is 0.5 in `frontend/src/lib/faces.js`), fullscreen behaviour,
+   camera permission prompt on the office HTTPS address.
+4. Smaller gaps: "accept all AI marks" bulk action; camera-lost heartbeat; second-solution cross-check for generated cases; judge calls (`run_reference` too) must go
+   through the judge container once it exists; old email-OTP/invite flow still in the backend; bundle is one 1.4 MB chunk (split later); rotate the OpenAI key.
 
 ## Log
+
+### 2026-11-02 (question bank + candidate exam + theme)
+- OpenAI key put in the git-ignored `.env` and verified through the app (JSON mode). Advised to rotate it because it was pasted in chat.
+- graphify upgraded 0.9.66 -> 0.9.100 (fixed the segfault); graph built and `graphify-out/` stays local.
+- Theme: first version had a navy sidebar; user asked for a fully white app, so surfaces are white, text black, blue only on buttons/labels, red/green for status.
+- Frontend: question bank pages (`admin/Questions.jsx`, `admin/QuestionEditor.jsx`), candidate `CheckIn.jsx`, `Exam.jsx`, `questions.jsx`, `Done.jsx`;
+  libs `proctor.js` (tab/fullscreen/paste/face-episode reporting, snapshots), `faces.js` (MediaPipe, wasm and model served from `/mediapipe`, copied by `postinstall`),
+  `media.js`, `useCountdown.js`. Code editor is CodeMirror (not Monaco): lighter and offline-friendly.
+- Backend: AI test-case generation now sends the sample inputs as format examples and `keep_same_shape` drops generated inputs whose line count differs
+  (the model had invented multi-line inputs for a one-number problem); prompt forbids out-of-constraint inputs. 27 backend tests pass.
+- Playwright (12 tests): login errors, question bank CRUD, MCQ validation message, explained and coding questions, AI generation (real OpenAI, `RUN_AI=1`),
+  full practice exam with code Run/Submit, failed-sample reporting, face gate, 4th tab leave ends exam, sub-second leave ignored, 5th face incident bans and locks login.
+- Bugs found by the tests and fixed: coding helpers stayed disabled after creating a question; camera preview covered the Save-and-next button (now in the page flow).
+
+### 2026-11-02 (user check)
+- User ran backend (port 8000) and frontend (port 5173) locally, logged in as super admin, and confirmed the admin shell and Exams list work. Next: Day 2 admin screens.
 
 ### 2026-11-02 (frontend rebuild, git, credentials)
 - Deleted the TypeScript frontend (backup only in the session scratchpad). New `frontend/`: Vite + React + JSX, Tailwind v4, shadcn/ui (radix-nova, `"tsx": false`),

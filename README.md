@@ -62,6 +62,8 @@ online-assessment-platform/
 ```bash
 # backend tests
 backend/.venv/Scripts/python -m pytest backend/tests      # Windows
+# browser tests (own API on :8001 + throw-away oap_test DB; RUN_AI=1 adds the real OpenAI call)
+cd frontend && npx playwright test
 # frontend - needs Node.js 18+
 cd frontend && npm install && npm run dev                  # http://localhost:5173 (proxies /api to :8000); `npm run build` for dist/
 # API explorer
