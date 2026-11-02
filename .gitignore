@@ -1,0 +1,26 @@
+# secrets and local config
+.env
+.env.*
+!.env.example
+
+# python
+__pycache__/
+*.pyc
+.pytest_cache/
+backend/.venv/
+backend/data/
+backups/
+.oap-python
+
+# frontend
+frontend/node_modules/
+frontend/dist/
+
+# local tooling (graphify knowledge graph, Claude Code local files) - never commit
+graphify-out/
+.graphifyignore
+.claude/
+CLAUDE.local.md
+
+# company documents (internal)
+*.docx
