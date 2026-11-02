@@ -122,6 +122,7 @@ Every event is stored with a timestamp, plus when and why the exam ended. Browse
 
 - [done] Local PostgreSQL database and seed data; Alembic migrations (departments is revision 0002)
 - [done] Departments (Technical, HR, Finance, Operations, General, or your own) decide question types; auto populate for exam sections; in-app confirmation dialogs
+- [done] Build an exam from AI-made JSON: the app writes the prompt (exam details + counts per type), the examiner uploads the JSON, the server checks all of it and imports it (all or nothing)
 - [done] SQL sandbox cannot open other databases; staff cannot read other organisations' submissions
 - [done] Backend: participant credentials, coding case rules, proctoring rules (tab and face), AI JSON mode, test-case generator
 - [done] Frontend scaffold (Vite, React JSX, shadcn/ui): login, admin shell, exams list, candidate home

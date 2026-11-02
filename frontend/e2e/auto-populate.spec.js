@@ -37,6 +37,7 @@ test("auto populate: random questions from the exam's department, reviewed befor
   await newExam(page, "E2E Pop Dept", "E2E Populate Exam")
   await page.getByRole("button", { name: "Auto populate" }).click()
   await expect(page.getByLabel("Department to pick from")).toContainText("E2E Pop Dept")  // starts with the exam's department
+  expect((await dialog(page).boundingBox()).width).toBeGreaterThan(600)  // as wide as asked, not squeezed to the base dialog's width
 
   await ask(page, { easy: 2, medium: 1, hard: 1 })
   await dialog(page).getByRole("button", { name: "Pick questions" }).click()

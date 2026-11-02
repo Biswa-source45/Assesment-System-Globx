@@ -69,7 +69,7 @@ export default function AutoPopulate({ test, section, onClose, onAdded }) {
 
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="max-w-2xl">
+      <DialogContent className="sm:max-w-2xl">
         <DialogHeader>
           <DialogTitle>Auto populate "{section.title}"</DialogTitle>
           <DialogDescription>Say what you need and the bank is searched at random. You can look at the pick, remove questions or pick again before anything is added.</DialogDescription>

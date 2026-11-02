@@ -1,9 +1,10 @@
 import { useEffect, useState } from "react"
 import { toast } from "sonner"
-import { Plus, Shuffle, Trash2 } from "lucide-react"
+import { Plus, Shuffle, Sparkles, Trash2 } from "lucide-react"
 import { del, get, post, put } from "@/lib/api"
 import { useDepartments } from "@/lib/useDepartments"
 import AutoPopulate from "@/pages/admin/AutoPopulate"
+import QuestionPack from "@/pages/admin/QuestionPack"
 import { TYPE_LABEL } from "@/pages/admin/Questions"
 import { useConfirm } from "@/components/ConfirmDialog"
 import { Alert } from "@/components/ui/alert"
@@ -54,7 +55,7 @@ function QuestionPicker({ section, test, used, onClose, onAdded }) {
 
   return (
     <Dialog open={!!section} onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="max-w-2xl">
+      <DialogContent className="sm:max-w-2xl">
         <DialogHeader>
           <DialogTitle>Add questions to "{section?.title}"</DialogTitle>
           <DialogDescription>Choose from the question bank. Coding and SQL questions marked "Not validated" cannot be published until their solution passes every test case.</DialogDescription>
@@ -166,6 +167,7 @@ export default function ExamQuestions({ test, setTest }) {
   const [newTitle, setNewTitle] = useState("")
   const [pickFor, setPickFor] = useState(null)
   const [populateFor, setPopulateFor] = useState(null)
+  const [packOpen, setPackOpen] = useState(false)
   const used = new Set(test.sections.flatMap((s) => s.items.map((i) => i.question?.id).filter(Boolean)))
 
   async function addSection(e) {
@@ -181,7 +183,10 @@ export default function ExamQuestions({ test, setTest }) {
   return (
     <div className="grid max-w-3xl gap-4">
       {locked && <Alert className="p-3">This exam is published, so its sections and questions are frozen. Unpublish it to change them.</Alert>}
-      <p className="text-sm text-muted-foreground" data-testid="exam-totals">{test.question_count} questions, {test.total_marks} marks in total</p>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-sm text-muted-foreground" data-testid="exam-totals">{test.question_count} questions, {test.total_marks} marks in total</p>
+        {!locked && <Button variant="outline" size="sm" onClick={() => setPackOpen(true)}><Sparkles /> Build with AI</Button>}
+      </div>
       {test.sections.map((s) => <SectionCard key={s.id} section={s} test={test} setTest={setTest} locked={locked} onPick={setPickFor} onPopulate={setPopulateFor} />)}
       {!locked && (
         <form onSubmit={addSection} className="flex gap-2">
@@ -191,6 +196,7 @@ export default function ExamQuestions({ test, setTest }) {
       )}
       <QuestionPicker section={pickFor} test={test} used={used} onClose={() => setPickFor(null)} onAdded={setTest} />
       {populateFor && <AutoPopulate test={test} section={populateFor} onClose={() => setPopulateFor(null)} onAdded={setTest} />}
+      {packOpen && <QuestionPack test={test} onClose={() => setPackOpen(false)} onImported={setTest} />}
     </div>
   )
 }
