@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test"
-import { login, loginStaff, shot, staffRequest } from "./helpers"
+import { BASE_URL, login, loginStaff, shot, staffRequest } from "./helpers"
 
 const dialog = (page) => page.getByRole("dialog")
 const PIXEL = Buffer.from("/9j/4AAQSkZJRgABAQEASABIAAD/2wBDAP//////////////////////////////////////////////////////////////////////////////////////wgALCAABAAEBAREA/8QAFBABAAAAAAAAAAAAAAAAAAAAAP/aAAgBAQABPxA=", "base64")
@@ -155,7 +155,7 @@ test("results: calculated by itself after the end time, reviewed, declared; ende
   expect((await myResult(bala)).passed).toBe(false)
 
   // Asha sees it on her own home page
-  const ctx = await browser.newContext({ baseURL: "http://localhost:5174" })
+  const ctx = await browser.newContext({ baseURL: BASE_URL, ignoreHTTPSErrors: true })
   const home = await ctx.newPage()
   await login(home, asha.username, asha.password)
   const card = home.locator("div[data-slot=card]").filter({ hasText: "E2E Results Exam" })

@@ -1,14 +1,18 @@
-# The production stack. This file starts with the part that matters most for safety, the judge; the api, database and Caddy (HTTPS) services
-# join it in the deployment step.
+# The whole exam system. Only Caddy is reachable from the network (port 443); the database, the api and the judge have no published ports.
+# It sits beside other compose projects on the same server (project name `oap`, its own network and volumes).
 name: oap
 
+x-keep: &keep
+  restart: unless-stopped                                  # comes back by itself when the server is switched on again
+  labels: ["com.centurylinklabs.watchtower.enable=false"]   # another app's Watchtower on this server must not pull or restart these local images
+
 services:
-  # Runs candidate code. A locked room: no network at all, nothing secret inside, a read-only filesystem, every run as its own throw-away
-  # user, hard limits on the whole container. The api talks to it only through the socket in the judge-sock volume.
+  # Candidate code runs here and nowhere else. A locked room: no network at all, nothing secret inside, a read-only filesystem, every run as
+  # its own throw-away user, hard limits on the whole container. The api talks to it only through the socket in the judge-sock volume.
   judge:
+    <<: *keep
     build: { context: ., dockerfile: Dockerfile.judge }
     image: oap-judge
-    restart: unless-stopped
     init: true                            # a tiny init process clears the dead processes a fork bomb leaves; without it they would use up the process limit
     read_only: true                       # the filesystem cannot be changed, except the two memory disks below
     network_mode: none                    # no network: not the internet, not the database, not the api
@@ -16,8 +20,8 @@ services:
     cap_add: [CHOWN, DAC_OVERRIDE, FOWNER, KILL, SETUID, SETGID]   # ...except what the service needs to give each run its own user and clean up after it
     security_opt: ["no-new-privileges:true"]
     pids_limit: 512                       # a fork bomb cannot take down the machine
-    mem_limit: 1536m
-    memswap_limit: 1536m                     # no swap: memory limits are real
+    mem_limit: 1536m                      # sized for an 8 GB server that also runs another app
+    memswap_limit: 1536m                  # no swap: memory limits are real
     cpus: 3                               # the rest of the machine stays free for the exam server
     tmpfs:
       - /work:size=512m,mode=0711,exec,nosuid,nodev    # where runs happen: in memory, nobody can list it, programs may run from it
@@ -36,5 +40,70 @@ services:
       timeout: 5s
       retries: 3
 
+  db:
+    <<: *keep
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: oap
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?set DB_PASSWORD in .env}
+      POSTGRES_DB: oap
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    mem_limit: 768m
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U oap -d oap"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
+
+  api:
+    <<: *keep
+    build: { context: ., dockerfile: Dockerfile.api }
+    image: oap-api
+    group_add: ["3000"]                   # the group that may use the judge's socket
+    depends_on:
+      db: { condition: service_healthy }
+      judge: { condition: service_healthy }
+    environment:
+      ENVIRONMENT: production             # without the judge, code runs are refused, never run inside this container
+      DEMO_MODE: "false"
+      SECRET_KEY: ${SECRET_KEY:?set SECRET_KEY in .env}
+      DATABASE_URL: postgresql+psycopg://oap:${DB_PASSWORD}@db:5432/oap
+      PUBLIC_BASE_URL: https://${DOMAIN:?set DOMAIN in .env}
+      JUDGE_URL: unix:///run/judge/judge.sock
+      STORAGE_DIR: /data/user-assets
+      SANDBOX_DIR: /tmp/sandbox
+      LLM_PROVIDER: ${LLM_PROVIDER:-none}
+      LLM_OPENAI_API_KEY: ${LLM_OPENAI_API_KEY:-}
+      LLM_OPENAI_MODEL: ${LLM_OPENAI_MODEL:-gpt-4o-mini}
+    volumes:
+      - judge-sock:/run/judge
+      - ${ASSETS_DIR:-./user-assets}:/data/user-assets   # pictures, recordings and uploads: a plain folder next to the project, easy to back up
+    mem_limit: 1g
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health')"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  # The front door: HTTPS on 443, then everything goes to the api (the website, the API and the live-view WebSocket).
+  caddy:
+    <<: *keep
+    build: { context: ., dockerfile: Dockerfile.caddy }
+    image: oap-caddy
+    ports: ["443:443"]
+    depends_on:
+      api: { condition: service_healthy }
+    environment:
+      DOMAIN: ${DOMAIN:?set DOMAIN in .env}
+      GODADDY_API_TOKEN: ${GODADDY_API_TOKEN:-}      # <key>:<secret> of a GoDaddy production API key
+    volumes:
+      - ./${CADDYFILE:-Caddyfile}:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data                              # the certificate: kept, so a restart does not ask for a new one
+
 volumes:
   judge-sock:
+  db-data:
+  caddy-data:

@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test"
 import fs from "node:fs"
-import { login, loginStaff, shot, staffRequest } from "./helpers"
+import { BASE_URL, login, loginStaff, shot, staffRequest } from "./helpers"
 
 const dialog = (page) => page.getByRole("dialog")
 
@@ -67,7 +67,7 @@ test("the admin changes the closing date and candidates can (or cannot) take the
   const api = await staffRequest(request)
   const exam = await examWithOneQuestion(api, "E2E Window Exam")
   const p = (await api.post(`/tests/${exam.id}/participants`, { names: ["Win Dow"] })).participants[0]
-  const ctx = await browser.newContext({ baseURL: "http://localhost:5174" })
+  const ctx = await browser.newContext({ baseURL: BASE_URL, ignoreHTTPSErrors: true })
   const home = await ctx.newPage()
   await login(home, p.username, p.password)
   const card = home.locator("div[data-slot=card]").filter({ hasText: "E2E Window Exam" })

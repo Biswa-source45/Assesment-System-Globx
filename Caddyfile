@@ -1,0 +1,12 @@
+{
+	# Only port 443. Port 80 belongs to another app on this server and the certificate does not need it.
+	auto_https disable_redirects
+}
+
+{$DOMAIN} {
+	tls {
+		dns godaddy {env.GODADDY_API_TOKEN}
+	}
+	encode zstd gzip
+	reverse_proxy api:8000
+}

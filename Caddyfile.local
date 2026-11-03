@@ -1,0 +1,10 @@
+# For trying the stack on a development machine: a certificate Caddy makes itself (browsers will warn). CADDYFILE=Caddyfile.local, DOMAIN=localhost.
+{
+	auto_https disable_redirects
+}
+
+{$DOMAIN} {
+	tls internal
+	encode zstd gzip
+	reverse_proxy api:8000
+}

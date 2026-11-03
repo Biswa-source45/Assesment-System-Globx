@@ -61,5 +61,5 @@ export async function staffRequest(request, email = "creator@globx.co.in") {
 }
 
 // A second browser window with its own login and a (fake) camera: the candidate, while the admin watches in the first.
-export const BASE_URL = "http://localhost:5174"
-export const candidateWindow = (browser) => browser.newContext({ baseURL: BASE_URL, permissions: ["camera", "microphone"] }).then((ctx) => ctx.newPage().then((page) => ({ ctx, page })))
+export const BASE_URL = process.env.E2E_BASE_URL || "http://localhost:5174"
+export const candidateWindow = (browser) => browser.newContext({ baseURL: BASE_URL, ignoreHTTPSErrors: true, permissions: ["camera", "microphone"] }).then((ctx) => ctx.newPage().then((page) => ({ ctx, page })))

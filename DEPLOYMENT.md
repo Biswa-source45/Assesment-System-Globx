@@ -33,8 +33,8 @@ An exam platform for hiring, used inside one office.
 
 ```
 Office server (Docker)
-  caddy  - HTTPS on 443, serves the web app, forwards /api to the api
-  api    - FastAPI; talks to the database and to OpenAI
+  caddy  - HTTPS on 443 (the only published port), forwards everything to the api
+  api    - FastAPI; also serves the built web app; talks to the database, the judge and OpenAI
   judge  - runs candidate code; own container, cannot reach the database or any secret
   db     - PostgreSQL, data on a Docker volume
 Candidate PCs (Chrome/Edge) - the browser does camera and face detection
@@ -90,11 +90,13 @@ Optional later upgrade: run the judge under gVisor (`runsc`) on a Linux host for
 
 Local development uses the repo-root `.env` (git-ignored). See `.env.example`.
 
-## 7. Deploy steps [planned - commands confirmed when the compose file exists]
+## 7. Deploy steps (the compose file is built and was run end to end on the development machine with a test certificate)
 
-1. Copy the project to the server, create `.env` from section 6.
-2. `docker compose up -d --build`.
-3. Create the first admin account.
+1. On the server, put the project in a folder (`git clone`, or copy it). Copy `server.env.example` to `.env` and fill it in (section 6): `DOMAIN`, long random `DB_PASSWORD` and `SECRET_KEY`, `GODADDY_API_TOKEN` (`key:secret`), optionally the OpenAI key.
+2. GoDaddy, DNS Records tab: add an **A** record `assessment` -> the server's office IP (192.168.1.50). Windows Firewall: allow inbound TCP 443 from the office network.
+3. `docker compose up -d --build` (the first build takes about 10 minutes). Caddy asks for the certificate through the GoDaddy API; `docker compose logs caddy` shows it.
+4. First accounts: `docker compose exec api python -m app.seed` prints the staff and demo candidate passwords once. Sign in, create real users, change the passwords, and ignore or remove the demo candidates and the sample exam.
+5. `docker compose run --rm --no-deps judge python -m app.sandbox.hostile` must end with `39 of 39 checks passed`.
 4. Open `https://assessment.globx.co.in` from a candidate PC and run the check-in page (camera, face, fullscreen).
 5. Run one practice exam end to end with 2-3 PCs before the real one.
 
@@ -148,7 +150,8 @@ Every event is stored with a timestamp, plus when and why the exam ended. Browse
 - [done] Frontend screens: exam setup, participants and credentials sheet, live monitor (extend, end exam, re-open, new password)
 - [done] Frontend screens: results and review (declare, accept AI marks, review per candidate)
 - [done] Docker judge container: image, locked-down compose service, per-run users, 39-attack drill passing (run it again on the office server)
-- [planned] Docker compose, Caddy HTTPS, backups
+- [done] Docker compose with db, api, Caddy and the judge, run end to end locally with a test certificate; Playwright through HTTPS passes
+- [planned] Backups; real certificate and DNS record on the office server
 - [planned] LAN test with 2-3 PCs
 
 ## 12. Open items

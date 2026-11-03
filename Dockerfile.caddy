@@ -1,0 +1,7 @@
+# Caddy with the GoDaddy DNS plugin: the HTTPS certificate is proven through GoDaddy's DNS, because the server has a private office address
+# that Let's Encrypt cannot reach.
+FROM caddy:2-builder AS build
+RUN xcaddy build --with github.com/caddy-dns/godaddy
+
+FROM caddy:2
+COPY --from=build /usr/bin/caddy /usr/bin/caddy
