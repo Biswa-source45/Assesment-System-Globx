@@ -3,6 +3,7 @@ import { Link } from "react-router-dom"
 import { toast } from "sonner"
 import { get } from "@/lib/api"
 import { fmtDate, RESULT_STATE } from "@/lib/labels"
+import { STATE_TONE, TONE } from "@/lib/verdict"
 import { useDepartments } from "@/lib/useDepartments"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -36,10 +37,10 @@ export default function Results() {
               <TableCell className="font-medium"><Link className="hover:underline" to={`/admin/results/${t.id}`}>{t.title}</Link></TableCell>
               <TableCell>{byId[t.department_id]?.name ?? "-"}</TableCell>
               <TableCell>{t.ends_at ? fmtDate(t.ends_at) : "No end time"}</TableCell>
-              <TableCell><Badge variant={t.results.state === "declared" ? "default" : t.results.state === "needs_attention" ? "destructive" : "secondary"}>{RESULT_STATE[t.results.state]}</Badge></TableCell>
+              <TableCell><Badge variant="outline" className={TONE[STATE_TONE[t.results.state]]}>{RESULT_STATE[t.results.state]}</Badge></TableCell>
               <TableCell>{t.results.summary.appeared} of {t.results.summary.assigned}</TableCell>
               <TableCell>{t.results.attention || "-"}</TableCell>
-              <TableCell className="text-right"><Button asChild variant="ghost" size="sm"><Link to={`/admin/results/${t.id}`}>Open</Link></Button></TableCell>
+              <TableCell className="text-right"><Button asChild size="sm"><Link to={`/admin/results/${t.id}`}>Open</Link></Button></TableCell>
             </TableRow>
           ))}
           {rows && !rows.length && <TableRow><TableCell colSpan={7} className="text-muted-foreground">No published exams yet.</TableCell></TableRow>}

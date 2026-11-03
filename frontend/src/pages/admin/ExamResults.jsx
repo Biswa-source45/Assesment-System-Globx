@@ -5,7 +5,7 @@ import { Download } from "lucide-react"
 import { api, get, post } from "@/lib/api"
 import { useAuth } from "@/lib/auth"
 import { fmtDate, RESULT_STATE, RISK } from "@/lib/labels"
-import { TONE } from "@/lib/verdict"
+import { OUTCOME_TONE, STATE_TONE, TONE } from "@/lib/verdict"
 import { useConfirm } from "@/components/ConfirmDialog"
 import { Alert } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
@@ -76,12 +76,12 @@ export default function ExamResults() {
         <div className="grid gap-1">
           <div className="flex items-center gap-2">
             <h1 className="text-2xl font-semibold">{d.title}</h1>
-            <Badge variant={d.state === "declared" ? "default" : d.state === "needs_attention" ? "destructive" : "secondary"} data-testid="results-state">{RESULT_STATE[d.state]}</Badge>
+            <Badge variant="outline" className={TONE[STATE_TONE[d.state]]} data-testid="results-state">{RESULT_STATE[d.state]}</Badge>
           </div>
           <p className="text-sm text-muted-foreground">Pass mark {d.cutoff} marks{d.ends_at ? `. Closes ${fmtDate(d.ends_at)}` : ""}</p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <Button variant="ghost" asChild><Link to="/admin/results">All results</Link></Button>
+          <Button variant="outline" asChild><Link to="/admin/results">All results</Link></Button>
           {user.can.recruit && <Button variant="outline" onClick={() => download("csv")}><Download /> CSV</Button>}
           {user.can.recruit && <Button variant="outline" onClick={() => download("xlsx")}><Download /> Excel</Button>}
           {evaluate && <Button variant="outline" disabled={busy || d.active > 0} onClick={calculate}>{d.calculated_at ? "Calculate again" : "Calculate results"}</Button>}
@@ -110,13 +110,13 @@ export default function ExamResults() {
               <TableRow key={r.assignment_id} data-testid="results-row">
                 <TableCell>{r.rank ?? "-"}</TableCell>
                 <TableCell className="font-medium">{r.name}<div className="font-mono text-xs font-normal text-muted-foreground">{r.username}</div></TableCell>
-                <TableCell><Badge variant={["absent"].includes(r.outcome) ? "outline" : ["violation_limit", "face_violation", "admin_ended"].includes(r.outcome) ? "destructive" : "secondary"}>{r.outcome_label}</Badge></TableCell>
+                <TableCell><Badge variant="outline" className={TONE[OUTCOME_TONE[r.outcome] ?? "none"]}>{r.outcome_label}</Badge></TableCell>
                 <TableCell>{done && r.score != null ? `${r.score} / ${r.max}` : "-"}</TableCell>
                 <TableCell>{done && r.percent != null ? `${r.percent}%` : "-"}</TableCell>
                 <TableCell>{done ? <Badge variant="outline" className={TONE[r.below_cutoff ? "bad" : "good"]}>{r.below_cutoff ? "Not passed" : "Passed"}</Badge> : "-"}</TableCell>
                 <TableCell>{r.attention || "-"}</TableCell>
                 <TableCell>{done ? (RISK[r.risk_level] ?? "-") : "-"}</TableCell>
-                <TableCell className="text-right">{done && <Button asChild variant="ghost" size="sm"><Link to={`/admin/results/${testId}/${r.attempt_id}`}>Review</Link></Button>}</TableCell>
+                <TableCell className="text-right">{done && <Button asChild size="sm"><Link to={`/admin/results/${testId}/${r.attempt_id}`}>Review</Link></Button>}</TableCell>
               </TableRow>
             )
           })}

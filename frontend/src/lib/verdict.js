@@ -5,7 +5,12 @@ export const TONE = {
   bad: "border-red-600 bg-red-50 text-red-900",
   part: "border-amber-500 bg-amber-50 text-amber-900",
   none: "border-border bg-muted/40 text-muted-foreground",
+  info: "border-primary bg-primary/10 text-primary",
 }
+
+// The coloured pills of the results screens: what happened to a person, and where an exam's results stand.
+export const OUTCOME_TONE = { submitted: "good", time_over: "part", violation_limit: "bad", face_violation: "bad", admin_ended: "bad", absent: "none", in_progress: "info" }
+export const STATE_TONE = { open: "none", calculating: "part", needs_attention: "bad", ready: "info", declared: "good" }
 export const BAR = { good: "border-l-green-600", bad: "border-l-red-600", part: "border-l-amber-500", none: "border-l-border" }
 export const VERDICT_TEXT = { good: "Correct", bad: "Wrong", part: "Partly correct", none: "Not answered" }
 

@@ -171,7 +171,7 @@ export default function AttemptReview() {
           <h1 className="text-2xl font-semibold">{rep.candidate.name}</h1>
           <p className="text-sm text-muted-foreground">{rep.test.title}. {ENDED[a.submit_reason] ?? a.submit_reason}{a.submitted_at ? `, ${fmtDate(a.submitted_at)}` : ""}</p>
         </div>
-        <Button variant="ghost" asChild><Link to={`/admin/results/${testId}`}>Back to the results</Link></Button>
+        <Button variant="outline" asChild><Link to={`/admin/results/${testId}`}>Back to the results</Link></Button>
       </div>
 
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
