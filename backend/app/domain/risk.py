@@ -19,10 +19,11 @@ DEFAULT_WEIGHTS: Dict[str, float] = {
     "rdp_detected": 20,     # once
     "plagiarism_high": 20,  # once
     "webcam_denied": 20,    # once
+    "screen_share_stopped": 8,  # per event, counts as leaving the exam like a tab leave
     "network_drop": 0,
 }
 ONCE = {"multi_display", "vm_detected", "rdp_detected", "plagiarism_high", "webcam_denied"}
-VIOLATION_TYPES = {"tab_blur", "fs_exit"}  # count towards the "leave test environment" limit
+VIOLATION_TYPES = {"tab_blur", "fs_exit", "screen_share_stopped"}  # count towards the "leave test environment" limit
 LEVELS: List[Tuple[float, str]] = [(70, "critical"), (45, "high"), (20, "medium"), (0, "low")]
 BAND = {"low": "Acceptable", "medium": "Marginally acceptable", "high": "Marginally acceptable - review",
         "critical": "Unacceptable"}

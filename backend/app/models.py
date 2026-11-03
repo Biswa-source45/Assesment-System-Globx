@@ -365,6 +365,23 @@ class ProctorSnapshot(Base):
     flags: Mapped[list] = mapped_column(JSON, default=list)
 
 
+class Recording(Base):
+    """One video file of one attempt (kind webcam or screen). The browser sends it in pieces; a page reload starts a new part."""
+    __tablename__ = "recordings"
+    __table_args__ = (UniqueConstraint("attempt_id", "kind", "part", name="uq_recording_part"),)
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=uid)
+    attempt_id: Mapped[str] = mapped_column(ForeignKey("attempts.id", ondelete="CASCADE"), index=True)
+    kind: Mapped[str] = mapped_column(String(12))  # webcam|screen
+    part: Mapped[str] = mapped_column(String(24))
+    path: Mapped[str] = mapped_column(String(400))  # relative to the storage folder
+    bytes: Mapped[int] = mapped_column(Integer, default=0)
+    pieces: Mapped[int] = mapped_column(Integer, default=0)  # the number of the next piece expected
+    gaps: Mapped[int] = mapped_column(Integer, default=0)    # pieces that never arrived
+    started_at: Mapped[datetime] = mapped_column(TS, default=now)
+    last_at: Mapped[datetime] = mapped_column(TS, default=now)
+    expired: Mapped[bool] = mapped_column(Boolean, default=False)  # the file was deleted after the retention days
+
+
 class PlagiarismMatch(Base):
     __tablename__ = "plagiarism_matches"
     id: Mapped[str] = mapped_column(String(32), primary_key=True, default=uid)

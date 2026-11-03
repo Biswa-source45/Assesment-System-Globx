@@ -52,9 +52,9 @@ async def security_headers(request: Request, call_next):
     return resp
 
 
-from app.api import auth, candidate, departments, exam_pack, library, results, staff, tests  # noqa: E402
+from app.api import auth, candidate, departments, exam_pack, library, live, results, staff, tests  # noqa: E402
 
-for r in (auth.router, departments.router, library.router, tests.router, exam_pack.router, results.router, candidate.router, staff.router):
+for r in (auth.router, departments.router, library.router, tests.router, exam_pack.router, results.router, live.router, candidate.router, staff.router):
     app.include_router(r, prefix="/api/v1")
 
 

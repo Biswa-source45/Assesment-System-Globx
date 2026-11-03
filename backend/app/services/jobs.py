@@ -28,6 +28,7 @@ _stop = threading.Event()
 _sweeper: Optional[threading.Thread] = None
 _plag_pending: set = set()
 _plag_lock = threading.Lock()
+_last_purge = 0.0  # recorded video is checked for deletion about once an hour
 _calc_running: set = set()  # exams being calculated right now, so the sweeper does not start a second run
 ACTIVE = ("in_progress", "submitted", "auto_submitted", "evaluating")  # an attempt in any of these is not finished yet
 
@@ -161,6 +162,12 @@ def sweep_once() -> None:
         for test in db.scalars(select(Test).where(Test.status == "published", Test.ends_at.is_not(None), Test.ends_at < t, Test.calculated_at.is_(None))).all():
             if not db.scalar(select(func.count(Attempt.id)).where(Attempt.test_id == test.id, Attempt.status.in_(ACTIVE))):
                 calculate_async(test.id)
+        # 1c. video older than its exam's retention days is deleted
+        global _last_purge
+        if time.time() - _last_purge > 3600:
+            _last_purge = time.time()
+            from app.services.proctoring import purge_recordings
+            purge_recordings(db)
         # 2. scheduled invites
         for a in db.scalars(select(Assignment).where(Assignment.sent_at.is_(None),
                                                      Assignment.scheduled_at.is_not(None))).all():

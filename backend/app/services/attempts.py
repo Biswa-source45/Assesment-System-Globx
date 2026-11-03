@@ -211,9 +211,12 @@ def proctoring_config(test: Test) -> Dict:
     p.setdefault("face_min_seconds", 3)    # no/extra face must last this long to count as an incident
     p.setdefault("limit_action", "submit")
     p.setdefault("block_paste", True)
-    p.setdefault("screen_capture", False)
-    p.setdefault("screenshot_seconds", 60)
-    p.setdefault("audio", True)
+    clamp = lambda v, lo, hi, default: max(lo, min(hi, int(v))) if isinstance(v, (int, float)) and not isinstance(v, bool) else default
+    p["evidence"] = p.get("evidence") if p.get("evidence") in ("pictures", "video") else "pictures"  # what is kept for the whole exam
+    p["screen_share"] = bool(p.get("screen_share", False))  # the candidate shares the whole screen (needed for screen pictures, screen video, live screen)
+    p["live_view"] = bool(p.get("live_view", False))        # the examiner may watch live and talk
+    p["screenshot_seconds"] = clamp(p.get("screenshot_seconds"), 10, 300, 60)
+    p["video_retention_days"] = clamp(p.get("video_retention_days"), 1, 90, 14)
     p.setdefault("block_multi_display", True)
     p.setdefault("weights", {})
     return p

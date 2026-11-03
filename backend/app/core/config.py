@@ -25,6 +25,7 @@ class Settings(BaseSettings):
     cors_origins: List[str] = ["http://localhost:5173", "http://127.0.0.1:5173"]
 
     database_url: str = f"sqlite:///{(BACKEND_DIR / 'data' / 'oap.sqlite3').as_posix()}"
+    live_ice_servers: str = "[]"  # JSON list of STUN/TURN servers for the live view; empty works on a normal office network
     storage_dir: str = str(ROOT_DIR / "user-assets")  # what people produce: camera pictures and uploaded answer files. Docker: a volume.
 
     secret_key: str  # required: set SECRET_KEY in .env (no default, so a known key can never run in production)

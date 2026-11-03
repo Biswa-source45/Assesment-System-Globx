@@ -11,11 +11,11 @@ from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
 from app.domain import risk
-from app.models import Attempt, ProctorEvent, ProctorSnapshot, Test, now, uid
+from app.models import Attempt, ProctorEvent, ProctorSnapshot, Recording, Test, aware, now, uid
 from app.services.attempts import proctoring_config
 
 log = logging.getLogger("oap.proctor")
-EVENT_TYPES = set(risk.DEFAULT_WEIGHTS) | {"fs_enter", "focus", "resume", "consent", "face_ok"}
+EVENT_TYPES = set(risk.DEFAULT_WEIGHTS) | {"fs_enter", "focus", "resume", "consent", "face_ok", "talk_started", "talk_ended", "message_sent"}
 FACE_TYPES = {"face_missing", "multi_face"}
 _cv = None
 
@@ -95,7 +95,7 @@ def ingest_events(db: Session, at: Attempt, events: List[Dict]) -> Dict:
         msg = f"Warning {faces} of {face_limit}: keep exactly one face in the camera view."
     elif limit and r["violations"] and any(e.get("type") in risk.VIOLATION_TYPES for e in events):
         action = "warn"
-        msg = f"Warning {r['violations']} of {limit}: leaving fullscreen or switching tabs is recorded."
+        msg = f"Warning {r['violations']} of {limit}: leaving fullscreen, switching tabs or stopping the screen share is recorded."
     return {"risk_score": r["score"], "risk_level": r["level"], "band": r["band"], "violations": r["violations"],
             "limit": limit, "face_incidents": faces, "face_limit": face_limit, "action": action, "message": msg}
 
@@ -137,3 +137,26 @@ def save_snapshot(db: Session, at: Attempt, kind: str, data: bytes, client_faces
     out = ingest_events(db, at, events) if events else {"risk_score": at.risk_score, "risk_level": at.risk_level}
     out.update({"snapshot_id": sid, "faces": faces, "flags": flags})
     return out
+
+
+def purge_recordings(db: Session) -> int:
+    """Delete video files that are older than their exam's retention days (counted from the last piece received).
+    The rows stay, marked expired, so the review page can say the video was deleted."""
+    root = os.path.realpath(get_settings().storage_dir)
+    n = 0
+    for rec in db.scalars(select(Recording).where(Recording.expired.is_(False))).all():
+        days = proctoring_config(db.get(Test, db.get(Attempt, rec.attempt_id).test_id))["video_retention_days"]
+        if aware(rec.last_at) + timedelta(days=days) > now():
+            continue
+        path = os.path.realpath(os.path.join(root, rec.path))
+        if os.path.commonpath([root, path]) == root and os.path.exists(path):
+            os.remove(path)
+            try:
+                os.rmdir(os.path.dirname(path))  # the attempt's folder, once it is empty
+            except OSError:
+                pass
+        rec.expired = True
+        n += 1
+    db.commit()
+    return n
+
