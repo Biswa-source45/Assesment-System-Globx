@@ -9,9 +9,9 @@ export default defineConfig({
   reporter: [["list"]],
   use: {
     baseURL: "http://localhost:5174",
-    permissions: ["camera"],
-    // a fake camera, so the camera and face flow can run without hardware
-    launchOptions: { args: ["--use-fake-device-for-media-stream", "--use-fake-ui-for-media-stream"] },
+    permissions: ["camera", "microphone"],
+    // a fake camera and microphone, and a screen that is shared without asking, so the camera, screen and voice flows run without hardware
+    launchOptions: { args: ["--use-fake-device-for-media-stream", "--use-fake-ui-for-media-stream", "--auto-select-desktop-capture-source=Entire screen"] },
     screenshot: "only-on-failure",
     trace: "retain-on-failure",
   },

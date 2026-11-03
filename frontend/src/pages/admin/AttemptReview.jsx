@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from "react"
 import { Link, useParams } from "react-router-dom"
 import { toast } from "sonner"
 import { Check, Circle, Minus, X } from "lucide-react"
-import { get, post } from "@/lib/api"
+import { api, get, post } from "@/lib/api"
 import { useAuth } from "@/lib/auth"
 import { ENDED, RISK, fmtDate } from "@/lib/labels"
 import { EDGE, TONE, VERDICT_TEXT, verdictOf } from "@/lib/verdict"
@@ -133,6 +133,48 @@ function Answer({ q }) {
   )
 }
 
+// Video of the whole exam, when the exam recorded it: it is deleted after the exam's retention days.
+function Recordings({ attemptId }) {
+  const [data, setData] = useState(null)
+  const [playing, setPlaying] = useState(null)  // { id, url }
+  useEffect(() => { get(`/attempts/${attemptId}/recordings`).then(setData).catch(() => {}) }, [attemptId])
+  useEffect(() => () => { if (playing?.url) URL.revokeObjectURL(playing.url) }, [playing])
+
+  async function open(r, download) {
+    try {
+      const url = URL.createObjectURL(await (await api(`/recordings/${r.id}/file`, { raw: true })).blob())  // a protected file: fetched with the login header
+      if (!download) return setPlaying({ id: r.id, url })
+      const a = document.createElement("a")
+      a.href = url
+      a.download = `${r.kind}-${r.id.slice(0, 6)}.webm`
+      a.click()
+      setTimeout(() => URL.revokeObjectURL(url), 1000)
+    } catch (e) { toast.error(e.message) }
+  }
+
+  if (!data?.recordings.length) return null
+  return (
+    <div className="grid gap-2" data-testid="recordings">
+      <b>Video</b>
+      {data.recordings.map((r) => (
+        <div key={r.id} className="grid gap-2 rounded-md border p-2" data-testid="recording">
+          <div className="flex flex-wrap items-center gap-3">
+            <span className="grow">{r.kind === "screen" ? "Screen" : "Camera"} video, {(r.bytes / 1048576).toFixed(1)} MB{r.gaps ? `, ${r.gaps} piece(s) missing` : ""}</span>
+            {r.expired
+              ? <Badge variant="outline" data-testid="recording-expired">Deleted after {data.retention_days} days</Badge>
+              : <>
+                  <span className="text-xs text-muted-foreground">Deleted on {fmtDate(r.deletes_at)}</span>
+                  <Button size="sm" onClick={() => open(r, false)}>Play</Button>
+                  <Button size="sm" variant="outline" onClick={() => open(r, true)}>Download</Button>
+                </>}
+          </div>
+          {playing?.id === r.id && <video src={playing.url} controls autoPlay className="max-h-96 w-full rounded-md bg-black" data-testid="recording-player" />}
+        </div>
+      ))}
+    </div>
+  )
+}
+
 // Did the candidate give any answer at all? (A blank is "not answered", not "wrong".)
 const answered = (q) => (q.type.startsWith("mcq") ? q.options.some((o) => o.chosen) : q.type === "coding" || q.type === "sql" ? !!q.submission?.id : !!plain(q.answer_html).trim() || q.files?.length > 0)
 
@@ -144,6 +186,7 @@ export default function AttemptReview() {
   const [mark, setMark] = useState(null)
   const [onlyProblems, setOnlyProblems] = useState(true)
   const [shown, setShown] = useState(24)
+  const [shownScreens, setShownScreens] = useState(24)
   const load = useCallback(() => get(`/reports/attempts/${attemptId}`).then(setRep).catch((e) => toast.error(e.message)), [attemptId])
   useEffect(() => { load() }, [load])
 
@@ -160,6 +203,7 @@ export default function AttemptReview() {
   const a = rep.attempt, p = rep.proctoring
   const problems = p.snapshots.filter((s) => s.kind === "webcam" && s.faces !== 1)
   const pics = (onlyProblems && problems.length ? problems : p.snapshots.filter((s) => s.kind === "webcam"))
+  const screens = p.snapshots.filter((s) => s.kind === "screen")
   const evaluate = user.can.evaluate
   const passTone = a.below_cutoff ? "bad" : "good"
   const right = rep.questions.filter((q) => verdictOf(q.score ?? 0, q.marks, answered(q)) === "good").length
@@ -260,6 +304,21 @@ export default function AttemptReview() {
             </div>
             {pics.length > shown && <div><Button size="sm" variant="ghost" onClick={() => setShown(shown + 24)}>Show more</Button></div>}
           </div>
+          {screens.length > 0 && (
+            <div className="grid gap-2">
+              <b>Screen pictures ({screens.length})</b>
+              <div className="flex flex-wrap gap-2" data-testid="screen-pictures">
+                {screens.slice(0, shownScreens).map((s) => (
+                  <figure key={s.id} className="grid gap-0.5 text-xs text-muted-foreground">
+                    <Snapshot id={s.id} alt={`Screen picture at ${time(s.at)}`} className="h-24 w-40" />
+                    <figcaption>{time(s.at)}</figcaption>
+                  </figure>
+                ))}
+              </div>
+              {screens.length > shownScreens && <div><Button size="sm" variant="ghost" onClick={() => setShownScreens(shownScreens + 24)}>Show more</Button></div>}
+            </div>
+          )}
+          {user.can.recruit && <Recordings attemptId={attemptId} />}
         </CardContent>
       </Card>
 

@@ -8,8 +8,9 @@ import { countFaces } from "@/lib/faces"
 export class Proctor {
   // onResult receives server answers ({action: warn | force_submit | ban, message, ...}) and {action: "fullscreen_required"}
   // onFaces receives the current face count (null while unknown) for the on-screen indicator
-  constructor({ attemptId, cfg, video, onResult, onFaces }) {
-    Object.assign(this, { attemptId, cfg, video, onResult, onFaces })
+  // screenVideo: a (hidden) video showing the shared screen, when the exam asks for the screen
+  constructor({ attemptId, cfg, video, screenVideo, onResult, onFaces }) {
+    Object.assign(this, { attemptId, cfg, video, screenVideo, onResult, onFaces })
     this.queue = []
     this.timers = []
     this.hiddenAt = 0
@@ -57,6 +58,11 @@ export class Proctor {
       const first = setTimeout(() => this.snapshot(), 4000)
       this.timers.push(() => clearTimeout(first))
     }
+    if (this.cfg.screen_share && this.cfg.evidence === "pictures") {  // video mode records the screen instead
+      every(this.cfg.screenshot_seconds * 1000, () => this.screenPicture())
+      const firstScreen = setTimeout(() => this.screenPicture(), 6000)
+      this.timers.push(() => clearTimeout(firstScreen))
+    }
   }
 
   stop() {
@@ -99,24 +105,29 @@ export class Proctor {
         this.reported = true
         this.event(n > 1 ? "multi_face" : "face_missing", now - this.badSince)
         this.flush()
+        this.snapshot()  // a picture at the moment of the incident, besides the regular ones
       }
     } catch { /* detector not ready yet */ } finally { this.busy = false }
   }
 
-  snapshot() {
-    const v = this.video
+  snapshot() { this.picture("webcam", this.video, 320, 0.7) }
+
+  screenPicture() { this.picture("screen", this.screenVideo, 1024, 0.6) }
+
+  // A small JPEG of a video element, kept as evidence. Only the camera's picture carries the browser's face count.
+  picture(kind, v, width, quality) {
     if (!v?.videoWidth) return
     const c = document.createElement("canvas")
-    c.width = 320
-    c.height = Math.round(320 * v.videoHeight / v.videoWidth)
+    c.width = width
+    c.height = Math.round(width * v.videoHeight / v.videoWidth)
     c.getContext("2d").drawImage(v, 0, 0, c.width, c.height)
     c.toBlob(async (blob) => {
       if (!blob) return
       const form = new FormData()
-      form.append("kind", "webcam")
-      if (this.faces !== null) form.append("faces", String(this.faces))
-      form.append("image", blob, "cam.jpg")
+      form.append("kind", kind)
+      if (kind === "webcam" && this.faces !== null) form.append("faces", String(this.faces))
+      form.append("image", blob, `${kind}.jpg`)
       try { this.onResult(await api(`/attempts/${this.attemptId}/proctor/snapshot`, { method: "POST", form })) } catch { /* evidence only */ }
-    }, "image/jpeg", 0.7)
+    }, "image/jpeg", quality)
   }
 }

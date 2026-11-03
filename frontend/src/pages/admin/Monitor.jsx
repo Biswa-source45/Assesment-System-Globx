@@ -2,8 +2,10 @@ import { useCallback, useEffect, useState } from "react"
 import { useSearchParams } from "react-router-dom"
 import { RefreshCw } from "lucide-react"
 import { get } from "@/lib/api"
+import { useAuth } from "@/lib/auth"
 import { ENDED, RISK, STATUS } from "@/lib/labels"
 import { hms, useCountdown } from "@/lib/useCountdown"
+import LiveGrid from "@/pages/admin/LiveGrid"
 import AssignmentActions from "@/components/AssignmentActions"
 import Snapshot from "@/components/Snapshot"
 import { Badge } from "@/components/ui/badge"
@@ -29,6 +31,8 @@ export default function Monitor() {
   const [data, setData] = useState(null)
   const [error, setError] = useState("")
   const [updated, setUpdated] = useState(null)
+  const [view, setView] = useState("table")  // or "live": every camera and screen at once
+  const canWatch = useAuth().user.can.recruit  // live video is for the people who run the exam
 
   useEffect(() => {
     get("/tests")
@@ -68,6 +72,12 @@ export default function Monitor() {
               <SelectContent>{exams.map((t) => <SelectItem key={t.id} value={t.id}>{t.title}</SelectItem>)}</SelectContent>
             </Select>
           )}
+          {data?.limits.live && canWatch && (
+            <div className="flex rounded-lg border p-0.5">
+              <Button size="sm" variant={view === "table" ? "default" : "ghost"} onClick={() => setView("table")}>Table</Button>
+              <Button size="sm" variant={view === "live" ? "default" : "ghost"} onClick={() => setView("live")}>Live view</Button>
+            </div>
+          )}
           <Button variant="outline" size="icon" aria-label="Refresh now" onClick={load}><RefreshCw /></Button>
         </div>
       </div>
@@ -83,7 +93,8 @@ export default function Monitor() {
             <Badge variant={count((r) => r.assignment_status === "banned") ? "destructive" : "secondary"}>{count((r) => r.assignment_status === "banned")} locked</Badge>
             <span className="self-center text-xs text-muted-foreground">Updated {updated?.toLocaleTimeString()}, refreshes every {POLL_MS / 1000} s</span>
           </div>
-          <Table>
+          {view === "live" && data.limits.live && canWatch && <LiveGrid key={examId} testId={examId} rows={rows} />}
+          {(view === "table" || !data.limits.live || !canWatch) && <Table>
             <TableHeader>
               <TableRow>
                 <TableHead>Candidate</TableHead><TableHead>Status</TableHead><TableHead>Time left</TableHead><TableHead>Answered</TableHead>
@@ -117,7 +128,7 @@ export default function Monitor() {
               })}
               {!rows.length && <TableRow><TableCell colSpan={10} className="text-muted-foreground">No participants yet. Add them on the exam's Participants tab.</TableCell></TableRow>}
             </TableBody>
-          </Table>
+          </Table>}
         </>
       )}
     </div>

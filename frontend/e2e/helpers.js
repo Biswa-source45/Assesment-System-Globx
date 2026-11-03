@@ -28,6 +28,8 @@ export async function startProctoredExam(page, user, examTitle = "GLOBX Full-Sta
   await card.getByRole("link", { name: /Start|Resume/ }).click()
   await page.getByRole("button", { name: "Enable camera" }).click()
   await expect(page.getByTestId("face-status")).toHaveText("1 face detected", { timeout: 15_000 })
+  const share = page.getByRole("button", { name: "Share my screen" })  // exams that ask for the whole screen
+  if (await share.count()) { await share.click(); await expect(page.getByTestId("screen-status")).toBeVisible() }
   await page.getByLabel(/I understand and agree/).click()
   await page.getByRole("button", { name: "Start exam" }).click()
   await expect(page).toHaveURL(/\/exam\/attempt\//)
@@ -60,4 +62,4 @@ export async function staffRequest(request, email = "creator@globx.co.in") {
 
 // A second browser window with its own login and a (fake) camera: the candidate, while the admin watches in the first.
 export const BASE_URL = "http://localhost:5174"
-export const candidateWindow = (browser) => browser.newContext({ baseURL: BASE_URL, permissions: ["camera"] }).then((ctx) => ctx.newPage().then((page) => ({ ctx, page })))
+export const candidateWindow = (browser) => browser.newContext({ baseURL: BASE_URL, permissions: ["camera", "microphone"] }).then((ctx) => ctx.newPage().then((page) => ({ ctx, page })))

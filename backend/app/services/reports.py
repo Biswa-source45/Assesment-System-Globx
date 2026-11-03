@@ -261,6 +261,6 @@ def monitor_rows(db: Session, test: Test) -> Dict:
         rows.append(row)
     live_first = {"in_progress": 0}
     rows.sort(key=lambda r: (live_first.get(r["status"], 1), r["name"].lower()))
-    return {"server_time": t.isoformat(), "limits": {"tab": cfg["tab_switch_limit"], "face": cfg["face_limit"],
-                                                      "snapshot_s": cfg["snapshot_seconds"], "webcam": bool(cfg["enabled"] and cfg["webcam"])},
+    return {"server_time": t.isoformat(), "limits": {"tab": cfg["tab_switch_limit"], "face": cfg["face_limit"], "snapshot_s": cfg["snapshot_seconds"],
+                                                      "webcam": bool(cfg["enabled"] and cfg["webcam"]), "live": bool(cfg["enabled"] and cfg["live_view"])},
             "rows": rows}

@@ -1,18 +1,44 @@
-// The camera stream is opened on the check-in page and reused by the exam page (same browser session).
-export const media = { stream: null }
+// The camera (and, when the invigilator may talk to the candidate, the microphone) and the shared screen are opened on the
+// check-in page and reused by the exam page (same browser session).
+export const media = { stream: null, screen: null }
+if (import.meta.env.DEV) window.__media = media  // dev only: lets a browser test simulate a candidate pressing "Stop sharing"
 
-export async function getCamera() {
+export async function getCamera(withMic = false) {
   if (media.stream?.getVideoTracks().some((t) => t.readyState === "live")) return media.stream
-  media.stream = await navigator.mediaDevices.getUserMedia({ video: { width: 640, height: 480 }, audio: false })
+  const video = { width: 640, height: 480 }
+  try {
+    media.stream = await navigator.mediaDevices.getUserMedia({ video, audio: withMic ? { echoCancellation: true, noiseSuppression: true } : false })
+  } catch (e) {
+    if (!withMic) throw e
+    media.stream = await navigator.mediaDevices.getUserMedia({ video, audio: false })  // no microphone: the candidate can still hear the invigilator
+  }
+  media.stream.getAudioTracks().forEach((t) => { t.enabled = false })  // the microphone is silent until the invigilator opens a line
   return media.stream
 }
 
+// Everything the browser holds open for the exam ends here: camera, microphone and screen.
 export function stopCamera() {
   media.stream?.getTracks().forEach((t) => t.stop())
+  media.screen?.getTracks().forEach((t) => t.stop())
   media.stream = null
+  media.screen = null
 }
 
 export const cameraLive = () => !!media.stream?.getVideoTracks().some((t) => t.readyState === "live")
+
+// The whole screen at a low frame rate (an exam is mostly still text). A window or a tab is refused: it would hide the rest of the screen.
+export async function getScreen() {
+  const stream = await navigator.mediaDevices.getDisplayMedia({ video: { frameRate: { ideal: 3, max: 5 }, width: { max: 1280 } }, audio: false })
+  const surface = stream.getVideoTracks()[0].getSettings().displaySurface  // undefined when the browser does not say
+  if (surface && surface !== "monitor") {
+    stream.getTracks().forEach((t) => t.stop())
+    throw new Error("not the whole screen")
+  }
+  media.screen = stream
+  return stream
+}
+
+export const screenLive = () => !!media.screen?.getVideoTracks().some((t) => t.readyState === "live")
 
 // Hints for the proctoring report: extra monitors and virtual machines.
 export function systemCheck() {

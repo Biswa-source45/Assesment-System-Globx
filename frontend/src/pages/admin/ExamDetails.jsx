@@ -15,7 +15,8 @@ import { Switch } from "@/components/ui/switch"
 import { Textarea } from "@/components/ui/textarea"
 
 // What the server assumes when a setting is missing (see proctoring_config in services/attempts.py).
-const PROCTORING = { enabled: true, webcam: true, fullscreen: true, tab_switch_limit: 3, face_limit: 5, face_min_seconds: 3, block_paste: true, snapshot_seconds: 15, block_multi_display: true }
+const PROCTORING = { enabled: true, webcam: true, fullscreen: true, tab_switch_limit: 3, face_limit: 5, face_min_seconds: 3, block_paste: true, snapshot_seconds: 15, block_multi_display: true,
+  evidence: "pictures", screen_share: false, live_view: false, screenshot_seconds: 60, video_retention_days: 14 }
 
 const toForm = (t) => ({
   department_id: t?.department_id ?? "", title: t?.title ?? "", description: t?.description ?? "", instructions: fromHtml(t?.instructions ?? ""),
@@ -35,6 +36,7 @@ function toBody(f, t) {
       proctoring: {
         ...(t?.settings?.proctoring ?? {}), ...p, tab_switch_limit: Number(p.tab_switch_limit), face_limit: Number(p.face_limit),
         face_min_seconds: Number(p.face_min_seconds), snapshot_seconds: Number(p.snapshot_seconds),
+        screenshot_seconds: Number(p.screenshot_seconds), video_retention_days: Number(p.video_retention_days),
       },
     },
   }
@@ -140,6 +142,21 @@ export default function ExamDetails({ test, onSaved }) {
               <Toggle id="p-fs" label="Full screen" checked={p.fullscreen} onChange={(v) => setP("fullscreen", v)} />
               <Toggle id="p-paste" label="Block copy, paste and right-click" checked={p.block_paste} onChange={(v) => setP("block_paste", v)} />
               <Toggle id="p-display" label="Block a second screen" checked={p.block_multi_display} onChange={(v) => setP("block_multi_display", v)} />
+              <Toggle id="p-screen" label="Candidate shares their entire screen" hint="Needed for screen pictures, screen video and the live screen. Stopping the share counts like leaving the window." checked={p.screen_share} onChange={(v) => setP("screen_share", v)} />
+              <Toggle id="p-live" label="Live view for the invigilator" hint="Watch every camera and screen in the Live monitor, send a message or talk to one candidate. Candidates should wear headphones." checked={p.live_view} onChange={(v) => setP("live_view", v)} />
+              <div className="grid gap-1.5">
+                <Label>What is kept for the whole exam</Label>
+                <Select value={p.evidence} onValueChange={(v) => setP("evidence", v)}>
+                  <SelectTrigger className="w-80" aria-label="Evidence kept"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="pictures">Pictures (camera, and the screen if shared)</SelectItem>
+                    <SelectItem value="video">Video of the whole exam (camera, and the screen if shared)</SelectItem>
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">{p.evidence === "video" ? "About 150 MB per candidate for a 90-minute exam. Deleted automatically after the number of days below." : "A few MB per candidate. Pictures are kept."}</p>
+              </div>
+              {p.evidence === "video" && <Field id="p-days" label="Delete the video after (days)" type="number" min="1" max="90" value={p.video_retention_days} onChange={(e) => setP("video_retention_days", e.target.value)} hint="Counted from the end of the candidate's exam." />}
+              {p.evidence === "pictures" && p.screen_share && <Field id="p-shot" label="Screen picture every (seconds)" type="number" min="10" max="300" value={p.screenshot_seconds} onChange={(e) => setP("screenshot_seconds", e.target.value)} />}
               <div className="grid gap-4 md:grid-cols-2">
                 <Field id="p-tab" label="Window or full-screen leaves allowed" type="number" min="0" max="20" value={p.tab_switch_limit} onChange={(e) => setP("tab_switch_limit", e.target.value)}
                   hint="Each one shows a warning. The next one ends the exam. 0 turns the rule off." />

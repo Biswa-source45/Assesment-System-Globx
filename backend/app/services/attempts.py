@@ -9,6 +9,7 @@ from typing import Dict, List, Optional
 
 from fastapi import HTTPException
 from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.domain import scoring
@@ -272,6 +273,26 @@ def _section_open(at: Attempt, section_id: str) -> bool:
     return True
 
 
+def _find_answer(db: Session, attempt_id: str, question_id: str) -> Optional[Answer]:
+    return db.scalar(select(Answer).where(Answer.attempt_id == attempt_id, Answer.question_id == question_id))
+
+
+def _insert_answer(db: Session, attempt_id: str, question_id: str) -> Answer:
+    """Create the row; if someone else created it a moment ago, read theirs. The row is unique per attempt and question, and a candidate's
+    last save and the closing of the exam can both create it at the same instant: the loser must not fail (the closing job used to, and the marking was skipped)."""
+    try:
+        with db.begin_nested():
+            a = Answer(id=uid(), attempt_id=attempt_id, question_id=question_id, response={})
+            db.add(a)
+        return a
+    except IntegrityError:
+        return _find_answer(db, attempt_id, question_id)
+
+
+def get_or_create_answer(db: Session, attempt_id: str, question_id: str) -> Answer:
+    return _find_answer(db, attempt_id, question_id) or _insert_answer(db, attempt_id, question_id)
+
+
 def save_answer(db: Session, at: Attempt, question_id: str, response: Dict, flagged: bool, seq: int) -> Answer:
     ensure_active(at)
     aq = db.scalar(select(AttemptQuestion).where(AttemptQuestion.attempt_id == at.id,
@@ -280,12 +301,11 @@ def save_answer(db: Session, at: Attempt, question_id: str, response: Dict, flag
         raise HTTPException(404, "Question is not part of this attempt")
     if not _section_open(at, aq.section_id):
         raise HTTPException(403, "This section is closed")
-    a = db.scalar(select(Answer).where(Answer.attempt_id == at.id, Answer.question_id == question_id))
+    a = _find_answer(db, at.id, question_id)
     if a and seq and a.seq and seq < a.seq:
         raise HTTPException(409, "A newer version of this answer is already saved")
     if not a:
-        a = Answer(id=uid(), attempt_id=at.id, question_id=question_id)
-        db.add(a)
+        a = _insert_answer(db, at.id, question_id)
     resp = dict(response or {})
     if aq.question.type in SUBJECTIVE and "html" in resp:
         from app.services.sanitize import sanitize_html
@@ -461,9 +481,7 @@ def finalize_attempt(db: Session, attempt_id: str, reason: str = "submitted", wa
     for aq in aqs:
         a = answers.get(aq.question_id)
         if a is None:
-            a = Answer(id=uid(), attempt_id=at.id, question_id=aq.question_id, response={})
-            db.add(a)
-            db.flush()
+            a = get_or_create_answer(db, at.id, aq.question_id)
         grade_answer(db, aq, a, use_ai=False)  # the AI marks text answers once, after the exam closes (calculate_exam)
     db.flush()
     at.status = "submitted"

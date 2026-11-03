@@ -10,6 +10,7 @@ export function setTokens(t) {
   try { t ? localStorage.setItem("oap.tokens", JSON.stringify(tokens)) : localStorage.removeItem("oap.tokens") } catch { /* storage blocked */ }
 }
 export const hasTokens = () => !!tokens
+export const accessToken = () => tokens?.access_token
 export const refreshToken = () => tokens?.refresh_token
 
 export class ApiError extends Error {

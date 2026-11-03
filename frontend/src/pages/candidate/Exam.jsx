@@ -4,6 +4,7 @@ import { toast } from "sonner"
 import { Flag } from "lucide-react"
 import { get, post, put } from "@/lib/api"
 import { getCamera, stopCamera } from "@/lib/media"
+import { useEvidence } from "@/lib/useEvidence"
 import { Proctor } from "@/lib/proctor"
 import { hms, useCountdown } from "@/lib/useCountdown"
 import { Badge } from "@/components/ui/badge"
@@ -50,6 +51,8 @@ export default function Exam() {
   const proctor = useRef(null)
   const finished = useRef(false)
   const latest = useRef({})  // newest callbacks, so timers and the proctor never use stale ones
+  const cfg = st?.test.proctoring ?? {}
+  const ev = useEvidence({ st, cfg, attemptId, proctorRef: proctor })  // screen, video, live view, the invigilator's voice and messages
 
   useEffect(() => {
     get(`/attempts/${attemptId}`)
@@ -70,7 +73,6 @@ export default function Exam() {
       .catch((e) => setError(e.message))
   }, [attemptId, navigate])
 
-  const cfg = st?.test.proctoring ?? {}
   const sections = st?.sections ?? []
   const curSec = sections[sec]
   const q = curSec?.questions[qi]
@@ -151,6 +153,7 @@ export default function Exam() {
       if (finished.current) return
       finished.current = true  // the server already ended it: no submit, just leave
       proctor.current?.stop()
+      ev.stop()
       leaveExam()
       navigate(`/exam/done/${attemptId}?why=${REASON[c.reason] ?? "submitted"}`, { replace: true })
     } catch { /* offline: the next tick tries again */ }
@@ -162,6 +165,7 @@ export default function Exam() {
     setBusy(true)
     try { await flushAll() } catch { /* the server grades what it has */ }
     try { await proctor.current?.flush() } catch { /* same */ }
+    try { await ev.stop() } catch { /* the last pieces of video are best effort */ }
     proctor.current?.stop()
     try { await post(`/attempts/${attemptId}/submit`, { reason: why }) } catch { /* already submitted */ }
     leaveExam()
@@ -207,9 +211,10 @@ export default function Exam() {
           await video.current.play().catch(() => {})
         } catch { /* a missing camera shows up as "no face" and counts against the candidate */ }
       }
-      p = new Proctor({ attemptId, cfg, video: video.current, onResult: (r) => latest.current.onProctor(r), onFaces: setFaces })
+      p = new Proctor({ attemptId, cfg, video: video.current, screenVideo: ev.screenVideo.current, onResult: (r) => latest.current.onProctor(r), onFaces: setFaces })
       proctor.current = p
       p.start()
+      ev.begin()
       if (cfg.fullscreen && !document.fullscreenElement) setFsNeeded(true)
     })()
     return () => { p?.flush(); p?.stop() }
@@ -226,6 +231,8 @@ export default function Exam() {
 
   return (
     <div className="min-h-svh bg-muted/40 pb-32">
+      <video ref={ev.screenVideo} muted playsInline className="pointer-events-none fixed top-0 left-0 size-px opacity-0" />
+      {ev.talk && <div role="status" data-testid="talk-banner" className="fixed inset-x-0 top-0 z-[60] bg-red-600 py-2 text-center text-sm font-medium text-white">The invigilator is speaking with you. Your microphone is on.</div>}
       <header className="sticky top-0 z-10 flex flex-wrap items-center gap-3 border-b bg-white px-4 py-2.5">
         <span className="font-brand text-lg font-bold">GLOBX <span className="text-primary">Assess</span></span>
         <b className="grow truncate">{st.test.title}</b>
@@ -330,6 +337,20 @@ export default function Exam() {
         <DialogContent showCloseButton={false}>
           <DialogHeader><DialogTitle className="text-destructive">Proctoring warning</DialogTitle><DialogDescription>{warn}</DialogDescription></DialogHeader>
           <DialogFooter><Button onClick={() => { setWarn(""); if (cfg.fullscreen && !document.fullscreenElement) goFullscreen() }}>I understand, continue</Button></DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!ev.message} onOpenChange={(o) => !o && ev.setMessage("")}>
+        <DialogContent showCloseButton={false}>
+          <DialogHeader><DialogTitle>Message from the invigilator</DialogTitle><DialogDescription data-testid="invigilator-message">{ev.message}</DialogDescription></DialogHeader>
+          <DialogFooter><Button onClick={() => ev.setMessage("")}>OK</Button></DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={ev.screenNeeded && !warn}>
+        <DialogContent showCloseButton={false}>
+          <DialogHeader><DialogTitle>Share your screen to continue</DialogTitle><DialogDescription>This exam needs your entire screen to be shared. Stopping it is recorded as a warning. Choose Entire screen, then press Share.</DialogDescription></DialogHeader>
+          <DialogFooter><Button onClick={ev.shareAgain}>Share my screen</Button></DialogFooter>
         </DialogContent>
       </Dialog>
 
