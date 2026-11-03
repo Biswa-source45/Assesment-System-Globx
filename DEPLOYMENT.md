@@ -135,7 +135,7 @@ Every event is stored with a timestamp, plus when and why the exam ended. Browse
 - [done] Frontend scaffold (Vite, React JSX, shadcn/ui): login, admin shell, exams list, candidate home
 - [done] Frontend screens: question bank, candidate check-in (camera + face gate), exam runner, proctoring client; Playwright suite (12 tests)
 - [done] Frontend screens: exam setup, participants and credentials sheet, live monitor (extend, end exam, re-open, new password)
-- [next] Frontend screens: results and review
+- [done] Frontend screens: results and review (declare, accept AI marks, review per candidate)
 - [planned] Docker judge container
 - [planned] Docker compose, Caddy HTTPS, backups
 - [planned] LAN test with 2-3 PCs
