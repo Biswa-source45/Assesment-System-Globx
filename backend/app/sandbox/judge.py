@@ -5,6 +5,7 @@ import json
 from typing import Dict, List, Optional
 
 from app.domain.scoring import compare_output, cross_verification_flags, r2
+from app.sandbox import remote
 from app.sandbox.languages import get_language
 from app.sandbox.process import new_workdir, remove_workdir
 from app.sandbox.sql import SQL_ENGINES, compare_results
@@ -31,8 +32,8 @@ def _verdict_from_proc(p, expected: Optional[str], comparator: str) -> str:
     return "AC" if compare_output(p.stdout, expected, comparator) else "WA"
 
 
-def judge_code(cfg: Dict, cases: List[Dict], language: str, source: str, kind: str,
-               custom_input: Optional[str] = None) -> Dict:
+def local_judge_code(cfg: Dict, cases: List[Dict], language: str, source: str, kind: str,
+                     custom_input: Optional[str] = None) -> Dict:
     """cases: [{id, ordinal, visibility, input, expected, weight}] ; kind: run|submit|validate."""
     lang = get_language(language)
     allowed = cfg.get("languages") or []
@@ -83,7 +84,7 @@ def judge_code(cfg: Dict, cases: List[Dict], language: str, source: str, kind: s
         remove_workdir(wd)
 
 
-def run_reference(cfg: Dict, language: str, source: str, inputs: List[str]) -> List[Dict]:
+def local_run_reference(cfg: Dict, language: str, source: str, inputs: List[str]) -> List[Dict]:
     """Run the admin's reference solution on each input; its stdout becomes the expected output.
     Returns [{input, expected, ok, verdict}]. Raises ValueError if the solution cannot be run at all."""
     lang = get_language(language)
@@ -105,7 +106,7 @@ def run_reference(cfg: Dict, language: str, source: str, inputs: List[str]) -> L
         remove_workdir(wd)
 
 
-def judge_sql(cfg: Dict, cases: List[Dict], engine: str, query: str, kind: str) -> Dict:
+def local_judge_sql(cfg: Dict, cases: List[Dict], engine: str, query: str, kind: str) -> Dict:
     eng = SQL_ENGINES.get((engine or "sqlite").lower())
     allowed = cfg.get("engines") or ["sqlite"]
     if eng is None:
@@ -145,13 +146,59 @@ def judge_sql(cfg: Dict, cases: List[Dict], engine: str, query: str, kind: str) 
     return out
 
 
-def sql_expected_for(cfg: Dict, dataset: str, engine: str = "sqlite") -> Dict:
+def local_sql_expected_for(cfg: Dict, dataset: str, engine: str = "sqlite") -> Dict:
     """Compute expected result JSON for a dataset by running the reference query."""
     eng = SQL_ENGINES.get(engine) or SQL_ENGINES["sqlite"]
     r = eng.run(cfg.get("schema", ""), cfg.get("seed", ""), dataset, cfg.get("reference_sql", ""))
     if not r.get("ok"):
         raise ValueError(f"Reference query failed: {r.get('error')}")
     return {"columns": r["columns"], "rows": r["rows"]}
+
+
+# What the rest of the application calls. In production these go to the isolated judge; they never run candidate code in this process.
+def judge_code(cfg: Dict, cases: List[Dict], language: str, source: str, kind: str, custom_input: Optional[str] = None) -> Dict:
+    if remote.blocked():
+        return {"status": "error", "error": remote.NOT_ISOLATED}
+    if not remote.enabled():
+        return local_judge_code(cfg, cases, language, source, kind, custom_input)
+    try:
+        return remote.call("judge_code", cfg=cfg, cases=cases, language=language, source=source, kind=kind, custom_input=custom_input)
+    except remote.Unavailable as e:
+        return {"status": "error", "error": str(e)}
+
+
+def judge_sql(cfg: Dict, cases: List[Dict], engine: str, query: str, kind: str) -> Dict:
+    if remote.blocked():
+        return {"status": "error", "error": remote.NOT_ISOLATED}
+    if not remote.enabled():
+        return local_judge_sql(cfg, cases, engine, query, kind)
+    try:
+        return remote.call("judge_sql", cfg=cfg, cases=cases, engine=engine, query=query, kind=kind)
+    except remote.Unavailable as e:
+        return {"status": "error", "error": str(e)}
+
+
+def run_reference(cfg: Dict, language: str, source: str, inputs: List[str]) -> List[Dict]:
+    """Raises ValueError (with a message for the author) when the solution cannot be run, as before."""
+    if remote.blocked():
+        raise ValueError(remote.NOT_ISOLATED)
+    if not remote.enabled():
+        return local_run_reference(cfg, language, source, inputs)
+    try:
+        return remote.call("run_reference", cfg=cfg, language=language, source=source, inputs=inputs)
+    except remote.Unavailable as e:
+        raise ValueError(str(e))
+
+
+def sql_expected_for(cfg: Dict, dataset: str, engine: str = "sqlite") -> Dict:
+    if remote.blocked():
+        raise ValueError(remote.NOT_ISOLATED)
+    if not remote.enabled():
+        return local_sql_expected_for(cfg, dataset, engine)
+    try:
+        return remote.call("sql_expected_for", cfg=cfg, dataset=dataset, engine=engine)
+    except remote.Unavailable as e:
+        raise ValueError(str(e))
 
 
 def public_view(result: Dict, show_hidden_counts: bool = True) -> Dict:

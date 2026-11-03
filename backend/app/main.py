@@ -27,10 +27,11 @@ async def lifespan(app: FastAPI):
     from app.services import jobs
     if os.environ.get("OAP_NO_BACKGROUND") != "1":
         jobs.start_background()
-    from app.sandbox.languages import REGISTRY
-    for s in REGISTRY.values():
-        i = s.info()
-        log.info("sandbox %-11s %s %s", s.key, "OK " if i["available"] else "MISSING", i["version"] or ", ".join(i["missing"]))
+    from app.sandbox import remote
+    cat = remote.catalog()
+    log.info("code judge: %s", "isolated container" if cat["isolated"] else ("NOT CONFIGURED: code runs are refused" if remote.blocked() else "local process (development only)"))
+    for i in cat["languages"]:
+        log.info("sandbox %-11s %s %s", i["key"], "OK " if i["available"] else "MISSING", i["version"] or ", ".join(i["missing"]))
     log.info("%s ready on %s (demo_mode=%s)", settings.app_name, settings.public_base_url, settings.demo_mode)
     yield
     jobs.stop_background()

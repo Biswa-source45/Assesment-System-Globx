@@ -54,6 +54,8 @@ class Settings(BaseSettings):
     sandbox_java: str = ""
     sandbox_node: str = ""
     sandbox_network_isolation: str = "auto"   # auto | on | off  (Linux: unshare -rn)
+    judge_url: str = ""         # "" runs candidate code inside this process (development only); unix:///run/judge/judge.sock or http://host:port uses the isolated judge
+    sandbox_uid_base: int = 0   # set by the judge container: every run is its own user, numbered from here (0 = off)
     sql_postgres_dsn: str = ""   # e.g. postgresql://judge:pw@localhost:5432/judge
     sql_mysql_dsn: str = ""      # e.g. mysql://judge:pw@localhost:3306/judge
     run_limit_per_question: int = 50

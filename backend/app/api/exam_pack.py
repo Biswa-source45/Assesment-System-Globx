@@ -22,7 +22,7 @@ from app.core.deps import audit
 from app.db import get_db
 from app.models import QTYPES, Department, Question, Section, SectionItem, Test, User, aware, uid
 from app.sandbox.judge import run_reference
-from app.sandbox.languages import REGISTRY
+from app.sandbox import remote
 from app.services.attempts import proctoring_config
 
 router = APIRouter(tags=["exam-pack"])
@@ -213,7 +213,7 @@ def _body(item: Any, dept_id: str, errs: List[str]) -> Optional[QuestionIn]:
         if not (isinstance(ref, dict) and isinstance(ref.get("source"), str) and ref["source"].strip()):
             errs.append("'reference' must be {language, source}: a correct solution")
             ref = {"language": "python", "source": ""}
-        langs = _texts(item, "languages", errs) or [k for k, l in REGISTRY.items() if l.available()]
+        langs = _texts(item, "languages", errs) or list(remote.language_names())
         cases = _cases(item, "test_cases", "input", errs)
         cfg = {"time_limit_ms": int(_num(item, "time_limit_ms", 2000, errs)), "memory_mb": int(_num(item, "memory_mb", 256, errs)), "comparator": "trim",
                "languages": langs, "reference": {"language": str(ref.get("language") or "python"), "source": ref["source"]}}

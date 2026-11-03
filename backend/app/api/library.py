@@ -14,7 +14,7 @@ from app.core.deps import AUTHOR, BANK, audit, same_org
 from app.db import get_db
 from app.models import QTYPES, Answer, Department, Question, QuestionGroup, Section, SectionItem, Test, TestCase, User, aware, uid
 from app.sandbox.judge import judge_code, run_reference, sql_expected_for
-from app.sandbox.languages import REGISTRY
+from app.sandbox import remote
 from app.sandbox.sql import describe_tables
 from app.services import ai
 from app.services.attempts import sync_live_attempts
@@ -103,9 +103,10 @@ def validate_question(body: QuestionIn, strict: bool) -> List[str]:
             errs.append("Add at least 1 sample (open) test case and 1 hidden test case")
     if body.type == "coding":
         langs = c.get("languages") or []
-        bad = [l for l in langs if l not in REGISTRY]
+        known = remote.language_keys()
+        bad = [l for l in langs if l not in known]
         if not langs or bad:
-            errs.append(f"Choose languages from: {', '.join(REGISTRY)}")
+            errs.append(f"Choose languages from: {', '.join(known)}")
         if not (100 <= int(c.get("time_limit_ms", 2000)) <= 10000):
             errs.append("Time limit must be 100 - 10000 ms")
         if not (32 <= int(c.get("memory_mb", 256)) <= 1024):

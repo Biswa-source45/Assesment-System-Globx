@@ -18,8 +18,7 @@ from app.db import get_db
 from app.domain import scoring
 from app.models import (ROLES, Answer, Assignment, Attempt, AttemptQuestion, AuditLog, CodeSubmission, Evaluation,
                         MailOutbox, Organization, ProctorSnapshot, Question, RefreshToken, Test, User, UserRole, aware, now, uid)
-from app.sandbox.languages import REGISTRY, refresh_all
-from app.sandbox.sql import SQL_ENGINES
+from app.sandbox import remote
 from app.services import ai
 from app.services.departments import create_defaults
 from app.services.attempts import _text_of, grade_answer, recompute_totals
@@ -358,16 +357,20 @@ def update_org(oid: str, body: OrgIn, request: Request, user: User = Depends(SUP
 
 @router.get("/system/sandboxes")
 def sandboxes(refresh: bool = False, user: User = Depends(staff)):
-    langs = refresh_all() if refresh else [s.info() for s in REGISTRY.values()]
     from app.sandbox.process import network_isolation_prefix
-    return {"languages": langs, "sql": [e.info() for e in SQL_ENGINES.values()],
+    cat = remote.catalog(refresh)
+    env = get_settings().environment.lower()
+    return {"languages": cat["languages"], "sql": cat["sql"], "isolated": cat["isolated"], "reachable": cat["reachable"], "environment": env,
+            "unsafe_in_production": env == "production" and not cat["isolated"],  # the admin screen shows a red warning
             "network_isolation": bool(network_isolation_prefix()), "os": os.name}
 
 
 @router.post("/system/sandboxes/selftest")
 def selftest(user: User = Depends(staff)):
-    from app.sandbox.selftest import run_selftest
-    return run_selftest()
+    try:
+        return remote.selftest()
+    except remote.Unavailable as e:
+        raise HTTPException(503, str(e))
 
 
 @router.get("/system/audit")

@@ -15,8 +15,8 @@ from sqlalchemy.orm import Session
 from app.domain import scoring
 from app.models import (Answer, Assignment, Attempt, AttemptQuestion, CodeSubmission, Evaluation, Question,
                         QuestionGroup, Section, SectionItem, Test, aware, now, uid)
-from app.sandbox.languages import get_language
-from app.sandbox.sql import SQL_ENGINES, describe_tables
+from app.sandbox import remote
+from app.sandbox.sql import describe_tables
 from app.services import ai
 
 log = logging.getLogger("oap.attempts")
@@ -131,8 +131,9 @@ def candidate_question(aq: AttemptQuestion, db: Session) -> Dict:
         if c.get("show_rubric", True) and c.get("rubric"):
             out["rubric"] = [{"name": r.get("name"), "max": r.get("max")} for r in c["rubric"]]
     elif q.type == "coding":
-        langs = [k for k in (c.get("languages") or []) if (get_language(k) and get_language(k).available())]
-        out.update({"languages": [{"key": k, "name": get_language(k).name} for k in langs],
+        names = remote.language_names()  # what the judge can run now
+        langs = [k for k in (c.get("languages") or []) if k in names]
+        out.update({"languages": [{"key": k, "name": names[k]} for k in langs],
                     "starter": {k: (c.get("starter") or {}).get(k, "") for k in langs},
                     "time_limit_ms": c.get("time_limit_ms", 2000), "memory_mb": c.get("memory_mb", 256),
                     "open_cases": [{"ordinal": t.ordinal, "input": t.input, "expected": t.expected, "weight": t.weight}
@@ -140,9 +141,10 @@ def candidate_question(aq: AttemptQuestion, db: Session) -> Dict:
                     "hidden_weights": [t.weight for t in q.cases if t.visibility == "hidden"]})
     elif q.type == "sql":
         import json
-        engines = [e for e in (c.get("engines") or ["sqlite"]) if SQL_ENGINES.get(e) and SQL_ENGINES[e].available()]
+        names = remote.engine_names()
+        engines = [e for e in (c.get("engines") or ["sqlite"]) if e in names]
         out.update({"schema": c.get("schema", ""), "seed": c.get("seed", ""), "ordered": bool(c.get("ordered")),
-                    "engines": [{"key": e, "name": SQL_ENGINES[e].name} for e in engines],
+                    "engines": [{"key": e, "name": names[e]} for e in engines],
                     "open_cases": [{"ordinal": t.ordinal, "input": t.input,
                                     "expected": json.loads(t.expected or "{}"), "weight": t.weight,
                                     "tables": describe_tables(c.get("schema", ""), c.get("seed", ""), t.input)}

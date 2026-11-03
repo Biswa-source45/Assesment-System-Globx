@@ -64,7 +64,7 @@ def _type_of(declared: str) -> str:
     return "DATE" if "DATE" in t or "TIME" in t else "TEXT"
 
 
-def describe_tables(schema: str, seed: str, dataset: str, limit: int = 20) -> List[Dict]:
+def local_describe_tables(schema: str, seed: str, dataset: str, limit: int = 20) -> List[Dict]:
     """The tables that schema + seed + one dataset create, as [{name, columns, rows}] so the candidate can see the sample data.
     Built with SQLite; the scripts are written by the question author, so they are trusted. Returns [] if they do not run."""
     con = sqlite3.connect(":memory:")
@@ -82,6 +82,19 @@ def describe_tables(schema: str, seed: str, dataset: str, limit: int = 20) -> Li
         return []
     finally:
         con.close()
+
+
+def describe_tables(schema: str, seed: str, dataset: str, limit: int = 20) -> List[Dict]:
+    """The same, run by the isolated judge when there is one (the scripts may come from a pasted file, so the API process does not run them)."""
+    from app.sandbox import remote
+    if remote.blocked():
+        return []
+    if not remote.enabled():
+        return local_describe_tables(schema, seed, dataset, limit)
+    try:
+        return remote.call("describe_tables", schema=schema, seed=seed, dataset=dataset, limit=limit)
+    except (remote.Unavailable, ValueError):
+        return []
 
 
 class SqlEngine:
