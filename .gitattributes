@@ -1,2 +1,7 @@
 # Shell scripts run inside Linux containers: they must keep LF line endings even when checked out on Windows
 *.sh text eol=lf
+# Files read inside Linux containers, or by Docker and Caddy: keep LF endings even when checked out on Windows
+Dockerfile* text eol=lf
+Caddyfile* text eol=lf
+docker-compose.yml text eol=lf
+.dockerignore text eol=lf
