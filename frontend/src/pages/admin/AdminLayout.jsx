@@ -23,10 +23,7 @@ export default function AdminLayout() {
   return (
     <SidebarProvider>
       <Sidebar>
-        <SidebarHeader className="px-4 pt-5 pb-0">
-          <span className="font-brand text-xl font-bold">GLOBX <span className="text-primary">Assess</span></span>
-          <div className="mt-4 border-b-2 border-dotted border-muted-foreground/40" data-testid="brand-rule" />
-        </SidebarHeader>
+        <SidebarHeader className="h-12 flex-row items-center px-4 py-0"><span className="font-brand text-lg font-bold" data-testid="brand">GLOBX <span className="text-primary">Assess</span></span></SidebarHeader>
         <SidebarContent>
           <SidebarGroup>
             <SidebarGroupContent>
@@ -55,10 +52,10 @@ export default function AdminLayout() {
         </SidebarFooter>
       </Sidebar>
       <SidebarInset>
-        <header className="flex h-12 items-center gap-2 border-b px-4">
+        <header className="flex h-12 items-center gap-2 border-b px-4" data-testid="topbar">
           <SidebarTrigger />
           <Separator orientation="vertical" className="h-5" />
-          <span className="text-sm text-muted-foreground">{user.org_name}</span>
+          <span className="text-sm text-muted-foreground" data-testid="company">{user.org_name}</span>
         </header>
         <main className="p-6"><Outlet /></main>
       </SidebarInset>

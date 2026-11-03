@@ -37,7 +37,7 @@ Read at the start of every task; update after every change. Plan and decisions: 
 ## Log
 
 ### 2026-11-03 (sidebar)
-- Sidebar narrower (14rem, was 16rem), menu buttons taller (48px) with larger text and icons and more space between them, and a dotted line under the GLOBX Assess brand. One layout test checks the width, the button height and the dotted line. 49 Playwright tests.
+- Sidebar narrower (14rem, was 16rem), menu buttons taller (48px) with larger text and icons and more space between them. The brand block is as tall as the top bar (3rem), so "GLOBX Assess" and the company name sit on one level line (a dotted line under the brand was tried and removed: it made the misalignment obvious). One layout test checks the width, the button height and the alignment. 49 Playwright tests.
 
 ### 2026-11-03 (coloured buttons and pills in the results screens)
 - The faint text-only **Open** and **Review** buttons are now solid blue buttons (and **All results** / **Back to the results** outlined); what happened to a person and where an exam's results stand are coloured pills from one place (`lib/verdict.js`: `OUTCOME_TONE`, `STATE_TONE`): Submitted green, Time over amber, Ended early red, Did not attend grey, In progress blue; exam state open grey, calculating amber, needs attention red, ready blue, declared green. Existing results tests re-run green.
