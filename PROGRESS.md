@@ -36,6 +36,9 @@ Read at the start of every task; update after every change. Plan and decisions: 
 
 ## Log
 
+### 2026-11-03 (first install on the office server)
+- Installed on the server in `D:\oap` with `deploy.ps1 -Seed -Drill` (two files copied, `docker login ghcr.io` ok, images pulled from ghcr.io, db/judge/api healthy, caddy started, port 443 opened for the local subnet, first accounts seeded, drill 39 of 39 on the server). The first two attempts stopped at the token check (the paste did not arrive); the third wrote `.env`. Cloudflare A record `assessment` -> 192.168.1.50 (DNS only) exists. Not yet confirmed: the certificate in `docker compose logs caddy`, opening the site from another office computer, camera/screen/live view over real HTTPS, OneTrack still up. Demo account passwords appeared in a screenshot sent in chat: change or disable the seeded accounts.
+
 ### 2026-11-03 (DNS is at Cloudflare, not GoDaddy)
 - GoDaddy's DNS tab shows **DNS Provider: Cloudflare**: the A record and the certificate check must go through Cloudflare. The nameservers are left alone. Switched: `Dockerfile.caddy` builds `caddy-dns/cloudflare`, `Caddyfile` uses `dns cloudflare {env.CLOUDFLARE_API_TOKEN}`, compose, `deploy.ps1` (hidden prompt for the token, checks its shape), `server.env.example`, DEPLOYMENT sections 4, 6, 7, 12. The A record must be **DNS only (grey cloud)**. Earlier log lines that say GoDaddy are history.
 
