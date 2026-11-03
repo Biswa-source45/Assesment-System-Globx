@@ -36,6 +36,9 @@ Read at the start of every task; update after every change. Plan and decisions: 
 
 ## Log
 
+### 2026-11-03 (what the office server already runs)
+- The user shared the server's existing `docker-compose.yml` (OneTrack: Postgres 5433, Redis 6379, backend 8081, Adminer 8080, front on 80, Watchtower for all containers). Decision: deploy ours as a separate compose project `oap`, publish only 443, label our services against Watchtower, DNS-challenge certificate. Noted in DEPLOYMENT section 5. Nothing built yet for api/db/Caddy.
+
 ### 2026-11-03 (the isolated judge: container and attack drill)
 - **Container** (`Dockerfile.judge`, `docker-compose.yml`, `backend/judge_entrypoint.sh`): Python, gcc/g++, JDK, Node and the sandbox code only; no `.env`, database client, secrets or pictures. Locked: `network_mode: none`, read-only root, in-memory `/work` and `/tmp`, all capabilities dropped except what is needed to give each run its own user, `no-new-privileges`, `pids_limit 512`, 3 GB memory without swap, 3 CPUs, `init: true` (clears the dead processes a fork bomb leaves; without it they used up the process limit). The API reaches it only through a Unix socket in the `judge-sock` volume (group 3000, the program's user is not in it).
 - **Per run** (`sandbox/process.py`, active only when `SANDBOX_UID_BASE` is set): every run is its own user (20000 up), its folder is mode 700 and its own, `RLIMIT_NPROC`, and when a run ends **all processes of that user are killed by the kernel in one go** (a helper becomes that user and does `kill(-1, SIGKILL)`, repeated until none is left; killing one by one could not keep up with a fork bomb and left 150+ processes). A run never starts as root.
