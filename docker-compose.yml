@@ -1,0 +1,40 @@
+# The production stack. This file starts with the part that matters most for safety, the judge; the api, database and Caddy (HTTPS) services
+# join it in the deployment step.
+name: oap
+
+services:
+  # Runs candidate code. A locked room: no network at all, nothing secret inside, a read-only filesystem, every run as its own throw-away
+  # user, hard limits on the whole container. The api talks to it only through the socket in the judge-sock volume.
+  judge:
+    build: { context: ., dockerfile: Dockerfile.judge }
+    image: oap-judge
+    restart: unless-stopped
+    init: true                            # a tiny init process clears the dead processes a fork bomb leaves; without it they would use up the process limit
+    read_only: true                       # the filesystem cannot be changed, except the two memory disks below
+    network_mode: none                    # no network: not the internet, not the database, not the api
+    cap_drop: [ALL]                       # no special powers...
+    cap_add: [CHOWN, DAC_OVERRIDE, FOWNER, KILL, SETUID, SETGID]   # ...except what the service needs to give each run its own user and clean up after it
+    security_opt: ["no-new-privileges:true"]
+    pids_limit: 512                       # a fork bomb cannot take down the machine
+    mem_limit: 3g
+    memswap_limit: 3g                     # no swap: memory limits are real
+    cpus: 3                               # the rest of the machine stays free for the exam server
+    tmpfs:
+      - /work:size=512m,mode=0711,exec,nosuid,nodev    # where runs happen: in memory, nobody can list it, programs may run from it
+      - /tmp:size=256m,mode=1777,nosuid,nodev
+    volumes:
+      - judge-sock:/run/judge             # the private channel to the api
+    environment:
+      ENVIRONMENT: judge                  # not "production": this is the judge itself
+      SECRET_KEY: unused                  # the settings need a value; the judge uses no secret
+      SANDBOX_DIR: /work
+      SANDBOX_UID_BASE: "20000"           # every run is its own user, numbered from here
+      JUDGE_WORKERS: "3"                  # programs running at once; the rest wait
+    healthcheck:
+      test: ["CMD", "python", "-c", "import httpx; httpx.Client(transport=httpx.HTTPTransport(uds='/run/judge/judge.sock')).get('http://j/health').raise_for_status()"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+
+volumes:
+  judge-sock:

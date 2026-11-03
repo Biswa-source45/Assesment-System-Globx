@@ -28,13 +28,20 @@ Read at the start of every task; update after every change. Plan and decisions: 
 
 1. Department-specific question patterns (the department design supports them; only the type list differs per department today): numeric answer with tolerance (Finance, Operations), situational judgement with scored options (HR), rating scales.
    The exam editor does not yet expose linked groups, random pools, per-question mark overrides or reordering (the API supports them).
-2. Docker judge container (the API still runs candidate code in-process: not safe for real candidates), compose, Caddy HTTPS, backups.
+2. Judge: Playwright through the real judge, docs; then compose for api/db, Caddy HTTPS, backups.
 3. Check on a real laptop with a real face: MediaPipe false positives/negatives (`minDetectionConfidence` is 0.5 in `frontend/src/lib/faces.js`), fullscreen behaviour,
    camera permission prompt on the office HTTPS address.
 4. Smaller gaps: camera-lost heartbeat; a per-question result page for candidates; a "disqualify" action for ended-early candidates; picture retention rule; second-solution cross-check for generated cases; judge calls (`run_reference` too) must go
    through the judge container once it exists; old email-OTP/invite flow still in the backend; bundle is one 1.4 MB chunk (split later); rotate the OpenAI key.
 
 ## Log
+
+### 2026-11-03 (the isolated judge: container and attack drill)
+- **Container** (`Dockerfile.judge`, `docker-compose.yml`, `backend/judge_entrypoint.sh`): Python, gcc/g++, JDK, Node and the sandbox code only; no `.env`, database client, secrets or pictures. Locked: `network_mode: none`, read-only root, in-memory `/work` and `/tmp`, all capabilities dropped except what is needed to give each run its own user, `no-new-privileges`, `pids_limit 512`, 3 GB memory without swap, 3 CPUs, `init: true` (clears the dead processes a fork bomb leaves; without it they used up the process limit). The API reaches it only through a Unix socket in the `judge-sock` volume (group 3000, the program's user is not in it).
+- **Per run** (`sandbox/process.py`, active only when `SANDBOX_UID_BASE` is set): every run is its own user (20000 up), its folder is mode 700 and its own, `RLIMIT_NPROC`, and when a run ends **all processes of that user are killed by the kernel in one go** (a helper becomes that user and does `kill(-1, SIGKILL)`, repeated until none is left; killing one by one could not keep up with a fork bomb and left 150+ processes). A run never starts as root.
+- **Root-cause fix found by the drill:** a program that floods its output can exit (file-size limit) before the monitor loop looks at the size, so the verdict was sometimes RE instead of OLE; the size is now also checked after the run.
+- **Attack drill** (`python -m app.sandbox.hostile`, run in the container: `docker compose run --rm --no-deps judge python -m app.sandbox.hostile`): 39 checks: container read-only and no network; reading secrets / the service's environment / other runs' folders / the socket from Python, C, Java and JavaScript; compile-time `#include` of secrets; writing outside, becoming root, killing the service, mounting; endless loop, sleep, fork bomb (Python and shell), thread bomb, memory bombs (Python, C, Java), output flood, disk fill, kill-all, C++ template bomb; SQL growth, ATTACH, PRAGMA, extension loading; afterwards no run folder or process left, process count normal, an honest program still passes. **39 of 39 pass** (run twice).
+- Tests: 67 pytest pass (against `oap_test`). Not yet done: Playwright through the real judge, admin warning banner test, deployment docs.
 
 ### 2026-11-03 (evidence per exam, live view, voice)
 - **Per exam** (exam Details, Proctoring): *Candidate shares their entire screen*, *Live view for the invigilator*, *What is kept for the whole exam*: **Pictures** (camera every `snapshot_seconds`, screen every `screenshot_seconds` (60), plus a camera picture at every incident) or **Video** of the whole exam (camera, and the screen when shared), **deleted after `video_retention_days` (14, 1-90)**. The server clamps every setting (`proctoring_config`), so a bad value never gets through. Pictures are kept; only video is deleted automatically.
