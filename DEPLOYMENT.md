@@ -55,13 +55,9 @@ Optional later upgrade: run the judge under gVisor (`runsc`) on a Linux host for
 
 ## 4. Domain and HTTPS [planned - Day 4]
 
-1. **DNS (GoDaddy, one time):** add an A record for `globx.co.in`: name `assessment`, value = the server's office IP, TTL 600.
+1. **DNS (Cloudflare, one time):** the domain is registered at GoDaddy but its DNS is managed at **Cloudflare** (GoDaddy's DNS tab says so; do not move the nameservers back, other records and mail depend on them). In Cloudflare, DNS > Records, add an **A** record for `globx.co.in`: name `assessment`, value = the server's office IP (192.168.1.50), **Proxy status: DNS only (grey cloud)**, TTL Auto. A proxied (orange) record cannot point to a private address.
 2. **Fixed IP:** reserve the server's address in the office router so it never changes.
-3. **Certificate:** Let's Encrypt, proven with a DNS TXT record, so the server needs no internet exposure. Options, in order of preference:
-   - **A. GoDaddy API** - the server writes the TXT record itself. GoDaddy restricted its DNS API for small accounts in 2024
-     and the current rules are unclear: create a key at developer.godaddy.com and test it first.
-   - **B. acme-dns** - one permanent CNAME `_acme-challenge.assessment` in GoDaddy pointing to a small helper service. Use if A is refused.
-   - **C. Manual TXT record** every ~60-90 days. Avoid: a missed renewal breaks the camera on exam day.
+3. **Certificate:** Let's Encrypt, proven with a DNS TXT record that Caddy writes itself through the Cloudflare API (Caddy built with the `caddy-dns/cloudflare` module), so the server needs no internet exposure. The token is a Cloudflare **API token** limited to the `globx.co.in` zone with `Zone: Zone: Read` and `Zone: DNS: Edit`.
 4. Some routers refuse DNS answers that point to private IPs ("DNS rebinding protection"). If candidate PCs cannot open the page,
    add a local DNS entry on the router, or a hosts-file entry on the PCs.
 
@@ -83,7 +79,7 @@ Optional later upgrade: run the judge under gVisor (`runsc`) on a Linux host for
 |---|---|
 | `DOMAIN` | `assessment.globx.co.in` |
 | `DB_PASSWORD`, `SECRET_KEY` | long random strings, generated |
-| `GODADDY_API_TOKEN` | `<key>:<secret>` of a GoDaddy production API key (certificate) |
+| `CLOUDFLARE_API_TOKEN` | Cloudflare API token for the `globx.co.in` zone (Zone:Read, DNS:Edit); used to get the certificate |
 | `LLM_PROVIDER` / `LLM_OPENAI_MODEL` / `LLM_OPENAI_API_KEY` | `none` until an OpenAI key is added (then `openai` / `gpt-4o-mini` / the key) |
 | `OAP_TAG` | optional: a commit id to run an earlier version |
 
@@ -96,13 +92,13 @@ Local development uses the repo-root `.env` (git-ignored). See `.env.example`; `
 **Once, from your PC (browser):**
 1. Push the code to GitHub. Watch the *Actions* tab: `tests`, `judge-drill` and `publish` must turn green. The repository stays private; the images are private too and belong to the repository.
 2. GitHub, *Settings > Developer settings > Personal access tokens > Tokens (classic) > Generate new token*: tick only **`read:packages`**, no expiry (or a long one), name it `office-server`. Copy it once. This is the only GitHub key; it can read the images and nothing else.
-3. GoDaddy, DNS Records tab: add an **A** record, name `assessment`, value `192.168.1.50`, TTL 10 minutes.
-4. GoDaddy, developer.godaddy.com/keys: create a **Production** key; keep the key and the secret (written `key:secret` in the next step).
+3. Cloudflare (the account that manages `globx.co.in`), DNS > Records: add an **A** record, name `assessment`, value `192.168.1.50`, **Proxy status: DNS only (grey cloud)**.
+4. Cloudflare, My Profile > API Tokens > Create Token > *Create Custom Token*: permissions **Zone / Zone / Read** and **Zone / DNS / Edit**, Zone Resources: Include, Specific zone, `globx.co.in`. Create it and copy the token once.
 
 **Once, on the server (UltraViewer, then PowerShell as Administrator):**
 5. Make a folder, for example `C:\oap`, and copy into it only `docker-compose.yml` and `deploy.ps1` from the repository. Docker Desktop must be running and no exam must be running.
 6. `cd C:\oap`, then `docker login ghcr.io -u Biswa-source45` and paste the token from step 2 as the password.
-7. `powershell -ExecutionPolicy Bypass -File .\deploy.ps1 -Seed -Drill`. It asks for the address (Enter keeps `assessment.globx.co.in`) and the GoDaddy `key:secret` (hidden), writes `.env` with random passwords, opens port 443 for the office network, pulls the images, starts everything, creates the first accounts (the passwords are shown once: note them, sign in, make real users, change the passwords) and runs the drill, which must end with `39 of 39 checks passed`. The first start also gets the certificate through GoDaddy (`docker compose logs caddy`).
+7. `powershell -ExecutionPolicy Bypass -File .\deploy.ps1 -Seed -Drill`. It asks for the address (Enter keeps `assessment.globx.co.in`) and the Cloudflare token (hidden), writes `.env` with random passwords, opens port 443 for the office network, pulls the images, starts everything, creates the first accounts (the passwords are shown once: note them, sign in, make real users, change the passwords) and runs the drill, which must end with `39 of 39 checks passed`. The first start also gets the certificate through GoDaddy (`docker compose logs caddy`).
 8. From another office computer open `https://assessment.globx.co.in`; check sign-in, the camera, screen sharing, the live view and a coding question.
 
 **Every later update (no exam running):** push to GitHub, wait for the green *publish*, then on the server `cd C:\oap; .\deploy.ps1`. Roll back: add `OAP_TAG=<commit id>` to `.env` and run it again (the commit ids are the image tags in GitHub, *Packages*). If `docker-compose.yml` itself changed in a release, copy the new file to the server first (rare). Data (database, pictures, certificate) lives in volumes and the `user-assets` folder and survives updates.
@@ -112,7 +108,7 @@ Local development uses the repo-root `.env` (git-ignored). See `.env.example`; `
 | Key | Made where | Used where | Kept in |
 |---|---|---|---|
 | GitHub token `read:packages` | GitHub settings | the server's one-time `docker login` | Docker's credential store on the server |
-| GoDaddy API key and secret | developer.godaddy.com | Caddy (certificate) | `.env` on the server only |
+| Cloudflare API token (Zone:Read, DNS:Edit for the one zone) | Cloudflare dashboard | Caddy (certificate) | `.env` on the server only |
 | Database password, `SECRET_KEY` | generated by `deploy.ps1` | the stack | `.env` on the server only |
 | OpenAI key (optional) | OpenAI | the api | `.env` on the server only |
 | GitHub Actions needs none of these | it uses its built-in token to publish | | |
@@ -177,7 +173,7 @@ Every event is stored with a timestamp, plus when and why the exam ended. Browse
 ## 12. Open items
 
 - Office server OS and its planned IP.
-- GoDaddy API key test result (decides certificate option A or B).
+- Cloudflare API token created and the certificate obtained on the server.
 - Confirm the domain spelling (`globx.co.in`).
 - Confirm the coding language list.
 - Retention period for snapshots and answers.

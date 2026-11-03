@@ -5,7 +5,7 @@
 
 {$DOMAIN} {
 	tls {
-		dns godaddy {env.GODADDY_API_TOKEN}
+		dns cloudflare {env.CLOUDFLARE_API_TOKEN}
 	}
 	encode zstd gzip
 	reverse_proxy api:8000

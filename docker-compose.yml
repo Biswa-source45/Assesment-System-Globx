@@ -99,7 +99,7 @@ services:
       api: { condition: service_healthy }
     environment:
       DOMAIN: ${DOMAIN:?set DOMAIN in .env}
-      GODADDY_API_TOKEN: ${GODADDY_API_TOKEN:-}      # <key>:<secret> of a GoDaddy production API key
+      CLOUDFLARE_API_TOKEN: ${CLOUDFLARE_API_TOKEN:-}   # Cloudflare token with Zone:Read and DNS:Edit for the domain, to get the certificate
     volumes:
       - caddy-data:/data                              # the certificate: kept, so a restart does not ask for a new one
 

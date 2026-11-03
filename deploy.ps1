@@ -12,22 +12,22 @@ docker version --format "{{.Server.Version}}" 2>&1 | Out-Null
 if ($LASTEXITCODE -ne 0) { Fail "Docker is not running. Start Docker Desktop, wait until it says it is running, and run this again." }
 if (-not (Test-Path docker-compose.yml)) { Fail "docker-compose.yml is not in this folder ($PSScriptRoot)." }
 
-# 1. The settings file, made once: random passwords nobody has to know, plus the GoDaddy key.
+# 1. The settings file, made once: random passwords nobody has to know, plus the Cloudflare token.
 if (-not (Test-Path .env)) {
     function New-Secret { $bytes = New-Object byte[] 32; [Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($bytes); ([BitConverter]::ToString($bytes)).Replace("-", "") }
     $domain = $env:OAP_DOMAIN
     if (-not $domain) { $domain = Read-Host "Address of the exam system [assessment.globx.co.in]" }
     if (-not $domain) { $domain = "assessment.globx.co.in" }
-    $token = $env:GODADDY_API_TOKEN
+    $token = $env:CLOUDFLARE_API_TOKEN
     if (-not $token) {
-        $hidden = Read-Host "GoDaddy API key and secret, written key:secret (what you type is hidden)" -AsSecureString
+        $hidden = Read-Host "Cloudflare API token (what you type is hidden)" -AsSecureString
         $token = [Runtime.InteropServices.Marshal]::PtrToStringAuto([Runtime.InteropServices.Marshal]::SecureStringToBSTR($hidden))
     }
-    if ($token -notmatch '^[^:\s]+:[^:\s]+$') { Fail "That is not in the form key:secret. Nothing was written; run this again." }
-    $lines = "DOMAIN=$domain", "DB_PASSWORD=$(New-Secret)", "SECRET_KEY=$(New-Secret)", "GODADDY_API_TOKEN=$token", "LLM_PROVIDER=none", "LLM_OPENAI_API_KEY=", "LLM_OPENAI_MODEL=gpt-4o-mini"
+    if ($token -notmatch '^[A-Za-z0-9_-]{30,}$') { Fail "That does not look like a Cloudflare API token. Nothing was written; run this again." }
+    $lines = "DOMAIN=$domain", "DB_PASSWORD=$(New-Secret)", "SECRET_KEY=$(New-Secret)", "CLOUDFLARE_API_TOKEN=$token", "LLM_PROVIDER=none", "LLM_OPENAI_API_KEY=", "LLM_OPENAI_MODEL=gpt-4o-mini"
     [IO.File]::WriteAllText((Join-Path $PWD ".env"), (($lines -join "`n") + "`n"), (New-Object Text.UTF8Encoding $false))
     icacls .env /inheritance:r /grant:r "$($env:USERNAME):F" "Administrators:F" 2>&1 | Out-Null   # only this user and administrators can read it
-    Write-Host ".env written (random passwords; the GoDaddy key is in it, keep the file private)." -ForegroundColor Green
+    Write-Host ".env written (random passwords; the Cloudflare token is in it, keep the file private)." -ForegroundColor Green
 }
 
 # 2. Windows Firewall: HTTPS (443) from the office network only.

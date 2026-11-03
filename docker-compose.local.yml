@@ -1,5 +1,5 @@
 # Only for trying the stack on a development machine: add it with `-f docker-compose.yml -f docker-compose.local.yml` and DOMAIN=localhost.
-# Caddy then uses a certificate it makes itself (browsers warn) instead of asking GoDaddy.
+# Caddy then uses a certificate it makes itself (browsers warn) instead of asking Cloudflare.
 services:
   caddy:
     volumes:
