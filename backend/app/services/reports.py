@@ -66,11 +66,13 @@ def attempt_report(db: Session, at: Attempt, staff_view: bool = True) -> Dict:
                 "feedback": a.feedback if a else ""}
         if staff_view:
             c = q.config or {}
-            if q.type.startswith("mcq"):
-                opts = {o["id"]: o["text"] for o in c.get("options", [])}
-                item["selected"] = [opts.get(x, x) for x in resp.get("selected", [])]
-                item["correct"] = [o["text"] for o in c.get("options", []) if o.get("correct")]
+            if q.type.startswith("mcq"):  # every option in the order this candidate saw them: what is right, what they ticked
+                by_id = {o["id"]: o for o in c.get("options", [])}
+                chosen = set(resp.get("selected", []))
+                order = [i for i in aq.option_order if i in by_id] + [i for i in by_id if i not in aq.option_order]
+                item["options"] = [{"text": by_id[i]["text"], "correct": bool(by_id[i].get("correct")), "chosen": i in chosen} for i in order]
             elif q.type in ("short", "long"):
+                item["model_answer"], item["keywords"] = c.get("model_answer", ""), c.get("keywords", [])
                 item["answer_html"] = resp.get("html", "")
                 item["files"] = resp.get("files", [])
                 item["ai_score"] = a.ai_score if a else None

@@ -486,6 +486,14 @@ def _submit_unsent_code(db: Session, at: Attempt) -> None:
         jobs.enqueue_submission(sub)
 
 
+def retime_open_attempts(db: Session, test: Test) -> None:
+    """The admin changed when the exam closes: people taking it now follow the new end time (their own time allowed and any extension still count)."""
+    for at in db.scalars(select(Attempt).where(Attempt.test_id == test.id, Attempt.status == "in_progress")).all():
+        asg = db.get(Assignment, at.assignment_id)
+        end = aware(at.started_at) + timedelta(minutes=test.duration_min + (asg.extra_time_min or 0))
+        at.deadline_at = min(end, aware(test.ends_at)) if test.ends_at else end
+
+
 def calculate_exam(db: Session, test: Test) -> None:
     """The exam is over: mark everything that still needs marking, once, and record that it is done. Safe to repeat.
     MCQ and programs are re-graded (free; a corrected answer key takes effect) unless an admin marked that answer by hand;

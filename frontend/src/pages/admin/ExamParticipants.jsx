@@ -4,6 +4,7 @@ import { Download, Printer } from "lucide-react"
 import { get, post } from "@/lib/api"
 import { useAuth } from "@/lib/auth"
 import { STATUS } from "@/lib/labels"
+import { useConfirm } from "@/components/ConfirmDialog"
 import AssignmentActions from "@/components/AssignmentActions"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -22,8 +23,12 @@ function downloadCsv(list, title) {
   setTimeout(() => URL.revokeObjectURL(a.href), 1000)
 }
 
+// A person who appears again (a new password) replaces their earlier line; everyone else stays.
+const merge = (old, add) => [...(old ?? []).filter((o) => !add.some((n) => n.assignment_id === o.assignment_id)), ...add]
+
 export default function ExamParticipants({ test }) {
   const recruit = useAuth().user.can.recruit  // others may only look at the list
+  const confirm = useConfirm()
   const [names, setNames] = useState("")
   const [created, setCreated] = useState(null)  // the only time the passwords are visible
   const [rows, setRows] = useState(null)
@@ -40,13 +45,25 @@ export default function ExamParticipants({ test }) {
     try {
       const list = names.split("\n").map((s) => s.trim()).filter(Boolean)
       const out = await post(`/tests/${test.id}/participants`, { names: list })
-      setCreated(out.participants)
+      setCreated((old) => merge(old, out.participants))  // keep the earlier logins on the sheet: passwords cannot be shown again
       setNames("")
       load()
     } catch (err) {
       toast.error(err.message)
     } finally {
       setBusy(false)
+    }
+  }
+
+  async function freshSheet() {
+    const yes = await confirm({ title: "Get a fresh login sheet?", description: "Everyone who has not started the exam gets a new password and their old one stops working. People who are taking the exam now, or have finished, keep theirs.", action: "Get new passwords" })
+    if (!yes) return
+    try {
+      const out = await post(`/tests/${test.id}/passwords`)
+      setCreated((old) => merge(old, out.participants))
+      toast.success(out.participants.length ? `${out.participants.length} new password(s) are on the sheet above` : "Nobody is waiting to start")
+    } catch (err) {
+      toast.error(err.message)
     }
   }
 
@@ -70,7 +87,7 @@ export default function ExamParticipants({ test }) {
         <Card className="print-area" data-testid="credentials">
           <CardHeader>
             <CardTitle>Logins for {test.title}</CardTitle>
-            <CardDescription>Sign in at {window.location.origin}. These passwords are shown only now. Print or download them before leaving this page.</CardDescription>
+            <CardDescription>Sign in at {window.location.origin}. Passwords are shown only on this page, so this list keeps every login you create here. Print or download it before you leave. Lost one? Use New password for a person, or Get a fresh login sheet for everyone who has not started.</CardDescription>
           </CardHeader>
           <CardContent className="grid gap-3">
             <Table>
@@ -87,7 +104,7 @@ export default function ExamParticipants({ test }) {
             </Table>
             <div className="flex gap-2 print:hidden">
               <Button variant="outline" size="sm" onClick={() => window.print()}><Printer /> Print</Button>
-              <Button variant="outline" size="sm" onClick={() => downloadCsv(created, test.title)}><Download /> Download CSV</Button>
+              <Button variant="outline" size="sm" onClick={() => downloadCsv(created, test.title)}><Download /> Download all ({created.length}) as CSV</Button>
               <Button variant="ghost" size="sm" onClick={() => setCreated(null)}>Hide passwords</Button>
             </div>
           </CardContent>
@@ -95,7 +112,12 @@ export default function ExamParticipants({ test }) {
       )}
 
       <Card>
-        <CardHeader><CardTitle>Participants</CardTitle></CardHeader>
+        <CardHeader>
+          <div className="flex items-center justify-between gap-2">
+            <CardTitle>Participants</CardTitle>
+            {recruit && <Button variant="outline" size="sm" onClick={freshSheet}>Get a fresh login sheet</Button>}
+          </div>
+        </CardHeader>
         <CardContent>
           {rows && (
             <Table>

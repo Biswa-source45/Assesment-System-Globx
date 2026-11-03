@@ -417,8 +417,7 @@ def seed(reset: bool = False) -> dict:
             db.flush()
             for test in (t, p):
                 tok = new_token(32)
-                db.add(Assignment(id=uid(), test_id=test.id, candidate_id=u.id, token_hash=sha256(tok),
-                                  expires_at=now() + timedelta(days=30), sent_at=now(), tag="seed"))
+                db.add(Assignment(id=uid(), test_id=test.id, candidate_id=u.id, token_hash=sha256(tok), sent_at=now(), tag="seed"))  # the exam window decides
                 links.append((email, test.title, tok))
         db.commit()
         return {"seeded": True, "links": links, "staff": [(e, p, r) for e, _, p, r in staff],

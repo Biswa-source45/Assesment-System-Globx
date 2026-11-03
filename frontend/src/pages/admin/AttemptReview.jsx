@@ -1,10 +1,13 @@
 import { useCallback, useEffect, useState } from "react"
 import { Link, useParams } from "react-router-dom"
 import { toast } from "sonner"
+import { Check, Circle, Minus, X } from "lucide-react"
 import { get, post } from "@/lib/api"
 import { useAuth } from "@/lib/auth"
 import { ENDED, RISK, fmtDate } from "@/lib/labels"
+import { BAR, TONE, VERDICT_TEXT, verdictOf } from "@/lib/verdict"
 import { TYPE_LABEL } from "@/pages/admin/Questions"
+import { Verdict } from "@/pages/candidate/CodeView"
 import Snapshot from "@/components/Snapshot"
 import { useConfirm } from "@/components/ConfirmDialog"
 import { Alert } from "@/components/ui/alert"
@@ -20,6 +23,36 @@ import { Textarea } from "@/components/ui/textarea"
 const plain = (html) => new DOMParser().parseFromString(html || "", "text/html").body.textContent  // the candidate's text, never run as HTML
 const time = (iso) => new Date(iso).toLocaleTimeString([], { timeStyle: "medium" })
 const words = (type) => type.replace(/_/g, " ")
+const ICON = { good: Check, bad: X, part: Minus, none: Circle }
+
+function Chip({ tone, children, ...props }) {
+  const Icon = ICON[tone]
+  return <span className={"inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs font-medium " + TONE[tone]} {...props}><Icon className="size-3.5" />{children}</span>
+}
+
+// Every option as the candidate saw it: what is right is green, what they ticked wrongly is red, a right answer they missed is green with a dashed edge.
+function Options({ options }) {
+  return (
+    <div className="grid gap-1.5" data-testid="options">
+      {options.map((o, i) => {
+        const [state, tone, note] = o.chosen && o.correct ? ["chosen-right", "good", "Chosen. Correct"] : o.chosen ? ["chosen-wrong", "bad", "Chosen. Wrong"]
+          : o.correct ? ["missed-right", "good", "The correct answer (not chosen)"] : ["plain", "none", ""]
+        const Icon = state === "plain" ? null : ICON[tone]
+        return (
+          <div key={i} data-state={state} className={"flex items-center gap-2 rounded-md border p-2 text-sm " + TONE[tone] + (state === "missed-right" ? " border-dashed" : "")}>
+            {Icon ? <Icon className="size-4 shrink-0" /> : <span className="size-4 shrink-0" />}
+            <span className="grow">{o.text}</span>
+            <span className="text-xs font-medium">{note}</span>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+// A keyword counts the same way the marking counts it: whole words or phrases, any capital letters, "|" between alternatives.
+const mentions = (keyword, text) => keyword.split("|").map((k) => k.trim()).filter(Boolean)
+  .some((k) => new RegExp("(?<![a-z0-9])" + k.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "(?![a-z0-9])", "i").test(text))
 
 function MarkDialog({ q, onClose, onSaved }) {
   const [score, setScore] = useState(String(q.score ?? 0))
@@ -67,13 +100,21 @@ function MarkDialog({ q, onClose, onSaved }) {
 }
 
 function Answer({ q }) {
-  if (q.type.startsWith("mcq")) {
-    return <p className="text-sm">Chose: <b>{q.selected.join(", ") || "nothing"}</b>. Correct: <b>{q.correct.join(", ")}</b></p>
-  }
+  if (q.type.startsWith("mcq")) return <Options options={q.options} />
   if (q.type === "short" || q.type === "long") {
+    const given = plain(q.answer_html)
     return (
-      <div className="grid gap-2 text-sm">
-        <p className="whitespace-pre-wrap rounded-md bg-muted p-3" data-testid="answer-text">{plain(q.answer_html) || "No answer"}</p>
+      <div className="grid gap-3 text-sm">
+        <div className="grid gap-1"><span className="text-xs font-medium text-muted-foreground">Candidate's answer</span>
+          <p className="whitespace-pre-wrap rounded-md border bg-muted p-3" data-testid="answer-text">{given || "No answer"}</p></div>
+        {q.model_answer && <div className="grid gap-1"><span className="text-xs font-medium text-muted-foreground">Model answer</span>
+          <p className="whitespace-pre-wrap rounded-md border border-green-600/40 bg-green-50 p-3 text-green-900" data-testid="model-answer">{q.model_answer}</p></div>}
+        {q.keywords?.length > 0 && (
+          <div className="flex flex-wrap items-center gap-1.5" data-testid="keywords">
+            <span className="text-xs font-medium text-muted-foreground">Words the answer should mention:</span>
+            {q.keywords.map((k) => <Chip key={k} tone={mentions(k, given) ? "good" : "bad"} data-state={mentions(k, given) ? "found" : "missing"}>{k.replace(/\|/g, " / ")}</Chip>)}
+          </div>
+        )}
         {q.files?.length > 0 && <p className="text-xs text-muted-foreground">{q.files.length} file(s) attached</p>}
         {q.ai_rationale && <p className="text-xs text-muted-foreground">AI{q.ai_score != null ? ` suggested ${q.ai_score}` : ""}: {q.ai_rationale}</p>}
       </div>
@@ -83,14 +124,17 @@ function Answer({ q }) {
   if (!sub?.id) return <p className="text-sm text-muted-foreground">No program was submitted or saved.</p>
   return (
     <div className="grid gap-2 text-sm">
-      <p className="text-xs text-muted-foreground">{sub.language}, {sub.submissions} submission(s), passed {sub.score} of {sub.max} marks' worth of cases</p>
-      <pre className="max-h-64 overflow-auto rounded-md bg-muted p-3 text-xs">{sub.source}</pre>
-      <div className="flex flex-wrap gap-1.5">
-        {sub.cases.map((c) => <Badge key={c.ordinal} variant={c.verdict === "AC" ? "default" : "destructive"}>{c.visibility === "open" ? "Sample" : "Hidden"} {c.ordinal}: {c.verdict}</Badge>)}
+      <p className="text-xs text-muted-foreground">{sub.language}, {sub.submissions} submission(s). Sample cases are shown to the candidate; hidden cases are not.</p>
+      <pre className="max-h-64 overflow-auto rounded-md border bg-muted p-3 text-xs">{sub.source}</pre>
+      <div className="flex flex-wrap gap-x-4 gap-y-1.5" data-testid="cases">
+        {sub.cases.map((c) => <span key={c.ordinal} className="inline-flex items-center gap-1.5 text-xs">{c.visibility === "open" ? "Sample" : "Hidden"} {c.ordinal} <Verdict v={c.verdict} /></span>)}
       </div>
     </div>
   )
 }
+
+// Did the candidate give any answer at all? (A blank is "not answered", not "wrong".)
+const answered = (q) => (q.type.startsWith("mcq") ? q.options.some((o) => o.chosen) : q.type === "coding" || q.type === "sql" ? !!q.submission?.id : !!plain(q.answer_html).trim() || q.files?.length > 0)
 
 export default function AttemptReview() {
   const { testId, attemptId } = useParams()
@@ -117,6 +161,8 @@ export default function AttemptReview() {
   const problems = p.snapshots.filter((s) => s.kind === "webcam" && s.faces !== 1)
   const pics = (onlyProblems && problems.length ? problems : p.snapshots.filter((s) => s.kind === "webcam"))
   const evaluate = user.can.evaluate
+  const passTone = a.below_cutoff ? "bad" : "good"
+  const right = rep.questions.filter((q) => verdictOf(q.score ?? 0, q.marks, answered(q)) === "good").length
 
   return (
     <div className="grid max-w-5xl gap-4">
@@ -129,8 +175,11 @@ export default function AttemptReview() {
       </div>
 
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-        {[["Score", `${a.total_score} / ${a.max_score}`], ["Percent", `${a.percent}%`], ["Result", a.below_cutoff ? "Not passed" : "Passed"], ["Rank", a.rank ? `${a.rank} of ${a.of}` : "-"]].map(([label, value]) => (
-          <Card key={label}><CardContent className="grid gap-0.5 pt-4"><span className="text-xs text-muted-foreground">{label}</span><span className="text-xl font-semibold" data-testid={`review-${label}`}>{value}</span></CardContent></Card>
+        {[["Score", `${a.total_score} / ${a.max_score}`, "none"], ["Percent", `${a.percent}%`, "none"], ["Result", a.below_cutoff ? "Not passed" : "Passed", passTone], ["Rank", a.rank ? `${a.rank} of ${a.of}` : "-", "none"]].map(([label, value, tone]) => (
+          <div key={label} className={"grid gap-0.5 rounded-xl border p-4 " + (tone === "none" ? "bg-card" : TONE[tone])}>
+            <span className="text-xs opacity-80">{label}</span>
+            <span className="flex items-center gap-1.5 text-xl font-semibold" data-testid={`review-${label}`}>{tone !== "none" && (tone === "good" ? <Check className="size-5" /> : <X className="size-5" />)}{value}</span>
+          </div>
         ))}
       </div>
 
@@ -145,29 +194,39 @@ export default function AttemptReview() {
       </Card>
 
       <div className="grid gap-3">
-        <h2 className="text-lg font-semibold">Answers ({a.attempted} of {a.questions} attempted)</h2>
-        {rep.questions.map((q) => (
-          <Card key={q.question_id} data-testid="review-question">
-            <CardContent className="grid gap-3 pt-4">
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="grow font-medium">{q.title}</span>
-                <Badge variant="secondary">{TYPE_LABEL[q.type]}</Badge>
-                {q.status === "review" && <Badge variant="destructive" data-testid="needs-attention">Needs attention</Badge>}
-                {q.flags?.length > 0 && <Badge variant="outline">{q.flags.join(", ").replace(/_/g, " ")}</Badge>}
-                <span className="w-24 text-right font-semibold" data-testid="question-score">{q.score ?? 0} / {q.marks}</span>
-              </div>
-              <Answer q={q} />
-              {q.feedback && <p className="text-xs text-muted-foreground">Feedback: {q.feedback}</p>}
-              {evaluate && q.answer_id && (
-                <div className="flex flex-wrap gap-2">
-                  {q.status === "review" && <Button size="sm" onClick={() => accept(q)}>Accept {q.score ?? 0}</Button>}
-                  <Button size="sm" variant="outline" onClick={() => setMark(q)}>Mark or change the mark</Button>
-                  {(q.type === "short" || q.type === "long") && <Button size="sm" variant="ghost" onClick={() => markAgain(q)}>Mark with AI again</Button>}
+        <div className="flex flex-wrap items-center gap-3">
+          <h2 className="text-lg font-semibold">Answers</h2>
+          <span className="text-sm text-muted-foreground">{right} of {rep.questions.length} fully correct, {a.attempted} attempted</span>
+          <div className="ml-auto flex flex-wrap gap-1.5 text-xs">
+            {["good", "part", "bad", "none"].map((t) => <Chip key={t} tone={t}>{VERDICT_TEXT[t]}</Chip>)}
+          </div>
+        </div>
+        {rep.questions.map((q) => {
+          const v = verdictOf(q.score ?? 0, q.marks, answered(q))
+          return (
+            <Card key={q.question_id} data-testid="review-question" data-verdict={v} className={"border-l-4 " + BAR[v]}>
+              <CardContent className="grid gap-3 pt-4">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="grow font-medium">{q.title}</span>
+                  <Badge variant="secondary">{TYPE_LABEL[q.type]}</Badge>
+                  <Chip tone={v} data-testid="verdict">{VERDICT_TEXT[v]}</Chip>
+                  {q.status === "review" && <Badge variant="destructive" data-testid="needs-attention">Needs attention</Badge>}
+                  {q.flags?.length > 0 && <Badge variant="outline">{q.flags.join(", ").replace(/_/g, " ")}</Badge>}
+                  <span className="w-24 text-right font-semibold" data-testid="question-score">{q.score ?? 0} / {q.marks}</span>
                 </div>
-              )}
-            </CardContent>
-          </Card>
-        ))}
+                <Answer q={q} />
+                {q.feedback && <p className="text-xs text-muted-foreground">Feedback: {q.feedback}</p>}
+                {evaluate && q.answer_id && (
+                  <div className="flex flex-wrap gap-2">
+                    {q.status === "review" && <Button size="sm" onClick={() => accept(q)}>Accept {q.score ?? 0}</Button>}
+                    <Button size="sm" variant="outline" onClick={() => setMark(q)}>Mark or change the mark</Button>
+                    {(q.type === "short" || q.type === "long") && <Button size="sm" variant="ghost" onClick={() => markAgain(q)}>Mark with AI again</Button>}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          )
+        })}
       </div>
 
       <Card>

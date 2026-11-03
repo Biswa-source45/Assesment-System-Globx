@@ -126,6 +126,7 @@ Every event is stored with a timestamp, plus when and why the exam ended. Browse
 - [done] Roles and user management: one permission table on the server, sent to the browser; Users screen (add, edit roles, change password, disable, unlock; candidates listed); sessions end on a new password or a disabled account
 - [done] Real exam images live in `user-assets/` at the project root (`proctor/<attempt id>/`, `uploads/<attempt id>/`), paths stored relative in the database; in Docker mount `user-assets` as a volume and back it up with the database; decide a retention period (face pictures are personal data)
 - [done] Results and review: per-exam calculation after the end time (AI only for text answers, once each), absent and ended-early candidates recorded, review screen with overrides, declare/withdraw, export
+- [done] The exam's own dates decide who can take it (a candidate has no separate expiry); changing the closing time moves the end of people taking the exam now; the login sheet keeps every batch and can be had again for people who have not started
 - [done] SQL sandbox cannot open other databases; staff cannot read other organisations' submissions
 - [done] Backend: participant credentials, coding case rules, proctoring rules (tab and face), AI JSON mode, test-case generator
 - [done] Frontend scaffold (Vite, React JSX, shadcn/ui): login, admin shell, exams list, candidate home

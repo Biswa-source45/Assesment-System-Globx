@@ -119,7 +119,8 @@ export default function ExamDetails({ test, onSaved }) {
         <CardContent className="grid gap-4">
           <div className="grid gap-4 md:grid-cols-2">
             <Field id="exam-start" label="Opens at" type="datetime-local" value={f.starts_at} onChange={(e) => set("starts_at", e.target.value)} />
-            <Field id="exam-end" label="Closes at" type="datetime-local" value={f.ends_at} onChange={(e) => set("ends_at", e.target.value)} />
+            <Field id="exam-end" label="Closes at" type="datetime-local" value={f.ends_at} onChange={(e) => set("ends_at", e.target.value)}
+              hint="Takes effect at once, also for people taking the exam now. Move it later to let more people take the exam; results are calculated after this time." />
             <Field id="exam-duration" label="Time allowed per candidate (minutes)" type="number" min="1" max="600" value={f.duration_min} onChange={(e) => set("duration_min", e.target.value)} />
             <Field id="exam-cutoff" label="Pass mark (total marks)" type="number" min="0" step="0.5" value={f.cutoff} onChange={(e) => set("cutoff", e.target.value)} />
           </div>

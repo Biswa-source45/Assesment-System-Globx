@@ -97,6 +97,15 @@ test("results: calculated by itself after the end time, reviewed, declared; ende
   await row("Asha Finisher").getByRole("link", { name: "Review" }).click()
   await expect(page.getByTestId("review-question")).toHaveCount(3)
   await expect(page.getByTestId("answer-text").filter({ hasText: "a clear explanation" })).toBeVisible()
+  // right and wrong are visible at a glance: the option she ticked is green and marked correct, the other is plain
+  const mcq = page.getByTestId("review-question").filter({ hasText: "Exam mcq" })
+  await expect(mcq).toHaveAttribute("data-verdict", "good")
+  await expect(mcq.getByTestId("verdict")).toHaveText("Correct")
+  await expect(mcq.locator("[data-state=chosen-right]")).toContainText("Chosen. Correct")
+  await expect(mcq.locator("[data-state=plain]")).toHaveCount(1)
+  const short = page.getByTestId("review-question").filter({ hasText: "Exam short" })
+  await expect(short.getByTestId("model-answer")).toHaveText("alpha is first")
+  await expect(short.locator("[data-state=found]")).toHaveText("alpha")  // the word she was expected to mention is there
   await expect(page.getByTestId("needs-attention")).toHaveCount(1)
   await page.getByTestId("review-question").filter({ hasText: "Exam long" }).getByRole("button", { name: "Mark or change the mark" }).click()
   await dialog(page).getByLabel("Mark", { exact: true }).fill("4")
@@ -113,6 +122,13 @@ test("results: calculated by itself after the end time, reviewed, declared; ende
   await expect(page.getByTestId("timeline")).toContainText("tab blur (2 s)")
   await expect(page.getByTestId("pictures")).toContainText("0 face(s)")
   await expect(page.getByTestId("review-Result")).toHaveText("Not passed")
+  const wrong = page.getByTestId("review-question").filter({ hasText: "Exam mcq" })
+  await expect(wrong).toHaveAttribute("data-verdict", "bad")
+  await expect(wrong.getByTestId("verdict")).toHaveText("Wrong")
+  await expect(wrong.locator("[data-state=chosen-wrong]")).toContainText("Chosen. Wrong")  // what he ticked: red
+  await expect(wrong.locator("[data-state=missed-right]")).toContainText("The correct answer (not chosen)")  // what was right: green
+  await expect(page.getByTestId("review-question").filter({ hasText: "Exam short" }).locator("[data-state=missing]")).toHaveText("alpha")
+  await shot(page, "results-review-wrong")
   await page.getByTestId("review-question").filter({ hasText: "Exam short" }).getByRole("button", { name: "Mark or change the mark" }).click()
   await dialog(page).getByLabel("Mark", { exact: true }).fill("1")
   await dialog(page).getByRole("button", { name: "Save mark" }).click()

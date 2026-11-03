@@ -5,6 +5,7 @@ import { Download } from "lucide-react"
 import { api, get, post } from "@/lib/api"
 import { useAuth } from "@/lib/auth"
 import { fmtDate, RESULT_STATE, RISK } from "@/lib/labels"
+import { TONE } from "@/lib/verdict"
 import { useConfirm } from "@/components/ConfirmDialog"
 import { Alert } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
@@ -112,7 +113,7 @@ export default function ExamResults() {
                 <TableCell><Badge variant={["absent"].includes(r.outcome) ? "outline" : ["violation_limit", "face_violation", "admin_ended"].includes(r.outcome) ? "destructive" : "secondary"}>{r.outcome_label}</Badge></TableCell>
                 <TableCell>{done && r.score != null ? `${r.score} / ${r.max}` : "-"}</TableCell>
                 <TableCell>{done && r.percent != null ? `${r.percent}%` : "-"}</TableCell>
-                <TableCell>{done ? <Badge variant={r.below_cutoff ? "outline" : "default"}>{r.below_cutoff ? "Not passed" : "Passed"}</Badge> : "-"}</TableCell>
+                <TableCell>{done ? <Badge variant="outline" className={TONE[r.below_cutoff ? "bad" : "good"]}>{r.below_cutoff ? "Not passed" : "Passed"}</Badge> : "-"}</TableCell>
                 <TableCell>{r.attention || "-"}</TableCell>
                 <TableCell>{done ? (RISK[r.risk_level] ?? "-") : "-"}</TableCell>
                 <TableCell className="text-right">{done && <Button asChild variant="ghost" size="sm"><Link to={`/admin/results/${testId}/${r.attempt_id}`}>Review</Link></Button>}</TableCell>

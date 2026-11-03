@@ -11,12 +11,14 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.deps import AUTHOR, RECRUIT, VIEW, audit, same_org
+from app.core.security import hash_password, new_password
 from app.db import get_db
 from app.api.library import q_out
 from app.models import (Assignment, Attempt, Department, PlagiarismMatch, Question, QuestionGroup, Section, SectionItem, Test,
                         User, AttemptQuestion, CodeSubmission, Answer, aware, now, uid)
 from app.services import invites as inv
 from app.services import reports
+from app.services.attempts import retime_open_attempts
 from app.services.populate import pick_questions
 from app.services.sanitize import sanitize_html
 
@@ -189,7 +191,12 @@ def get_test(tid: str, user: User = Depends(VIEW), db: Session = Depends(get_db)
 @router.put("/tests/{tid}")
 def update_test(tid: str, body: TestIn, request: Request, user: User = Depends(AUTHOR), db: Session = Depends(get_db)):
     t = _test(db, tid, user)
+    old_end = aware(t.ends_at)
     _apply_test(db, user, t, body)
+    if aware(t.ends_at) != old_end:  # a new closing time reaches the people taking the exam now, and an exam that is open again is not "calculated"
+        retime_open_attempts(db, t)
+        if not t.ends_at or aware(t.ends_at) > now():
+            t.calculated_at = None
     audit(db, user, "update", "test", t.id, request=request)
     db.commit()
     return test_out(db, t)
@@ -467,18 +474,33 @@ def add_participants(tid: str, body: ParticipantsIn, request: Request, user: Use
     return {"participants": res}
 
 
+def _fresh_login(a: Assignment) -> dict:
+    """A new password for this person (the old one stops working). Only its hash is stored, so this is the one time it can be shown."""
+    pw = new_password()
+    a.candidate.password_hash, a.candidate.failed_logins = hash_password(pw), 0
+    return {"assignment_id": a.id, "name": a.candidate.name, "username": a.candidate.username or a.candidate.email, "password": pw}
+
+
 @router.post("/assignments/{aid}/password")
 def reset_password(aid: str, request: Request, user: User = Depends(RECRUIT), db: Session = Depends(get_db)):
-    from app.core.security import hash_password, new_password
     a = db.get(Assignment, aid)
     if not a:
         raise HTTPException(404, "Assignment not found")
     _test(db, a.test_id, user)
-    pw = new_password()
-    a.candidate.password_hash, a.candidate.failed_logins = hash_password(pw), 0
+    out = _fresh_login(a)
     audit(db, user, "password_reset", "assignment", a.id, request=request)
     db.commit()
-    return {"username": a.candidate.username or a.candidate.email, "password": pw}
+    return out
+
+
+@router.post("/tests/{tid}/passwords")
+def fresh_login_sheet(tid: str, request: Request, user: User = Depends(RECRUIT), db: Session = Depends(get_db)):
+    """The whole login sheet again: new passwords for everyone who has not started yet (people already taking or finished keep theirs)."""
+    t = _test(db, tid, user)
+    rows = [_fresh_login(a) for a in db.scalars(select(Assignment).where(Assignment.test_id == t.id, Assignment.status == "invited")).all() if a.candidate.username]
+    audit(db, user, "passwords_reset_all", "test", t.id, {"count": len(rows)}, request)
+    db.commit()
+    return {"participants": rows}
 
 
 @router.get("/tests/{tid}/candidates")
