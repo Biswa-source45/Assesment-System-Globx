@@ -23,16 +23,19 @@ export default function AdminLayout() {
   return (
     <SidebarProvider>
       <Sidebar>
-        <SidebarHeader className="px-4 py-3"><span className="font-brand text-lg font-bold">GLOBX <span className="text-primary">Assess</span></span></SidebarHeader>
+        <SidebarHeader className="px-4 pt-5 pb-0">
+          <span className="font-brand text-xl font-bold">GLOBX <span className="text-primary">Assess</span></span>
+          <div className="mt-4 border-b-2 border-dotted border-muted-foreground/40" data-testid="brand-rule" />
+        </SidebarHeader>
         <SidebarContent>
           <SidebarGroup>
             <SidebarGroupContent>
-              <SidebarMenu>
+              <SidebarMenu className="gap-1.5">
                 {NAV.filter((n) => user.can[n.can]).map(({ to, label, icon: Icon, end }) => (
                   <SidebarMenuItem key={to}>
                     <NavLink to={to} end={end}>
                       {({ isActive }) => (
-                        <SidebarMenuButton asChild isActive={isActive}>
+                        <SidebarMenuButton asChild isActive={isActive} size="lg" className="gap-3 px-3 text-[15px] [&>svg]:size-5">
                           <span><Icon /> {label}</span>
                         </SidebarMenuButton>
                       )}

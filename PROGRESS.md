@@ -4,7 +4,7 @@ Read at the start of every task; update after every change. Plan and decisions: 
 
 ## Current state (2026-11-02)
 
-- Codebase: FastAPI backend (`backend/app`) and a React **JSX** frontend (`frontend/`: Vite, Tailwind, shadcn/ui). 55 pytest tests and 48 Playwright browser tests pass.
+- Codebase: FastAPI backend (`backend/app`) and a React **JSX** frontend (`frontend/`: Vite, Tailwind, shadcn/ui). 55 pytest tests and 49 Playwright browser tests pass.
 - Built and browser-tested: login (staff email or candidate username); admin Exams list; **question bank** (list, filter, create/edit/archive MCQ, short,
   explained, coding and **SQL** questions; coding has a case table, reference-solution check and "Generate with AI", both working on the unsaved form; saving returns to the bank with the question at the top); **candidate flow** (home, camera check-in with
   MediaPipe face gate and consent, exam runner with section tabs, palette, mark for review, autosave, server timer, CodeMirror editor with Run/Submit,
@@ -35,6 +35,9 @@ Read at the start of every task; update after every change. Plan and decisions: 
    through the judge container once it exists; old email-OTP/invite flow still in the backend; bundle is one 1.4 MB chunk (split later); rotate the OpenAI key.
 
 ## Log
+
+### 2026-11-03 (sidebar)
+- Sidebar narrower (14rem, was 16rem), menu buttons taller (48px) with larger text and icons and more space between them, and a dotted line under the GLOBX Assess brand. One layout test checks the width, the button height and the dotted line. 49 Playwright tests.
 
 ### 2026-11-03 (coloured buttons and pills in the results screens)
 - The faint text-only **Open** and **Review** buttons are now solid blue buttons (and **All results** / **Back to the results** outlined); what happened to a person and where an exam's results stand are coloured pills from one place (`lib/verdict.js`: `OUTCOME_TONE`, `STATE_TONE`): Submitted green, Time over amber, Ended early red, Did not attend grey, In progress blue; exam state open grey, calculating amber, needs attention red, ready blue, declared green. Existing results tests re-run green.
