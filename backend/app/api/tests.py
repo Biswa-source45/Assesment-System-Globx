@@ -538,6 +538,9 @@ def assignment_action(aid: str, body: ActionIn, request: Request, user: User = D
     elif act == "reset":
         if not body.reason:
             raise HTTPException(422, "A reason is required")
+        if t.results_declared_at:
+            raise HTTPException(409, "The results of this exam are declared. Withdraw them before re-opening an exam.")
+        t.calculated_at = None  # the exam must be calculated again
         if at:
             at.status = "reset"
         token = None

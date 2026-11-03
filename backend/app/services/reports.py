@@ -17,6 +17,9 @@ from app.services.attempts import _text_of, proctoring_config
 from app.services.plagiarism import candidate_summary
 
 FINAL = ("review_pending", "evaluated")
+OUTCOME_LABEL = {"submitted": "Submitted", "time_over": "Time over", "violation_limit": "Ended: left the window too often",
+                 "face_violation": "Ended: face rule, login locked", "admin_ended": "Ended by admin", "absent": "Did not attend"}
+ENDED_EARLY = ("violation_limit", "face_violation", "admin_ended")
 
 
 def ranked_attempts(db: Session, test_id: str) -> List[Attempt]:
@@ -154,8 +157,9 @@ def candidates_table(db: Session, test: Test, status: str = "") -> List[Dict]:
     rank = {a.id: i + 1 for i, a in enumerate(ranked)}
     rows = []
     for g in asgs:
-        at = db.scalar(select(Attempt).where(Attempt.assignment_id == g.id).order_by(Attempt.started_at.desc()))
+        at = db.scalar(select(Attempt).where(Attempt.assignment_id == g.id, Attempt.status != "reset").order_by(Attempt.started_at.desc()))
         st = g.status
+        outcome = (at.submit_reason or "submitted") if at and at.status != "in_progress" else ("in_progress" if at else "absent")
         if at and at.status == "in_progress":
             st = "in_progress"
         if status and st != status:
@@ -164,8 +168,9 @@ def candidates_table(db: Session, test: Test, status: str = "") -> List[Dict]:
                      "username": g.candidate.username or "", "email": g.candidate.email, "status": st, "tag": g.tag,
                      "invited_at": aware(g.invited_at).isoformat(), "sent": bool(g.sent_at),
                      "expires_at": aware(g.expires_at).isoformat() if g.expires_at else None,
-                     "rank": rank.get(at.id) if at else None,
+                     "rank": rank.get(at.id) if at else None, "outcome": outcome, "outcome_label": OUTCOME_LABEL.get(outcome, outcome),
                      "score": at.total_score if at else None, "max": at.max_score if at else None,
+                     "percent": round(100 * (at.total_score or 0) / at.max_score, 1) if at and at.max_score and at.total_score is not None else None,
                      "section_scores": at.section_scores if at else {},
                      "minutes": int((aware(at.submitted_at) - aware(at.started_at)).total_seconds() // 60) if at and at.submitted_at else None,
                      "risk_level": at.risk_level if at else None, "risk_score": at.risk_score if at else None,
@@ -176,12 +181,12 @@ def candidates_table(db: Session, test: Test, status: str = "") -> List[Dict]:
 
 def export_rows(db: Session, test: Test) -> List[List]:
     secs = test.sections
-    header = ["Rank", "Name", "Email", "Status", "Score", "Max", "Percent", "Below cut-off", "Minutes",
+    header = ["Rank", "Name", "Email", "Status", "Outcome", "Score", "Max", "Percent", "Below cut-off", "Minutes",
               "Risk level", "Risk score", "Plagiarism"] + [s.title for s in secs]
     out = [header]
     for r in candidates_table(db, test):
         pct = round(100 * (r["score"] or 0) / r["max"], 1) if r["max"] else ""
-        out.append([r["rank"] or "", r["name"], r["email"], r["status"], r["score"] if r["score"] is not None else "",
+        out.append([r["rank"] or "", r["name"], r["email"], r["status"], r["outcome_label"], r["score"] if r["score"] is not None else "",
                     r["max"] or "", pct, "yes" if r["below_cutoff"] else ("no" if r["below_cutoff"] is False else ""),
                     r["minutes"] or "", r["risk_level"] or "", r["risk_score"] if r["risk_score"] is not None else "",
                     r["plagiarism"] or ""] + [(r["section_scores"] or {}).get(s.id, "") for s in secs])

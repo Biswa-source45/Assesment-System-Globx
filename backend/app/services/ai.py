@@ -246,9 +246,3 @@ def ai_generate_inputs(statement: str, constraints: str, reference: str, n: int 
         if isinstance(inp, str) and 0 < len(inp) <= 20000:
             cases.append({"input": inp if inp.endswith("\n") else inp + "\n", "purpose": str(c.get("purpose", ""))[:120]})
     return cases[:n]
-
-
-def ai_interview_tips(summary: str) -> list:
-    sys_p = "Suggest 3 to 5 short probing interview questions for this candidate. Return JSON {\"tips\": [string]}."
-    out = get_llm().json_complete(sys_p, summary[:6000], 500)
-    return [str(t)[:300] for t in (out.get("tips") or [])][:5]

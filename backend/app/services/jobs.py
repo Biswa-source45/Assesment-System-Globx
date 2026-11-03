@@ -13,7 +13,7 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import timedelta
 from typing import Optional
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from app.core.config import get_settings
 from app.db import SessionLocal
@@ -28,6 +28,8 @@ _stop = threading.Event()
 _sweeper: Optional[threading.Thread] = None
 _plag_pending: set = set()
 _plag_lock = threading.Lock()
+_calc_running: set = set()  # exams being calculated right now, so the sweeper does not start a second run
+ACTIVE = ("in_progress", "submitted", "auto_submitted", "evaluating")  # an attempt in any of these is not finished yet
 
 
 def _cases_of(q: Question):
@@ -104,6 +106,27 @@ def _finalize_job(attempt_id: str, reason: str) -> None:
         db.close()
 
 
+def calculate_async(test_id: str) -> None:
+    with _plag_lock:
+        if test_id in _calc_running:
+            return
+        _calc_running.add(test_id)
+    BG.submit(_calculate_job, test_id)
+
+
+def _calculate_job(test_id: str) -> None:
+    from app.services.attempts import calculate_exam
+    db = SessionLocal()
+    try:
+        calculate_exam(db, db.get(Test, test_id))
+    except Exception:
+        log.exception("calculation failed for %s", test_id)  # calculated_at stays empty: the sweeper tries again
+    finally:
+        db.close()
+        with _plag_lock:
+            _calc_running.discard(test_id)
+
+
 def schedule_plagiarism(test_id: str, delay: float = 3.0) -> None:
     with _plag_lock:
         if test_id in _plag_pending:
@@ -134,6 +157,10 @@ def sweep_once() -> None:
         for at in db.scalars(select(Attempt).where(Attempt.status == "in_progress")).all():
             if aware(at.deadline_at) + timedelta(seconds=20) < t:
                 finalize_async(at.id, "time_over")
+        # 1b. an exam whose end time has passed and in which nobody is still working or being marked: calculate it
+        for test in db.scalars(select(Test).where(Test.status == "published", Test.ends_at.is_not(None), Test.ends_at < t, Test.calculated_at.is_(None))).all():
+            if not db.scalar(select(func.count(Attempt.id)).where(Attempt.test_id == test.id, Attempt.status.in_(ACTIVE))):
+                calculate_async(test.id)
         # 2. scheduled invites
         for a in db.scalars(select(Assignment).where(Assignment.sent_at.is_(None),
                                                      Assignment.scheduled_at.is_not(None))).all():

@@ -10,6 +10,9 @@ export const ENDED = {
   violation_limit: "Too many window leaves", face_violation: "Face rule: locked", admin_ended: "Ended by admin",
 }
 
+// Where an exam's results stand (the server derives it).
+export const RESULT_STATE = { open: "Open", calculating: "Calculating", needs_attention: "Needs attention", ready: "Ready to declare", declared: "Declared" }
+
 export const RISK = { low: "Low", medium: "Medium", high: "High", critical: "Critical" }
 
 // Local-time helpers: <input type="datetime-local"> is in the browser's time zone, the server stores UTC.

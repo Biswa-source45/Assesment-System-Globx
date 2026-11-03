@@ -2,11 +2,13 @@ import { useEffect, useState } from "react"
 import { Link } from "react-router-dom"
 import { get } from "@/lib/api"
 import { useAuth } from "@/lib/auth"
+import { ENDED } from "@/lib/labels"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 
-const LABEL = { invited: "Ready", in_progress: "In progress", banned: "Locked", test_taken: "Submitted", review_pending: "Submitted", evaluated: "Marked" }
+// "Marked" is not shown: a candidate hears about a result only when it has been declared
+const LABEL = { invited: "Ready", in_progress: "In progress", banned: "Locked", test_taken: "Submitted", review_pending: "Submitted", evaluated: "Submitted" }
 
 export default function CandidateHome() {
   const { user, logout } = useAuth()
@@ -34,14 +36,24 @@ export default function CandidateHome() {
             <CardHeader>
               <div className="flex items-center justify-between gap-2">
                 <CardTitle>{a.test.title}</CardTitle>
-                <Badge variant={a.status === "banned" ? "destructive" : "secondary"}>{LABEL[a.status] ?? a.status}</Badge>
+                <Badge variant={a.status === "banned" ? "destructive" : "secondary"}>{a.result ? "Result declared" : (LABEL[a.status] ?? a.status)}</Badge>
               </div>
               <CardDescription>{a.test.duration_min} minutes</CardDescription>
             </CardHeader>
             <CardContent className="flex items-center justify-between gap-3 text-sm text-muted-foreground">
-              <span>{a.message || (a.can_start ? "You can start this exam now." : "")}</span>
+              <span>{a.result ? "" : a.message || (a.can_start ? "You can start this exam now." : "")}</span>
               {a.can_start && <Button asChild><Link to={`/exam/${a.assignment_id}/start`}>{a.attempt ? "Resume" : "Start"}</Link></Button>}
             </CardContent>
+            {a.result && (
+              <CardContent className="grid gap-2 border-t pt-4 text-sm" data-testid="my-result">
+                <div className="flex items-center gap-3">
+                  <span className="text-xl font-semibold" data-testid="my-score">{a.result.score} / {a.result.max} ({a.result.percent}%)</span>
+                  <Badge variant={a.result.passed ? "default" : "outline"}>{a.result.passed ? "Passed" : "Not passed"}</Badge>
+                </div>
+                {ENDED[a.result.reason] && a.result.reason !== "submitted" && <p className="text-muted-foreground">{ENDED[a.result.reason]}</p>}
+                <div className="flex flex-wrap gap-x-4 text-muted-foreground">{a.result.sections.map((s) => <span key={s.title}>{s.title}: {s.score} / {s.max}</span>)}</div>
+              </CardContent>
+            )}
           </Card>
         ))}
         {items && !items.length && <p className="text-muted-foreground">No exams assigned.</p>}

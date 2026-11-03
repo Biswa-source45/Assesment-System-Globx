@@ -187,6 +187,8 @@ class Test(Base):
     shuffle_questions: Mapped[bool] = mapped_column(Boolean, default=True)
     shuffle_options: Mapped[bool] = mapped_column(Boolean, default=True)
     settings: Mapped[dict] = mapped_column(JSON, default=dict)
+    calculated_at: Mapped[Optional[datetime]] = mapped_column(TS, nullable=True)  # the whole exam has been marked (after its end)
+    results_declared_at: Mapped[Optional[datetime]] = mapped_column(TS, nullable=True)  # candidates may now see their result
     created_by: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)
     created_at: Mapped[datetime] = mapped_column(TS, default=now)
     updated_at: Mapped[datetime] = mapped_column(TS, default=now, onupdate=now)

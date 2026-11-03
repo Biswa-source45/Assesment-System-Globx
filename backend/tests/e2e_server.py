@@ -15,6 +15,9 @@ e2e_storage = Path(tempfile.gettempdir()) / "oap-e2e-storage"
 shutil.rmtree(e2e_storage, ignore_errors=True)
 os.environ["STORAGE_DIR"] = str(e2e_storage)
 
+if not os.environ.get("RUN_AI"):  # the browser tests must not spend money or depend on the network; RUN_AI=1 keeps the real provider
+    os.environ["LLM_PROVIDER"] = "none"
+
 base, _, name = get_settings().database_url.rpartition("/")
 os.environ["DATABASE_URL"] = f"{base}/{name}" if name.endswith("_test") else f"{base}/{name}_test"
 get_settings.cache_clear()

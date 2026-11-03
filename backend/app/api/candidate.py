@@ -18,6 +18,7 @@ from app.models import (Answer, Assignment, Attempt, AttemptQuestion, CodeSubmis
 from app.sandbox.judge import public_view
 from app.services import attempts as svc
 from app.services import jobs, proctoring
+from app.services.reports import attempt_report
 
 router = APIRouter(tags=["candidate"])
 
@@ -57,6 +58,8 @@ def _window_error(t: Test, a: Assignment) -> Optional[str]:
         return "Access to this test is currently disabled by the organiser"
     if t.starts_at and aware(t.starts_at) > now():
         return f"The test opens at {aware(t.starts_at).strftime('%d %b %Y %H:%M UTC')}"
+    if t.results_declared_at:
+        return "Results for this exam have already been declared"
     if t.ends_at and aware(t.ends_at) < now():
         return "The test window has closed"
     if a.expires_at and aware(a.expires_at) < now():
@@ -74,8 +77,10 @@ def my_assignments(user: User = Depends(current_user), db: Session = Depends(get
         at = db.scalar(select(Attempt).where(Attempt.assignment_id == a.id, Attempt.status != "reset").order_by(Attempt.started_at.desc()))
         publish_result = bool((t.settings or {}).get("show_result_to_candidate", True))
         res = None
-        if at and at.status == "evaluated" and publish_result:
-            res = {"score": at.total_score, "max": at.max_score}
+        if at and t.results_declared_at and at.status == "evaluated" and publish_result:
+            rep = attempt_report(db, at, staff_view=False)
+            res = {"score": at.total_score, "max": at.max_score, "percent": rep["attempt"]["percent"], "passed": not at.below_cutoff,
+                   "reason": at.submit_reason, "sections": [{"title": s["title"], "score": s["score"], "max": s["max"]} for s in rep["sections"]]}
         n_q = sum(len(s.items) for s in t.sections)
         out.append({"assignment_id": a.id, "status": a.status, "test": {"id": t.id, "title": t.title,
                     "description": t.description, "duration_min": t.duration_min, "instructions": t.instructions,
@@ -310,10 +315,9 @@ def feedback(atid: str, body: dict, user: User = Depends(current_user), db: Sess
 
 @router.get("/attempts/{atid}/result")
 def result(atid: str, user: User = Depends(current_user), db: Session = Depends(get_db)):
-    from app.services.reports import attempt_report
     at = _my_attempt(db, atid, user)
     t = db.get(Test, at.test_id)
-    if at.status != "evaluated" or not (t.settings or {}).get("show_result_to_candidate", True):
+    if not t.results_declared_at or at.status != "evaluated" or not (t.settings or {}).get("show_result_to_candidate", True):
         return {"published": False, "status": at.status, "test": t.title,
                 "message": "Your answers were submitted. Results will be shared by the organiser."}
     rep = attempt_report(db, at, staff_view=False)

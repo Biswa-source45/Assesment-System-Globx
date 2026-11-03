@@ -1,10 +1,11 @@
-import { useCallback, useEffect, useRef, useState } from "react"
+import { useCallback, useEffect, useState } from "react"
 import { useSearchParams } from "react-router-dom"
 import { RefreshCw } from "lucide-react"
-import { api, get } from "@/lib/api"
+import { get } from "@/lib/api"
 import { ENDED, RISK, STATUS } from "@/lib/labels"
 import { hms, useCountdown } from "@/lib/useCountdown"
 import AssignmentActions from "@/components/AssignmentActions"
+import Snapshot from "@/components/Snapshot"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -16,30 +17,6 @@ const FINISHED = ["submitted", "auto_submitted", "evaluating", "review_pending",
 function TimeLeft({ deadline, skew }) {
   const left = useCountdown(deadline, skew)
   return <span className={"font-mono " + (left != null && left < 300 ? "font-medium text-destructive" : "")} data-testid="time-left">{hms(left)}</span>
-}
-
-// Snapshots are protected files, so they are fetched with the login header and shown from memory.
-function Snapshot({ id }) {
-  const [url, setUrl] = useState(null)
-  const shown = useRef(null)
-  useEffect(() => {
-    if (!id) return
-    let alive = true
-    api(`/snapshots/${id}`, { raw: true })
-      .then((r) => r.blob())
-      .then((b) => {
-        if (!alive) return
-        const next = URL.createObjectURL(b)
-        if (shown.current) URL.revokeObjectURL(shown.current)
-        shown.current = next
-        setUrl(next)
-      })
-      .catch(() => {})
-    return () => { alive = false }
-  }, [id])
-  useEffect(() => () => { if (shown.current) URL.revokeObjectURL(shown.current) }, [])
-  if (!id) return <span className="text-xs text-muted-foreground">-</span>
-  return url ? <img src={url} alt="Latest camera snapshot" className="h-16 w-20 rounded object-cover" /> : <span className="inline-block h-16 w-20 rounded bg-muted" />
 }
 
 const ago = (s) => (s == null ? "-" : s < 60 ? `${s}s ago` : `${Math.floor(s / 60)} min ago`)

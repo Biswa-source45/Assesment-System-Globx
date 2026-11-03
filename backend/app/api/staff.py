@@ -164,16 +164,7 @@ def rerun_ai(aid: str, user: User = Depends(EVAL), db: Session = Depends(get_db)
 # ------------------------------------------------------------------ reports & evidence
 @router.get("/reports/attempts/{atid}")
 def report(atid: str, user: User = Depends(VIEW), db: Session = Depends(get_db)):
-    at = _attempt(db, atid, user)
-    rep = attempt_report(db, at, staff_view=True)
-    if ai.llm_enabled():
-        try:
-            summ = f"Test {rep['test']['title']}; score {rep['attempt']['total_score']}/{rep['attempt']['max_score']}; " + \
-                   "; ".join(f"{s['title']}: {s['score']}/{s['max']}" for s in rep["sections"])
-            rep["interview_tips"] = ai.ai_interview_tips(summ)
-        except Exception:
-            rep["interview_tips"] = []
-    return rep
+    return attempt_report(db, _attempt(db, atid, user), staff_view=True)
 
 
 @router.get("/snapshots/{sid}")

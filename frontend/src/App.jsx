@@ -3,11 +3,13 @@ import { useAuth } from "@/lib/auth"
 import Login from "@/pages/Login"
 import AdminLayout from "@/pages/admin/AdminLayout"
 import Exams from "@/pages/admin/Exams"
-import ComingSoon from "@/pages/admin/ComingSoon"
+import AttemptReview from "@/pages/admin/AttemptReview"
 import Departments from "@/pages/admin/Departments"
+import ExamResults from "@/pages/admin/ExamResults"
 import ExamEditor from "@/pages/admin/ExamEditor"
 import Monitor from "@/pages/admin/Monitor"
 import Questions from "@/pages/admin/Questions"
+import Results from "@/pages/admin/Results"
 import Users from "@/pages/admin/Users"
 import { QuestionPage } from "@/pages/admin/QuestionEditor"
 import CandidateHome from "@/pages/candidate/Home"
@@ -51,7 +53,9 @@ export default function App() {
         <Route path="exams/:id" element={<ExamEditor />} />
         <Route path="questions" element={<Need can="bank"><Questions /></Need>} />
         <Route path="questions/:id" element={<Need can="author"><QuestionPage /></Need>} />
-        <Route path="results" element={<ComingSoon title="Results and review" />} />
+        <Route path="results" element={<Results />} />
+        <Route path="results/:testId" element={<ExamResults />} />
+        <Route path="results/:testId/:attemptId" element={<AttemptReview />} />
         <Route path="departments" element={<Departments />} />
         <Route path="monitor" element={<Monitor />} />
         <Route path="users" element={<Need can="admin"><Users /></Need>} />

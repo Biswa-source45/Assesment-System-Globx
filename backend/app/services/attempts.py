@@ -20,6 +20,7 @@ from app.services import ai
 
 log = logging.getLogger("oap.attempts")
 GRACE_S = 5
+AI_TRUST = 0.7  # an AI mark at least this sure of itself counts at once; anything less waits for a person
 SUBJECTIVE = ("short", "long")
 CODELIKE = ("coding", "sql")
 
@@ -93,6 +94,7 @@ def start_attempt(db: Session, asg: Assignment, test: Test, ip: str, ua: str, co
     deadline = t + dur
     if test.ends_at and aware(test.ends_at) < deadline:
         deadline = max(aware(test.ends_at), t + timedelta(minutes=1))
+    test.calculated_at = None  # someone new is taking the exam: it must be calculated again
     at = Attempt(id=uid(), assignment_id=asg.id, test_id=test.id, candidate_id=asg.candidate_id, started_at=t,
                  deadline_at=deadline, seed=random.randint(1, 2 ** 31 - 1), ip=ip, user_agent=ua[:300],
                  consent=consent, system_check=check, section_state={})
@@ -320,9 +322,10 @@ def grade_answer(db: Session, aq: AttemptQuestion, a: Optional[Answer], use_ai: 
         correct = [o["id"] for o in c.get("options", []) if o.get("correct")]
         sc = scoring.score_mcq(resp.get("selected") or [], correct, opts, aq.marks, aq.negative,
                                q.type == "mcq_multi", bool(c.get("partial", True)))
+        if a.final_score is None or abs(a.final_score - sc) > 1e-9:
+            db.add(Evaluation(answer_id=a.id, method="auto", score=sc))
         a.auto_score = a.final_score = sc
         a.status = "final"
-        db.add(Evaluation(answer_id=a.id, method="auto", score=sc))
     elif q.type in CODELIKE:
         subs = db.scalars(select(CodeSubmission).where(CodeSubmission.attempt_id == aq.attempt_id,
                                                        CodeSubmission.question_id == q.id,
@@ -342,9 +345,10 @@ def grade_answer(db: Session, aq: AttemptQuestion, a: Optional[Answer], use_ai: 
             sc = 0.0
             if (resp.get("source") or "").strip():
                 flags.append("not_submitted")
+        if a.final_score is None or abs(a.final_score - sc) > 1e-9:
+            db.add(Evaluation(answer_id=a.id, method="auto", score=sc, rationale=", ".join(flags)))
         a.auto_score = a.final_score = sc
         a.status = "final"
-        db.add(Evaluation(answer_id=a.id, method="auto", score=sc, rationale=", ".join(flags)))
     elif q.type in SUBJECTIVE:
         text = _text_of(resp)
         has_file = bool(resp.get("files"))
@@ -366,7 +370,7 @@ def grade_answer(db: Session, aq: AttemptQuestion, a: Optional[Answer], use_ai: 
             a.ai_score = sc if semantic is not None else None
             a.ai_confidence, a.ai_rationale = conf, rationale
             a.ai_detail = {"keyword_coverage": round(cov, 3), "semantic": semantic}
-            if semantic is not None and (conf or 0) >= 0.7:
+            if semantic is not None and (conf or 0) >= AI_TRUST:
                 a.final_score, a.status = sc, "final"
                 db.add(Evaluation(answer_id=a.id, method="ai", score=sc, rationale=rationale))
             else:
@@ -382,7 +386,11 @@ def grade_answer(db: Session, aq: AttemptQuestion, a: Optional[Answer], use_ai: 
                     a.ai_detail = {"rubric_scores": r["scores"], "provider": r.get("provider")}
                 except Exception as e:
                     a.ai_rationale = f"AI unavailable: {e}"
-            a.final_score, a.status = None, "review"   # evaluator confirmation is mandatory
+            if a.ai_score is not None and (a.ai_confidence or 0) >= AI_TRUST:  # same rule as a short answer
+                a.final_score, a.status = a.ai_score, "final"
+                db.add(Evaluation(answer_id=a.id, method="ai", score=a.ai_score, rationale=a.ai_rationale))
+            else:
+                a.final_score, a.status = None, "review"
     a.flags = flags
     return a
 
@@ -432,6 +440,7 @@ def finalize_attempt(db: Session, attempt_id: str, reason: str = "submitted", wa
         if asg:
             asg.status = "test_taken"
         db.commit()
+    _submit_unsent_code(db, at)
     t_end = time.time() + wait_code_s
     while time.time() < t_end:
         pend = db.scalars(select(CodeSubmission.id).where(CodeSubmission.attempt_id == at.id,
@@ -452,8 +461,50 @@ def finalize_attempt(db: Session, attempt_id: str, reason: str = "submitted", wa
             a = Answer(id=uid(), attempt_id=at.id, question_id=aq.question_id, response={})
             db.add(a)
             db.flush()
-        grade_answer(db, aq, a)
+        grade_answer(db, aq, a, use_ai=False)  # the AI marks text answers once, after the exam closes (calculate_exam)
     db.flush()
     at.status = "submitted"
     recompute_totals(db, at, test)
+    db.commit()
+
+
+def _submit_unsent_code(db: Session, at: Attempt) -> None:
+    """Time over, terminated or ended by an admin: a program that was saved but never sent with Submit is judged once, so it earns what it earns."""
+    from app.services import jobs
+    for aq in db.scalars(select(AttemptQuestion).where(AttemptQuestion.attempt_id == at.id)).all():
+        q = aq.question
+        a = db.scalar(select(Answer).where(Answer.attempt_id == at.id, Answer.question_id == q.id))
+        resp = (a.response if a else None) or {}
+        if q.type not in CODELIKE or not (resp.get("source") or "").strip():
+            continue
+        if db.scalar(select(CodeSubmission.id).where(CodeSubmission.attempt_id == at.id, CodeSubmission.question_id == q.id, CodeSubmission.kind == "submit").limit(1)):
+            continue  # they did press Submit (or this already ran once)
+        lang = resp.get("language") or ("sqlite" if q.type == "sql" else ((q.config or {}).get("languages") or ["python"])[0])
+        sub = CodeSubmission(id=uid(), attempt_id=at.id, question_id=q.id, kind="submit", language=lang, source=resp["source"][:64 * 1024])
+        db.add(sub)
+        db.commit()
+        jobs.enqueue_submission(sub)
+
+
+def calculate_exam(db: Session, test: Test) -> None:
+    """The exam is over: mark everything that still needs marking, once, and record that it is done. Safe to repeat.
+    MCQ and programs are re-graded (free; a corrected answer key takes effect) unless an admin marked that answer by hand;
+    a text answer gets one AI call, and never a second one once it has an AI mark."""
+    for at in db.scalars(select(Attempt).where(Attempt.test_id == test.id, Attempt.status.in_(("review_pending", "evaluated")))).all():
+        aqs = db.scalars(select(AttemptQuestion).where(AttemptQuestion.attempt_id == at.id)).all()
+        answers = {a.question_id: a for a in db.scalars(select(Answer).where(Answer.attempt_id == at.id)).all()}
+        by_hand = set(db.scalars(select(Evaluation.answer_id).where(Evaluation.method == "manual", Evaluation.answer_id.in_([a.id for a in answers.values()]))).all())
+        for aq in aqs:
+            a = answers.get(aq.question_id)
+            if a is None or a.id in by_hand:
+                continue
+            if aq.question.type in SUBJECTIVE:
+                if a.status == "review" and a.ai_score is None:
+                    grade_answer(db, aq, a, use_ai=True)
+            else:
+                grade_answer(db, aq, a, use_ai=False)
+        db.flush()
+        recompute_totals(db, at, test)
+        db.commit()
+    test.calculated_at = now()
     db.commit()
