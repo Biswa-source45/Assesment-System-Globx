@@ -1,5 +1,6 @@
 # The whole exam system. Only Caddy is reachable from the network (port 443); the database, the api and the judge have no published ports.
 # It sits beside other compose projects on the same server (project name `oap`, its own network and volumes).
+# On the server only this file and .env exist: the images are built by GitHub Actions and pulled (`docker compose pull`). `build:` is for a developer machine.
 name: oap
 
 x-keep: &keep
@@ -12,7 +13,7 @@ services:
   judge:
     <<: *keep
     build: { context: ., dockerfile: Dockerfile.judge }
-    image: oap-judge
+    image: ${OAP_REGISTRY:-ghcr.io/biswa-source45}/oap-judge:${OAP_TAG:-latest}
     init: true                            # a tiny init process clears the dead processes a fork bomb leaves; without it they would use up the process limit
     read_only: true                       # the filesystem cannot be changed, except the two memory disks below
     network_mode: none                    # no network: not the internet, not the database, not the api
@@ -60,7 +61,7 @@ services:
   api:
     <<: *keep
     build: { context: ., dockerfile: Dockerfile.api }
-    image: oap-api
+    image: ${OAP_REGISTRY:-ghcr.io/biswa-source45}/oap-api:${OAP_TAG:-latest}
     group_add: ["3000"]                   # the group that may use the judge's socket
     depends_on:
       db: { condition: service_healthy }
@@ -92,7 +93,7 @@ services:
   caddy:
     <<: *keep
     build: { context: ., dockerfile: Dockerfile.caddy }
-    image: oap-caddy
+    image: ${OAP_REGISTRY:-ghcr.io/biswa-source45}/oap-caddy:${OAP_TAG:-latest}
     ports: ["443:443"]
     depends_on:
       api: { condition: service_healthy }
@@ -100,7 +101,6 @@ services:
       DOMAIN: ${DOMAIN:?set DOMAIN in .env}
       GODADDY_API_TOKEN: ${GODADDY_API_TOKEN:-}      # <key>:<secret> of a GoDaddy production API key
     volumes:
-      - ./${CADDYFILE:-Caddyfile}:/etc/caddy/Caddyfile:ro
       - caddy-data:/data                              # the certificate: kept, so a restart does not ask for a new one
 
 volumes:

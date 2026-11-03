@@ -77,28 +77,47 @@ Optional later upgrade: run the judge under gVisor (`runsc`) on a Linux host for
 
 ## 6. Configuration (`.env` on the server)
 
+`deploy.ps1` writes it the first time (random passwords, only the user and administrators can read it); `docker-compose.yml` passes what the containers need (production mode, the judge socket, the storage folder). Nothing else has to be set by hand.
+
 | Variable | Value |
 |---|---|
-| `DATABASE_URL` | `postgresql+psycopg://<user>:<password>@db:5432/oap` (use a strong password, not `postgres`) |
-| `SECRET_KEY` | long random string, never reuse the dev one |
-| `DEMO_MODE` | `false` |
-| `PUBLIC_BASE_URL` | `https://assessment.globx.co.in` |
-| `LLM_PROVIDER` / `LLM_OPENAI_MODEL` / `LLM_OPENAI_API_KEY` | `openai` / `gpt-4o-mini` / the key |
-| `JUDGE_URL` | `unix:///run/judge/judge.sock` (the shared volume with the judge container) |
-| `ENVIRONMENT` | `production` (turns on the refusal to run code without the judge) |
-| GoDaddy key and secret | only if certificate option A is used |
+| `DOMAIN` | `assessment.globx.co.in` |
+| `DB_PASSWORD`, `SECRET_KEY` | long random strings, generated |
+| `GODADDY_API_TOKEN` | `<key>:<secret>` of a GoDaddy production API key (certificate) |
+| `LLM_PROVIDER` / `LLM_OPENAI_MODEL` / `LLM_OPENAI_API_KEY` | `none` until an OpenAI key is added (then `openai` / `gpt-4o-mini` / the key) |
+| `OAP_TAG` | optional: a commit id to run an earlier version |
 
-Local development uses the repo-root `.env` (git-ignored). See `.env.example`.
+Local development uses the repo-root `.env` (git-ignored). See `.env.example`; `server.env.example` lists the server's file.
 
-## 7. Deploy steps (the compose file is built and was run end to end on the development machine with a test certificate)
+## 7. Deploy steps (GitHub builds the images, the server pulls them)
 
-1. On the server, put the project in a folder (`git clone`, or copy it). Copy `server.env.example` to `.env` and fill it in (section 6): `DOMAIN`, long random `DB_PASSWORD` and `SECRET_KEY`, `GODADDY_API_TOKEN` (`key:secret`), optionally the OpenAI key.
-2. GoDaddy, DNS Records tab: add an **A** record `assessment` -> the server's office IP (192.168.1.50). Windows Firewall: allow inbound TCP 443 from the office network.
-3. `docker compose up -d --build` (the first build takes about 10 minutes). Caddy asks for the certificate through the GoDaddy API; `docker compose logs caddy` shows it.
-4. First accounts: `docker compose exec api python -m app.seed` prints the staff and demo candidate passwords once. Sign in, create real users, change the passwords, and ignore or remove the demo candidates and the sample exam.
-5. `docker compose run --rm --no-deps judge python -m app.sandbox.hostile` must end with `39 of 39 checks passed`.
-4. Open `https://assessment.globx.co.in` from a candidate PC and run the check-in page (camera, face, fullscreen).
-5. Run one practice exam end to end with 2-3 PCs before the real one.
+**How it flows.** A push to `main` runs `.github/workflows/ci.yml`: backend tests (Postgres service), the judge's 39-attack drill, and only if both pass it builds `oap-api`, `oap-judge`, `oap-caddy` and publishes them to `ghcr.io/biswa-source45/` (tags `latest` and the commit). GitHub cannot reach the office PC, so the **server pulls**: you run `deploy.ps1` there when you choose (never in an exam). The server holds only `docker-compose.yml`, `deploy.ps1` and `.env`, no source code.
+
+**Once, from your PC (browser):**
+1. Push the code to GitHub. Watch the *Actions* tab: `tests`, `judge-drill` and `publish` must turn green. The repository stays private; the images are private too and belong to the repository.
+2. GitHub, *Settings > Developer settings > Personal access tokens > Tokens (classic) > Generate new token*: tick only **`read:packages`**, no expiry (or a long one), name it `office-server`. Copy it once. This is the only GitHub key; it can read the images and nothing else.
+3. GoDaddy, DNS Records tab: add an **A** record, name `assessment`, value `192.168.1.50`, TTL 10 minutes.
+4. GoDaddy, developer.godaddy.com/keys: create a **Production** key; keep the key and the secret (written `key:secret` in the next step).
+
+**Once, on the server (UltraViewer, then PowerShell as Administrator):**
+5. Make a folder, for example `C:\oap`, and copy into it only `docker-compose.yml` and `deploy.ps1` from the repository. Docker Desktop must be running and no exam must be running.
+6. `cd C:\oap`, then `docker login ghcr.io -u Biswa-source45` and paste the token from step 2 as the password.
+7. `powershell -ExecutionPolicy Bypass -File .\deploy.ps1 -Seed -Drill`. It asks for the address (Enter keeps `assessment.globx.co.in`) and the GoDaddy `key:secret` (hidden), writes `.env` with random passwords, opens port 443 for the office network, pulls the images, starts everything, creates the first accounts (the passwords are shown once: note them, sign in, make real users, change the passwords) and runs the drill, which must end with `39 of 39 checks passed`. The first start also gets the certificate through GoDaddy (`docker compose logs caddy`).
+8. From another office computer open `https://assessment.globx.co.in`; check sign-in, the camera, screen sharing, the live view and a coding question.
+
+**Every later update (no exam running):** push to GitHub, wait for the green *publish*, then on the server `cd C:\oap; .\deploy.ps1`. Roll back: add `OAP_TAG=<commit id>` to `.env` and run it again (the commit ids are the image tags in GitHub, *Packages*). If `docker-compose.yml` itself changed in a release, copy the new file to the server first (rare). Data (database, pictures, certificate) lives in volumes and the `user-assets` folder and survives updates.
+
+**Keys, in one table**
+
+| Key | Made where | Used where | Kept in |
+|---|---|---|---|
+| GitHub token `read:packages` | GitHub settings | the server's one-time `docker login` | Docker's credential store on the server |
+| GoDaddy API key and secret | developer.godaddy.com | Caddy (certificate) | `.env` on the server only |
+| Database password, `SECRET_KEY` | generated by `deploy.ps1` | the stack | `.env` on the server only |
+| OpenAI key (optional) | OpenAI | the api | `.env` on the server only |
+| GitHub Actions needs none of these | it uses its built-in token to publish | | |
+
+**Not yet in the pipeline:** the Playwright browser suite (it needs fake camera and screen devices; it stays a local check before pushing), automatic updating on the server (deliberately off: a restart during an exam would drop everyone).
 
 ## 8. Exam-day runbook
 
@@ -151,7 +170,8 @@ Every event is stored with a timestamp, plus when and why the exam ended. Browse
 - [done] Frontend screens: results and review (declare, accept AI marks, review per candidate)
 - [done] Docker judge container: image, locked-down compose service, per-run users, 39-attack drill passing (run it again on the office server)
 - [done] Docker compose with db, api, Caddy and the judge, run end to end locally with a test certificate; Playwright through HTTPS passes
-- [planned] Backups; real certificate and DNS record on the office server
+- [done] GitHub Actions (`.github/workflows/ci.yml`): tests on Linux (Postgres service), judge drill, then publish the three images to ghcr.io; `deploy.ps1` pulls and starts them on the server; tried locally against a local registry in a simulated server folder
+- [planned] Backups; push to GitHub and see the workflow turn green; real certificate and DNS record on the office server
 - [planned] LAN test with 2-3 PCs
 
 ## 12. Open items

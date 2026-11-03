@@ -1,4 +1,4 @@
-# For trying the stack on a development machine: a certificate Caddy makes itself (browsers will warn). CADDYFILE=Caddyfile.local, DOMAIN=localhost.
+# For trying the stack on a development machine (see docker-compose.local.yml): a certificate Caddy makes itself, browsers will warn.
 {
 	auto_https disable_redirects
 }

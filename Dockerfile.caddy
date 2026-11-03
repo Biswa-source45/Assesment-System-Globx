@@ -5,3 +5,5 @@ RUN xcaddy build --with github.com/caddy-dns/godaddy
 
 FROM caddy:2
 COPY --from=build /usr/bin/caddy /usr/bin/caddy
+# the settings are part of the image: the server needs no Caddyfile of its own
+COPY Caddyfile /etc/caddy/Caddyfile
