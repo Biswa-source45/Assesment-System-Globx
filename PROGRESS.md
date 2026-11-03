@@ -4,7 +4,7 @@ Read at the start of every task; update after every change. Plan and decisions: 
 
 ## Current state (2026-11-02)
 
-- Codebase: FastAPI backend (`backend/app`) and a React **JSX** frontend (`frontend/`: Vite, Tailwind, shadcn/ui). 63 pytest tests and 53 Playwright browser tests pass.
+- Codebase: FastAPI backend (`backend/app`) and a React **JSX** frontend (`frontend/`: Vite, Tailwind, shadcn/ui). 67 pytest tests and 54 Playwright browser tests pass; the browser tests run all code through the judge service.
 - Built and browser-tested: login (staff email or candidate username); admin Exams list; **question bank** (list, filter, create/edit/archive MCQ, short,
   explained, coding and **SQL** questions; coding has a case table, reference-solution check and "Generate with AI", both working on the unsaved form; saving returns to the bank with the question at the top); **candidate flow** (home, camera check-in with
   MediaPipe face gate and consent, exam runner with section tabs, palette, mark for review, autosave, server timer, CodeMirror editor with Run/Submit,
@@ -28,7 +28,7 @@ Read at the start of every task; update after every change. Plan and decisions: 
 
 1. Department-specific question patterns (the department design supports them; only the type list differs per department today): numeric answer with tolerance (Finance, Operations), situational judgement with scored options (HR), rating scales.
    The exam editor does not yet expose linked groups, random pools, per-question mark overrides or reordering (the API supports them).
-2. Judge: Playwright through the real judge, docs; then compose for api/db, Caddy HTTPS, backups.
+2. Compose for api/db (the api joins group 3000 and the `judge-sock` volume), Caddy HTTPS, backups; run the 39-attack drill and the probe on the office server.
 3. Check on a real laptop with a real face: MediaPipe false positives/negatives (`minDetectionConfidence` is 0.5 in `frontend/src/lib/faces.js`), fullscreen behaviour,
    camera permission prompt on the office HTTPS address.
 4. Smaller gaps: camera-lost heartbeat; a per-question result page for candidates; a "disqualify" action for ended-early candidates; picture retention rule; second-solution cross-check for generated cases; judge calls (`run_reference` too) must go
@@ -41,7 +41,9 @@ Read at the start of every task; update after every change. Plan and decisions: 
 - **Per run** (`sandbox/process.py`, active only when `SANDBOX_UID_BASE` is set): every run is its own user (20000 up), its folder is mode 700 and its own, `RLIMIT_NPROC`, and when a run ends **all processes of that user are killed by the kernel in one go** (a helper becomes that user and does `kill(-1, SIGKILL)`, repeated until none is left; killing one by one could not keep up with a fork bomb and left 150+ processes). A run never starts as root.
 - **Root-cause fix found by the drill:** a program that floods its output can exit (file-size limit) before the monitor loop looks at the size, so the verdict was sometimes RE instead of OLE; the size is now also checked after the run.
 - **Attack drill** (`python -m app.sandbox.hostile`, run in the container: `docker compose run --rm --no-deps judge python -m app.sandbox.hostile`): 39 checks: container read-only and no network; reading secrets / the service's environment / other runs' folders / the socket from Python, C, Java and JavaScript; compile-time `#include` of secrets; writing outside, becoming root, killing the service, mounting; endless loop, sleep, fork bomb (Python and shell), thread bomb, memory bombs (Python, C, Java), output flood, disk fill, kill-all, C++ template bomb; SQL growth, ATTACH, PRAGMA, extension loading; afterwards no run folder or process left, process count normal, an honest program still passes. **39 of 39 pass** (run twice).
-- Tests: 67 pytest pass (against `oap_test`). Not yet done: Playwright through the real judge, admin warning banner test, deployment docs.
+- **Socket path proven in Docker** (a probe container with the api's group gets AC, one without it is refused; `python -m app.sandbox.probe`). This found a bug the drill could not: the entrypoint's `umask 0117` made the service write each run's source unreadable to the run's own user (every run failed with Permission denied); the umask is removed (uvicorn sets the socket mode itself; the folder's group and mode guard it). `.gitattributes` keeps LF in `*.sh`.
+- **Browser tests through the judge:** `e2e_server.py` starts `judge_service` on port 8002 and sets `JUDGE_URL`, so every coding and SQL flow, the editor's "check solution" and "generate cases" use the remote path. The admin layout shows a red banner when `unsafe_in_production` (production without the judge); tested with a mocked response.
+- Tests: 67 pytest, 54 Playwright (+1: the warning banner), all pass. Docs: DEPLOYMENT sections 3, 5, 6, 11, `.env.example` (`JUDGE_URL`), README.
 
 ### 2026-11-03 (evidence per exam, live view, voice)
 - **Per exam** (exam Details, Proctoring): *Candidate shares their entire screen*, *Live view for the invigilator*, *What is kept for the whole exam*: **Pictures** (camera every `snapshot_seconds`, screen every `screenshot_seconds` (60), plus a camera picture at every incident) or **Video** of the whole exam (camera, and the screen when shared), **deleted after `video_retention_days` (14, 1-90)**. The server clamps every setting (`proctoring_config`), so a bad value never gets through. Pictures are kept; only video is deleted automatically.

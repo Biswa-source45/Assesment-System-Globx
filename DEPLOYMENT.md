@@ -42,9 +42,16 @@ Candidate PCs (Chrome/Edge) - the browser does camera and face detection
 
 One domain serves both the website and the API, so there is no CORS and no separate backend address.
 
-The judge is a separate container because candidate code is untrusted. It runs as an unprivileged user with a read-only filesystem,
-CPU/memory/process limits, and sits on an internal network that has no route to the database. The api calls it over HTTP.
-During development the judge runs as a local process (not safe for real candidates).
+The judge is a separate container because candidate code is untrusted (`Dockerfile.judge`, `docker-compose.yml`, built and proven on the development machine).
+It has **no network at all**, a read-only filesystem, no `.env`, database client, secrets or pictures, every run is its own throw-away user, and the whole
+container has process, memory and CPU limits. The api reaches it only through a Unix socket in the shared `judge-sock` volume (the api container joins group 3000).
+`JUDGE_URL` empty = candidate code runs inside the api process: development only. With `ENVIRONMENT=production` and no judge, code runs are **refused** and the
+admin screens show a red warning; the server never runs candidate code itself.
+Safety is proven, not assumed: `docker compose run --rm --no-deps judge python -m app.sandbox.hostile` runs 39 attacks inside the real container (secret
+theft, network, writes, root, kill, fork/thread/memory/disk/output bombs, compile-time tricks, SQL attacks) and must print `39 of 39 checks passed`.
+Run it after every change to the judge or the compose file, and once on the office server before the first exam.
+To check the api's side of the channel: `python -m app.sandbox.probe` inside the api container (group 3000, `JUDGE_URL` set) must print `AC`; the same command as any user outside group 3000 must print that the judge is not available.
+Optional later upgrade: run the judge under gVisor (`runsc`) on a Linux host for a stronger wall against kernel exploits.
 
 ## 4. Domain and HTTPS [planned - Day 4]
 
@@ -60,7 +67,7 @@ During development the judge runs as a local process (not safe for real candidat
 
 ## 5. Server prerequisites [planned]
 
-- Docker Engine (Linux) or Docker Desktop with WSL2 (Windows). Confirm the OS.
+- Windows 10/11 with **Docker Desktop** (Linux containers, WSL2), confirmed; the judge image is Linux, so nothing depends on the host OS. Keep the repository checked out with LF line endings for `*.sh` (`.gitattributes` does this).
 - A reserved office IP; firewall allows inbound 443 (and 80 for the redirect) from the office network only.
 - Outbound internet for the api container to reach OpenAI and Let's Encrypt.
 - Time synced (NTP): exam deadlines are set by the server clock.
@@ -74,7 +81,8 @@ During development the judge runs as a local process (not safe for real candidat
 | `DEMO_MODE` | `false` |
 | `PUBLIC_BASE_URL` | `https://assessment.globx.co.in` |
 | `LLM_PROVIDER` / `LLM_OPENAI_MODEL` / `LLM_OPENAI_API_KEY` | `openai` / `gpt-4o-mini` / the key |
-| `JUDGE_URL` | internal address of the judge container |
+| `JUDGE_URL` | `unix:///run/judge/judge.sock` (the shared volume with the judge container) |
+| `ENVIRONMENT` | `production` (turns on the refusal to run code without the judge) |
 | GoDaddy key and secret | only if certificate option A is used |
 
 Local development uses the repo-root `.env` (git-ignored). See `.env.example`.
@@ -136,7 +144,7 @@ Every event is stored with a timestamp, plus when and why the exam ended. Browse
 - [done] Frontend screens: question bank, candidate check-in (camera + face gate), exam runner, proctoring client; Playwright suite (12 tests)
 - [done] Frontend screens: exam setup, participants and credentials sheet, live monitor (extend, end exam, re-open, new password)
 - [done] Frontend screens: results and review (declare, accept AI marks, review per candidate)
-- [planned] Docker judge container
+- [done] Docker judge container: image, locked-down compose service, per-run users, 39-attack drill passing (run it again on the office server)
 - [planned] Docker compose, Caddy HTTPS, backups
 - [planned] LAN test with 2-3 PCs
 

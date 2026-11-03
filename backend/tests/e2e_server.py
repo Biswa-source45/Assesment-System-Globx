@@ -29,6 +29,25 @@ creds = {e: p for e, p, _ in res["staff"]}
 creds["candidate"] = res["candidate_password"]
 Path(sys.argv[1]).write_text(json.dumps(creds), encoding="utf-8")
 
+import atexit  # noqa: E402
+import subprocess  # noqa: E402
+import time  # noqa: E402
+
+import httpx  # noqa: E402
 import uvicorn  # noqa: E402
+
+# candidate code runs through the judge service, exactly as in production (here a plain process on a local port; the container is checked by hostile.py)
+judge = subprocess.Popen([sys.executable, "-m", "uvicorn", "judge_service:app", "--port", "8002", "--log-level", "warning"], cwd=Path(__file__).resolve().parents[1])
+atexit.register(judge.kill)
+for _ in range(100):
+    try:
+        httpx.get("http://127.0.0.1:8002/health").raise_for_status()
+        break
+    except httpx.HTTPError:
+        time.sleep(0.1)
+else:
+    sys.exit("the judge service did not start")
+os.environ["JUDGE_URL"] = "http://127.0.0.1:8002"
+get_settings.cache_clear()
 
 uvicorn.run("app.main:app", port=8001, log_level="warning")

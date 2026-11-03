@@ -1,6 +1,8 @@
+import { useEffect, useState } from "react"
 import { NavLink, Outlet } from "react-router-dom"
 import { Building2, ClipboardList, FileQuestion, LogOut, MonitorPlay, Trophy, Users } from "lucide-react"
 import { useAuth } from "@/lib/auth"
+import { get } from "@/lib/api"
 import { Button } from "@/components/ui/button"
 import { Separator } from "@/components/ui/separator"
 import {
@@ -20,6 +22,8 @@ const NAV = [
 
 export default function AdminLayout() {
   const { user, logout } = useAuth()
+  const [unsafe, setUnsafe] = useState(false)  // production without the isolated judge: candidate code would run inside the server
+  useEffect(() => { get("/system/sandboxes").then((s) => setUnsafe(s.unsafe_in_production)).catch(() => {}) }, [])
   return (
     <SidebarProvider>
       <Sidebar>
@@ -57,6 +61,11 @@ export default function AdminLayout() {
           <Separator orientation="vertical" className="h-5" />
           <span className="text-sm text-muted-foreground" data-testid="company">{user.org_name}</span>
         </header>
+        {unsafe && (
+          <div role="alert" data-testid="unsafe-judge" className="border-b border-destructive/30 bg-destructive/10 px-4 py-2 text-sm font-medium text-destructive">
+            Coding and SQL questions are switched off: the isolated judge is not set up, and candidate code must never run inside the exam server. Ask the administrator to start it.
+          </div>
+        )}
         <main className="p-6"><Outlet /></main>
       </SidebarInset>
     </SidebarProvider>
