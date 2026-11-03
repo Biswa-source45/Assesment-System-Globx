@@ -68,6 +68,7 @@ Optional later upgrade: run the judge under gVisor (`runsc`) on a Linux host for
 ## 5. Server prerequisites [planned]
 
 - Windows 10/11 with **Docker Desktop** (Linux containers, WSL2), confirmed; the judge image is Linux, so nothing depends on the host OS. Keep the repository checked out with LF line endings for `*.sh` (`.gitattributes` does this).
+- **The server already runs another app (OneTrack, its own compose project):** Postgres on host port 5433, Redis 6379, backend 8081, Adminer 8080, its web front on port 80, and Watchtower (updates every container on the host every 60 s). Our stack is a **separate compose project (`oap`)**, touches nothing of OneTrack, and publishes **only port 443** (Caddy): db, api and judge have no host ports. The certificate is obtained by DNS challenge, so port 80 is not needed. Our services carry the label `com.centurylinklabs.watchtower.enable=false`, otherwise Watchtower would try to pull/restart our local images. Free disk and memory on the server still to be checked.
 - A reserved office IP; firewall allows inbound 443 (and 80 for the redirect) from the office network only.
 - Outbound internet for the api container to reach OpenAI and Let's Encrypt.
 - Time synced (NTP): exam deadlines are set by the server clock.
