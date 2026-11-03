@@ -28,8 +28,6 @@ export async function startProctoredExam(page, user, examTitle = "GLOBX Full-Sta
   await card.getByRole("link", { name: /Start|Resume/ }).click()
   await page.getByRole("button", { name: "Enable camera" }).click()
   await expect(page.getByTestId("face-status")).toHaveText("1 face detected", { timeout: 15_000 })
-  const share = page.getByRole("button", { name: "Share my screen" })  // exams that ask for the whole screen
-  if (await share.count()) { await share.click(); await expect(page.getByTestId("screen-status")).toBeVisible() }
   await page.getByLabel(/I understand and agree/).click()
   await page.getByRole("button", { name: "Start exam" }).click()
   await expect(page).toHaveURL(/\/exam\/attempt\//)

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react"
 import { Link, useNavigate, useParams } from "react-router-dom"
-import { Camera, ScreenShare } from "lucide-react"
+import { Camera } from "lucide-react"
 import { get, post } from "@/lib/api"
 import { countFaces, loadFaceDetector } from "@/lib/faces"
 import { getCamera, getScreen, screenLive, stopCamera, systemCheck } from "@/lib/media"
@@ -24,7 +24,6 @@ export default function CheckIn() {
   const [faces, setFaces] = useState(null)
   const [stable, setStable] = useState(false)
   const [consent, setConsent] = useState(false)
-  const [screenOn, setScreenOn] = useState(false)
   const [busy, setBusy] = useState(false)
 
   useEffect(() => {
@@ -64,17 +63,6 @@ export default function CheckIn() {
     }
   }
 
-  async function shareScreen() {
-    setError("")
-    try {
-      const stream = await getScreen()
-      stream.getVideoTracks()[0].addEventListener("ended", () => setScreenOn(false))
-      setScreenOn(true)
-    } catch (e) {
-      setError(e.message === "not the whole screen" ? "Please share your entire screen, not a window or a tab." : "Screen sharing was cancelled or blocked. Try again and choose Entire screen.")
-    }
-  }
-
   if (item === null && !error) return <div className="p-8 text-muted-foreground">Loading...</div>
   if (item === false) return <div className="p-8">Exam not found. <Link className="text-primary underline" to="/exam">Back</Link></div>
   if (!item) return <div className="p-8 text-destructive">{error}</div>
@@ -83,19 +71,25 @@ export default function CheckIn() {
   const needCamera = cfg.enabled && cfg.webcam
   const needScreen = cfg.enabled && cfg.screen_share
   const extraScreen = cfg.enabled && cfg.block_multi_display && window.screen.isExtended === true
-  const ready = (!needCamera || (cameraOn && stable)) && (!needScreen || (screenOn && screenLive())) && (!cfg.enabled || consent) && !extraScreen
+  const ready = (!needCamera || (cameraOn && stable)) && (!cfg.enabled || consent) && !extraScreen
   const faceLabel = faces === null ? "Waiting for camera" : faces === 1 ? "1 face detected" : faces === 0 ? "No face detected" : `${faces} faces detected`
 
   async function start() {
     setBusy(true)
     setError("")
     try {
-      if (cfg.enabled && cfg.fullscreen) await document.documentElement.requestFullscreen().catch(() => {})  // needs this click
+      // One click does it all. Full screen goes first: it needs this click, while Chrome's share box can take a person several seconds (measured:
+      // asked after the box, full screen is refused). Then the screen, with "Entire screen" preselected.
+      const full = () => document.documentElement.requestFullscreen().catch(() => {})
+      if (cfg.enabled && cfg.fullscreen) await full()
+      if (needScreen && !screenLive()) await getScreen()
+      if (cfg.enabled && cfg.fullscreen && !document.fullscreenElement) await full()  // the share box may have taken it; the exam asks again if it is still missing
       const r = await post(`/assignments/${assignmentId}/start`, { consent: { accepted: true, text_version: "2026-11" }, system_check: systemCheck() })
       started.current = true
       navigate(`/exam/attempt/${r.attempt_id}`)
     } catch (e) {
-      setError(e.message)
+      setError(e.message === "not the whole screen" ? "Please share your entire screen, not a window or a tab. Press the button again and keep Entire screen selected."
+        : e.name === "NotAllowedError" ? "Screen sharing was cancelled or blocked. Press the button again, keep Entire screen selected and press Share." : e.message)
       if (document.fullscreenElement) document.exitFullscreen().catch(() => {})
     } finally {
       setBusy(false)
@@ -117,7 +111,7 @@ export default function CheckIn() {
                 {cfg.fullscreen && <li>The exam runs in full screen. You may leave full screen or switch tabs <b>{cfg.tab_switch_limit} times</b>, each with a warning; the next time your exam ends.</li>}
                 {cfg.webcam && <li>Keep <b>exactly one face</b> in the camera. After <b>{cfg.face_limit} face warnings</b> your exam ends and your login is locked.</li>}
                 {cfg.block_paste && <li>Copy, paste and right-click are disabled.</li>}
-                {needScreen && <li>You share your <b>entire screen</b> for the whole exam. If you stop sharing it counts like leaving the window.</li>}
+                {needScreen && <li>You share your <b>entire screen</b> for the whole exam. Your browser asks you once, when you press the start button: keep <b>Entire screen</b> selected and press <b>Share</b>. If you stop sharing it counts like leaving the window.</li>}
                 {cfg.evidence === "video"
                   ? <li>Your camera{needScreen ? " and screen are" : " is"} <b>recorded</b> for the whole exam and the recording is deleted after {cfg.video_retention_days} days.</li>
                   : <li>Pictures of your camera{needScreen ? " and screen are" : " are"} saved during the exam.</li>}
@@ -136,7 +130,7 @@ export default function CheckIn() {
             {extraScreen && <Alert variant="destructive" className="p-3">Disconnect the second screen to continue.</Alert>}
             {error && <Alert variant="destructive" className="p-3">{error}</Alert>}
             {item.message && !item.can_start && <Alert className="p-3">{item.message}</Alert>}
-            <Button size="lg" disabled={!ready || busy || !item.can_start} onClick={start}>{busy ? "Starting..." : "Start exam"}</Button>
+            <Button size="lg" disabled={!ready || busy || !item.can_start} onClick={start}>{busy ? "Starting..." : needScreen ? "Accept and start exam" : "Start exam"}</Button>
           </CardContent>
         </Card>
 
@@ -154,22 +148,6 @@ export default function CheckIn() {
                 <Badge data-testid="face-status" variant={faces === 1 ? "default" : "destructive"} className={"w-fit " + (faces === 1 ? "bg-green-600" : "")}>{faceLabel}</Badge>
               ) : (
                 <Button variant="outline" onClick={enableCamera}><Camera /> Enable camera</Button>
-              )}
-            </CardContent>
-          </Card>
-        )}
-
-        {needScreen && (
-          <Card>
-            <CardHeader>
-              <CardTitle>Screen share</CardTitle>
-              <CardDescription>When asked, choose <b>Entire screen</b>, then press Share. Close anything private first.</CardDescription>
-            </CardHeader>
-            <CardContent className="grid gap-3">
-              {screenOn ? (
-                <Badge data-testid="screen-status" className="w-fit bg-green-600">Screen shared</Badge>
-              ) : (
-                <Button variant="outline" onClick={shareScreen}><ScreenShare /> Share my screen</Button>
               )}
             </CardContent>
           </Card>

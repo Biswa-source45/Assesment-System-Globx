@@ -26,10 +26,14 @@ export function stopCamera() {
 
 export const cameraLive = () => !!media.stream?.getVideoTracks().some((t) => t.readyState === "live")
 
-// The whole screen at a low frame rate (an exam is mostly still text). A window or a tab is refused: it would hide the rest of the screen.
+// The whole screen at a low frame rate (an exam is mostly still text). Chrome's own box always appears; the options below only make it open on
+// "Entire screen" (they are hints, a person can still pick otherwise). A window or a tab is refused: it would hide the rest of the screen.
 export async function getScreen() {
-  const stream = await navigator.mediaDevices.getDisplayMedia({ video: { frameRate: { ideal: 3, max: 5 }, width: { max: 1280 } }, audio: false })
-  const surface = stream.getVideoTracks()[0].getSettings().displaySurface  // undefined when the browser does not say
+  const stream = await navigator.mediaDevices.getDisplayMedia({
+    video: { frameRate: { ideal: 3, max: 5 }, width: { max: 1280 }, displaySurface: "monitor" }, audio: false,
+    monitorTypeSurfaces: "include", selfBrowserSurface: "exclude", surfaceSwitching: "exclude",
+  })
+  const surface = (import.meta.env.DEV && window.__displaySurface) || stream.getVideoTracks()[0].getSettings().displaySurface  // undefined when the browser does not say; the hook is dev only, for tests
   if (surface && surface !== "monitor") {
     stream.getTracks().forEach((t) => t.stop())
     throw new Error("not the whole screen")
