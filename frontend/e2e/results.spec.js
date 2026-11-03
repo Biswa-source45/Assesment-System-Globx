@@ -19,7 +19,7 @@ async function candidate(request, username, password) {
   }
 }
 
-async function makeExam(api, title, { text = true } = {}) {
+async function makeExam(api, title, { text = true, cutoff = 5 } = {}) {
   const dept = (await api.get("/departments")).find((d) => d.name === "Technical").id
   const q = (body) => api.post("/questions", { department_id: dept, body: "<p>x</p>", ...body })
   const made = [await q({ type: "mcq_single", title: `${title} mcq`, marks: 1, config: { options: [{ id: "a", text: "A", correct: true }, { id: "b", text: "B", correct: false }] } })]
@@ -27,7 +27,7 @@ async function makeExam(api, title, { text = true } = {}) {
     made.push(await q({ type: "short", title: `${title} short`, marks: 2, config: { model_answer: "alpha is first", keywords: ["alpha"], max_words: 100 } }))
     made.push(await q({ type: "long", title: `${title} long`, marks: 5, config: { model_answer: "an explanation", rubric: [{ id: "r1", name: "Content", max: 3 }, { id: "r2", name: "Clarity", max: 2 }] } }))
   }
-  const exam = await api.post("/tests", { department_id: dept, title, duration_min: 30, cutoff: 5, shuffle_questions: false, shuffle_options: false })
+  const exam = await api.post("/tests", { department_id: dept, title, duration_min: 30, cutoff, shuffle_questions: false, shuffle_options: false })
   const section = (await api.post(`/tests/${exam.id}/sections`, { title: "All" })).sections[0]
   for (const x of made) await api.post(`/sections/${section.id}/items`, { kind: "question", question_id: x.id })
   await api.post(`/tests/${exam.id}/publish`)
@@ -51,8 +51,8 @@ async function sit(c, answers, { leave = false } = {}) {
 }
 
 const finished = (c) => expect.poll(async () => (await c.api.get(`/attempts/${c.attempt}`)).attempt.status, { timeout: 30_000 }).toMatch(/review_pending|evaluated/)
-const closeExam = (api, exam) => api.send("put", `/tests/${exam.id}`, {
-  department_id: exam.department_id, title: exam.title, duration_min: 30, cutoff: 5, shuffle_questions: false, shuffle_options: false, ends_at: new Date(Date.now() - 60_000).toISOString(),
+const closeExam = (api, exam, cutoff = 5) => api.send("put", `/tests/${exam.id}`, {
+  department_id: exam.department_id, title: exam.title, duration_min: 30, cutoff, shuffle_questions: false, shuffle_options: false, ends_at: new Date(Date.now() - 60_000).toISOString(),
 })
 const myResult = async (c) => (await c.api.get("/me/assignments")).find((a) => a.assignment_id === c.assignment_id).result
 
@@ -151,8 +151,8 @@ test("results: calculated by itself after the end time, reviewed, declared; ende
   await expect(page.getByTestId("results-state")).toHaveText("Declared")
   await shot(page, "results-declared")
   const mine = await myResult(asha)
-  expect([mine.score, mine.max, mine.percent, mine.passed]).toEqual([7, 8, 87.5, true])
-  expect((await myResult(bala)).passed).toBe(false)
+  expect([mine.score, mine.max, mine.percent, mine.result]).toEqual([7, 8, 87.5, "passed"])
+  expect((await myResult(bala)).result).toBe("not_passed")
 
   // Asha sees it on her own home page
   const ctx = await browser.newContext({ baseURL: BASE_URL, ignoreHTTPSErrors: true })
@@ -203,4 +203,53 @@ test("no end time: the results are calculated by pressing a button; each role se
   expect(text).toContain("Dev Finisher")
   await page.goto("/admin/results")
   await expect(page.getByTestId("results-exam").filter({ hasText: "E2E Manual Results Exam" })).toContainText("Ready to declare")
+})
+
+test("a blank paper is never shown as passed, and an exam without a pass mark shows scores without a verdict", async ({ page, browser, request }) => {
+  const api = await staffRequest(request)
+  const exam = await makeExam(api, "E2E Blank Exam", { text: false, cutoff: 0 })  // pass mark 0: the case that showed a blank paper as "Passed"
+  const blank = await person(api, request, exam.id, "Blank Paper")
+  const some = await person(api, request, exam.id, "Some Answers")
+  await sit(blank, {})
+  await sit(some, { mcq: { selected: ["a"] } })
+  await finished(blank)
+  await finished(some)
+  expect((await closeExam(api, exam, 0)).ok()).toBeTruthy()
+
+  await loginStaff(page, "evaluator@globx.co.in")
+  await page.goto(`/admin/results/${exam.id}`)
+  await expect(page.getByTestId("results-state")).toHaveText("Ready to declare", { timeout: 45_000 })
+  const row = (name) => page.getByTestId("results-row").filter({ hasText: name })
+  await expect(row("Blank Paper")).toContainText("Did not attempt")
+  await expect(row("Blank Paper")).not.toContainText("Passed")
+  await expect(row("Some Answers")).toContainText("No pass mark set")      // a score of 1 / 1, but no verdict without a pass mark
+  await expect(page.getByTestId("summary-Passed")).toHaveText("0")
+  await expect(page.getByTestId("summary-Did not attempt")).toHaveText("1")
+
+  // the review of the blank paper: red "Did not attempt", and the answer key is shown without green marks
+  await row("Blank Paper").getByRole("link", { name: "Review" }).click()
+  await expect(page.getByTestId("review-Result")).toHaveText("Did not attempt")
+  const mcq = page.getByTestId("review-question").filter({ hasText: "Blank Exam mcq" })
+  await expect(mcq.locator("[data-state=answer-key]")).toContainText("Correct answer")
+  await expect(mcq.locator("[data-state=missed-right]")).toHaveCount(0)
+  await expect(mcq.locator("[data-state=chosen-right]")).toHaveCount(0)
+  await shot(page, "results-blank-paper")
+  await page.goBack()
+  await row("Some Answers").getByRole("link", { name: "Review" }).click()
+  await expect(page.getByTestId("review-Result")).toHaveText("No pass mark set")
+  await expect(page.getByTestId("review-Score")).toHaveText("1 / 1")
+
+  // declared: the candidate who answered nothing is told so, with no Passed badge
+  await page.goBack()
+  await page.getByRole("button", { name: "Declare results" }).click()
+  await dialog(page).getByRole("button", { name: /declare/i }).click()
+  await expect(page.getByTestId("results-state")).toHaveText("Declared")
+  const ctx = await browser.newContext({ baseURL: BASE_URL, ignoreHTTPSErrors: true })
+  const mine = await ctx.newPage()
+  await login(mine, blank.username, blank.password)
+  const card = mine.getByTestId("my-result")
+  await expect(card).toContainText("You did not answer any question")
+  await expect(card).toContainText("Did not attempt")
+  await expect(card).not.toContainText("Passed")
+  await ctx.close()
 })

@@ -53,7 +53,8 @@ def results(tid: str, user: User = Depends(VIEW), db: Session = Depends(get_db))
             "declared_at": aware(t.results_declared_at).isoformat() if t.results_declared_at else None,
             "summary": {"assigned": len(rows), "appeared": len(done), "absent": sum(1 for r in rows if r["outcome"] == "absent"),
                         "ended_early": sum(1 for r in done if r["outcome"] in ENDED_EARLY),
-                        "passed": sum(1 for r in done if r["below_cutoff"] is False), "failed": sum(1 for r in done if r["below_cutoff"]),
+                        "passed": sum(1 for r in done if r["result"] == "passed"), "failed": sum(1 for r in done if r["result"] == "not_passed"),
+                        "not_attempted": sum(1 for r in done if r["result"] == "not_attempted"),
                         "average_percent": round(sum(r["percent"] for r in scored) / len(scored), 1) if scored else 0,
                         "highest": max((r["score"] for r in scored), default=None)},
             "rows": rows}

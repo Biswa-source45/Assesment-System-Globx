@@ -3,7 +3,7 @@ import { Link } from "react-router-dom"
 import { get } from "@/lib/api"
 import { useAuth } from "@/lib/auth"
 import { ENDED } from "@/lib/labels"
-import { TONE } from "@/lib/verdict"
+import { RESULT, TONE } from "@/lib/verdict"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -49,8 +49,9 @@ export default function CandidateHome() {
               <CardContent className="grid gap-2 border-t pt-4 text-sm" data-testid="my-result">
                 <div className="flex items-center gap-3">
                   <span className="text-xl font-semibold" data-testid="my-score">{a.result.score} / {a.result.max} ({a.result.percent}%)</span>
-                  <Badge variant="outline" className={TONE[a.result.passed ? "good" : "bad"]}>{a.result.passed ? "Passed" : "Not passed"}</Badge>
+                  {a.result.result !== "no_pass_mark" && <Badge variant="outline" className={TONE[RESULT[a.result.result][1]]}>{RESULT[a.result.result][0]}</Badge>}
                 </div>
+                {a.result.result === "not_attempted" && <p className="text-muted-foreground">You did not answer any question.</p>}
                 {ENDED[a.result.reason] && a.result.reason !== "submitted" && <p className="text-muted-foreground">{ENDED[a.result.reason]}</p>}
                 <div className="flex flex-wrap gap-x-4 text-muted-foreground">{a.result.sections.map((s) => <span key={s.title}>{s.title}: {s.score} / {s.max}</span>)}</div>
               </CardContent>

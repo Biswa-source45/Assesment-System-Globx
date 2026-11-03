@@ -5,7 +5,7 @@ import { Download } from "lucide-react"
 import { api, get, post } from "@/lib/api"
 import { useAuth } from "@/lib/auth"
 import { fmtDate, RESULT_STATE, RISK } from "@/lib/labels"
-import { OUTCOME_TONE, STATE_TONE, TONE } from "@/lib/verdict"
+import { OUTCOME_TONE, RESULT, STATE_TONE, TONE } from "@/lib/verdict"
 import { useConfirm } from "@/components/ConfirmDialog"
 import { Alert } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
@@ -68,7 +68,7 @@ export default function ExamResults() {
   if (!d) return <p className="text-muted-foreground">Loading...</p>
   const evaluate = user.can.evaluate
   const s = d.summary
-  const cards = [["Assigned", s.assigned], ["Appeared", s.appeared], ["Did not attend", s.absent], ["Ended early", s.ended_early], ["Passed", s.passed], ["Failed", s.failed], ["Average", `${s.average_percent}%`]]
+  const cards = [["Assigned", s.assigned], ["Appeared", s.appeared], ["Did not attend", s.absent], ["Ended early", s.ended_early], ["Passed", s.passed], ["Failed", s.failed], ["Did not attempt", s.not_attempted], ["Average", `${s.average_percent}%`]]
 
   return (
     <div className="grid gap-4">
@@ -113,7 +113,7 @@ export default function ExamResults() {
                 <TableCell><Badge variant="outline" className={TONE[OUTCOME_TONE[r.outcome] ?? "none"]}>{r.outcome_label}</Badge></TableCell>
                 <TableCell>{done && r.score != null ? `${r.score} / ${r.max}` : "-"}</TableCell>
                 <TableCell>{done && r.percent != null ? `${r.percent}%` : "-"}</TableCell>
-                <TableCell>{done ? <Badge variant="outline" className={TONE[r.below_cutoff ? "bad" : "good"]}>{r.below_cutoff ? "Not passed" : "Passed"}</Badge> : "-"}</TableCell>
+                <TableCell>{done && r.result ? <Badge variant="outline" className={TONE[RESULT[r.result][1]]}>{RESULT[r.result][0]}</Badge> : "-"}</TableCell>
                 <TableCell>{r.attention || "-"}</TableCell>
                 <TableCell>{done ? (RISK[r.risk_level] ?? "-") : "-"}</TableCell>
                 <TableCell className="text-right">{done && <Button asChild size="sm"><Link to={`/admin/results/${testId}/${r.attempt_id}`}>Review</Link></Button>}</TableCell>

@@ -79,7 +79,7 @@ def my_assignments(user: User = Depends(current_user), db: Session = Depends(get
         res = None
         if at and t.results_declared_at and at.status == "evaluated" and publish_result:
             rep = attempt_report(db, at, staff_view=False)
-            res = {"score": at.total_score, "max": at.max_score, "percent": rep["attempt"]["percent"], "passed": not at.below_cutoff,
+            res = {"score": at.total_score, "max": at.max_score, "percent": rep["attempt"]["percent"], "result": rep["attempt"]["result"],
                    "reason": at.submit_reason, "sections": [{"title": s["title"], "score": s["score"], "max": s["max"]} for s in rep["sections"]]}
         n_q = sum(len(s.items) for s in t.sections)
         out.append({"assignment_id": a.id, "status": a.status, "test": {"id": t.id, "title": t.title,

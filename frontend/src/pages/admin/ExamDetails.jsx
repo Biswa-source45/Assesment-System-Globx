@@ -124,7 +124,8 @@ export default function ExamDetails({ test, onSaved }) {
             <Field id="exam-end" label="Closes at" type="datetime-local" value={f.ends_at} onChange={(e) => set("ends_at", e.target.value)}
               hint="Takes effect at once, also for people taking the exam now. Move it later to let more people take the exam; results are calculated after this time." />
             <Field id="exam-duration" label="Time allowed per candidate (minutes)" type="number" min="1" max="600" value={f.duration_min} onChange={(e) => set("duration_min", e.target.value)} />
-            <Field id="exam-cutoff" label="Pass mark (total marks)" type="number" min="0" step="0.5" value={f.cutoff} onChange={(e) => set("cutoff", e.target.value)} />
+            <Field id="exam-cutoff" label="Pass mark (total marks)" type="number" min="0" step="0.5" value={f.cutoff} onChange={(e) => set("cutoff", e.target.value)}
+              hint="0 means no pass mark: scores are shown without a Passed or Not passed verdict. Someone who answers nothing is never shown as passed." />
           </div>
           <Toggle id="shuffle-q" label="Shuffle question order" checked={f.shuffle_questions} onChange={(v) => set("shuffle_questions", v)} />
           <Toggle id="shuffle-o" label="Shuffle answer options" checked={f.shuffle_options} onChange={(v) => set("shuffle_options", v)} />

@@ -20,6 +20,32 @@ FINAL = ("review_pending", "evaluated")
 OUTCOME_LABEL = {"submitted": "Submitted", "time_over": "Time over", "violation_limit": "Ended: left the window too often",
                  "face_violation": "Ended: face rule, login locked", "admin_ended": "Ended by admin", "absent": "Did not attend"}
 ENDED_EARLY = ("violation_limit", "face_violation", "admin_ended")
+RESULT_LABEL = {"passed": "Passed", "not_passed": "Not passed", "not_attempted": "Did not attempt", "no_pass_mark": "No pass mark set"}
+
+
+def has_answer(resp: Dict) -> bool:
+    """The one rule for 'this question was answered' (the exam palette, the monitor, the review and the result): a choice, some text, a program."""
+    r = resp or {}
+    return bool(r.get("selected") or _text_of(r) or r.get("source") or r.get("submitted") or r.get("best_submission_id"))
+
+
+def result_of(test: Test, below_cutoff, attempted: bool) -> str:
+    """passed | not_passed | not_attempted | no_pass_mark. Nothing answered is never a pass; an exam with no pass mark (0 and no section minimum)
+    gives a score but no pass or fail verdict. Worked out when read, so exams marked before this rule are corrected too."""
+    if not attempted:
+        return "not_attempted"
+    if not ((test.cutoff or 0) > 0 or any((s.min_score or 0) > 0 for s in test.sections)):
+        return "no_pass_mark"
+    return "not_passed" if below_cutoff else "passed"
+
+
+def results_of(db: Session, test: Test, attempts: List[Attempt]) -> Dict[str, str]:
+    """result_of for many attempts, reading their answers once."""
+    answered = set()
+    ids = [a.id for a in attempts]
+    if ids:
+        answered = {aid for aid, resp in db.execute(select(Answer.attempt_id, Answer.response).where(Answer.attempt_id.in_(ids))) if has_answer(resp)}
+    return {a.id: result_of(test, a.below_cutoff, a.id in answered) for a in attempts}
 
 
 def ranked_attempts(db: Session, test_id: str) -> List[Attempt]:
@@ -57,8 +83,7 @@ def attempt_report(db: Session, at: Attempt, staff_view: bool = True) -> Dict:
         q: Question = aq.question
         a = answers.get(aq.question_id)
         resp = (a.response if a else {}) or {}
-        has = bool(resp.get("selected") or _text_of(resp) or resp.get("source") or resp.get("best_submission_id"))
-        attempted += 1 if has else 0
+        attempted += 1 if has_answer(resp) else 0
         item = {"question_id": q.id, "answer_id": a.id if a else None, "title": q.title, "type": q.type,
                 "section_id": aq.section_id, "marks": aq.marks, "negative": aq.negative,
                 "score": (a.final_score if a and a.final_score is not None else (a.ai_score if a and a.ai_score is not None else (a.auto_score if a else 0))),
@@ -97,7 +122,7 @@ def attempt_report(db: Session, at: Attempt, staff_view: bool = True) -> Dict:
                        "submit_reason": at.submit_reason, "seconds_taken": took,
                        "total_score": at.total_score, "max_score": at.max_score,
                        "percent": round(100 * (at.total_score or 0) / at.max_score, 1) if at.max_score else 0,
-                       "below_cutoff": at.below_cutoff, "rank": rank, "of": len(ranked),
+                       "result": result_of(test, at.below_cutoff, attempted > 0), "rank": rank, "of": len(ranked),
                        "attempted": attempted, "questions": len(aqs)},
            "candidate": {"id": u.id, "name": u.name, "email": u.email if staff_view else None, "phone": u.phone if staff_view else None},
            "assignment": {"id": asg.id, "status": asg.status, "invited_at": aware(asg.invited_at).isoformat()},
@@ -142,7 +167,7 @@ def test_analytics(db: Session, test: Test) -> Dict:
                        "health": ("too easy" if ans and full / len(ans) > 0.9 else "too hard" if ans and full / len(ans) < 0.1 else "good")})
     status = Counter(a.status for a in asgs)
     return {"funnel": {"invited": len(asgs), "started": len(atts), "completed": len(done),
-                       "cleared_cutoff": sum(1 for a in done if not a.below_cutoff),
+                       "cleared_cutoff": sum(1 for r in results_of(db, test, done).values() if r == "passed"),
                        "shortlisted": status.get("shortlisted", 0)},
             "status_counts": dict(status), "score_distribution": dist,
             "average_percent": round(sum(pct) / len(pct), 1) if pct else 0,
@@ -157,9 +182,10 @@ def candidates_table(db: Session, test: Test, status: str = "") -> List[Dict]:
     asgs = db.scalars(select(Assignment).where(Assignment.test_id == test.id)).all()
     ranked = ranked_attempts(db, test.id)
     rank = {a.id: i + 1 for i, a in enumerate(ranked)}
+    pairs = [(g, db.scalar(select(Attempt).where(Attempt.assignment_id == g.id, Attempt.status != "reset").order_by(Attempt.started_at.desc()))) for g in asgs]
+    results = results_of(db, test, [at for _, at in pairs if at and at.status != "in_progress"])
     rows = []
-    for g in asgs:
-        at = db.scalar(select(Attempt).where(Attempt.assignment_id == g.id, Attempt.status != "reset").order_by(Attempt.started_at.desc()))
+    for g, at in pairs:
         st = g.status
         outcome = (at.submit_reason or "submitted") if at and at.status != "in_progress" else ("in_progress" if at else "absent")
         if at and at.status == "in_progress":
@@ -176,20 +202,20 @@ def candidates_table(db: Session, test: Test, status: str = "") -> List[Dict]:
                      "section_scores": at.section_scores if at else {},
                      "minutes": int((aware(at.submitted_at) - aware(at.started_at)).total_seconds() // 60) if at and at.submitted_at else None,
                      "risk_level": at.risk_level if at else None, "risk_score": at.risk_score if at else None,
-                     "plagiarism": at.plagiarism_level if at else None, "below_cutoff": at.below_cutoff if at else None})
+                     "plagiarism": at.plagiarism_level if at else None, "result": results.get(at.id) if at else None})
     rows.sort(key=lambda r: (r["rank"] is None, r["rank"] or 0, r["email"]))
     return rows
 
 
 def export_rows(db: Session, test: Test) -> List[List]:
     secs = test.sections
-    header = ["Rank", "Name", "Email", "Status", "Outcome", "Score", "Max", "Percent", "Below cut-off", "Minutes",
+    header = ["Rank", "Name", "Email", "Status", "Outcome", "Score", "Max", "Percent", "Result", "Minutes",
               "Risk level", "Risk score", "Plagiarism"] + [s.title for s in secs]
     out = [header]
     for r in candidates_table(db, test):
         pct = round(100 * (r["score"] or 0) / r["max"], 1) if r["max"] else ""
         out.append([r["rank"] or "", r["name"], r["email"], r["status"], r["outcome_label"], r["score"] if r["score"] is not None else "",
-                    r["max"] or "", pct, "yes" if r["below_cutoff"] else ("no" if r["below_cutoff"] is False else ""),
+                    r["max"] or "", pct, RESULT_LABEL.get(r["result"], ""),
                     r["minutes"] or "", r["risk_level"] or "", r["risk_score"] if r["risk_score"] is not None else "",
                     r["plagiarism"] or ""] + [(r["section_scores"] or {}).get(s.id, "") for s in secs])
     return out
@@ -217,12 +243,6 @@ def to_xlsx(rows: List[List], title: str = "Results") -> bytes:
     buf = io.BytesIO()
     wb.save(buf)
     return buf.getvalue()
-
-
-def _has_answer(resp: Dict) -> bool:
-    """Same rule as the exam palette: a choice, some text, or a submitted program."""
-    r = resp or {}
-    return bool(r.get("selected") or (r.get("text") or "").strip() or r.get("submitted") or r.get("best_submission_id"))
 
 
 def _age_s(moment, at) -> int | None:
@@ -253,7 +273,7 @@ def monitor_rows(db: Session, test: Test) -> Dict:
                 "id": at.id, "started_at": aware(at.started_at).isoformat(), "deadline_at": aware(at.deadline_at).isoformat(),
                 "submit_reason": at.submit_reason, "violations": at.violations, "face_incidents": face_incidents(db, at, cfg),
                 "risk_level": at.risk_level, "risk_score": at.risk_score,
-                "answered": sum(1 for a in answers if _has_answer(a.response)),
+                "answered": sum(1 for a in answers if has_answer(a.response)),
                 "total": db.scalar(select(func.count(AttemptQuestion.id)).where(AttemptQuestion.attempt_id == at.id)),
                 "last_seen_s": _age_s(max(heard) if heard else None, t),
                 "snapshot_id": snap.id if snap else None, "snapshot_age_s": _age_s(snap.captured_at if snap else None, t),

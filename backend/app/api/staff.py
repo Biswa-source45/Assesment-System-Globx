@@ -22,7 +22,7 @@ from app.sandbox import remote
 from app.services import ai
 from app.services.departments import create_defaults
 from app.services.attempts import _text_of, grade_answer, recompute_totals
-from app.services.reports import attempt_report
+from app.services.reports import attempt_report, results_of
 
 router = APIRouter(tags=["staff"])
 
@@ -203,7 +203,7 @@ def dashboard(user: User = Depends(staff), db: Session = Depends(get_db)):
             "invited": len(asgs), "attempted": len(atts),
             "in_progress": sum(1 for a in atts if a.status == "in_progress"),
             "evaluated": sum(1 for a in atts if a.status == "evaluated"),
-            "cleared": sum(1 for a in atts if a.status in ("evaluated", "review_pending") and a.below_cutoff is False),
+            "cleared": sum(1 for t in tests for r in results_of(db, t, [a for a in atts if a.test_id == t.id and a.status in ("evaluated", "review_pending")]).values() if r == "passed"),
             "review_pending": review, "critical": sum(1 for a in atts if a.risk_level == "critical"),
             "ai_provider": get_settings().llm_provider, "demo_mode": get_settings().demo_mode}
 

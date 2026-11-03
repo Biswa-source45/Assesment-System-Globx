@@ -5,7 +5,7 @@ import { Check, Circle, Minus, X } from "lucide-react"
 import { api, get, post } from "@/lib/api"
 import { useAuth } from "@/lib/auth"
 import { ENDED, RISK, fmtDate } from "@/lib/labels"
-import { EDGE, TONE, VERDICT_TEXT, verdictOf } from "@/lib/verdict"
+import { EDGE, TONE, VERDICT_TEXT, verdictOf, RESULT } from "@/lib/verdict"
 import { TYPE_LABEL } from "@/pages/admin/Questions"
 import { Verdict } from "@/pages/candidate/CodeView"
 import Snapshot from "@/components/Snapshot"
@@ -31,11 +31,12 @@ function Chip({ tone, children, ...props }) {
 }
 
 // Every option as the candidate saw it: what is right is green, what they ticked wrongly is red, a right answer they missed is green with a dashed edge.
-function Options({ options }) {
+function Options({ options, answered }) {
   return (
     <div className="grid gap-1.5" data-testid="options">
       {options.map((o, i) => {
         const [state, tone, note] = o.chosen && o.correct ? ["chosen-right", "good", "Chosen. Correct"] : o.chosen ? ["chosen-wrong", "bad", "Chosen. Wrong"]
+          : o.correct && !answered ? ["answer-key", "none", "Correct answer"]  // nothing was chosen: the key is shown, but not as a green mark
           : o.correct ? ["missed-right", "good", "The correct answer (not chosen)"] : ["plain", "none", ""]
         const Icon = state === "plain" ? null : ICON[tone]
         return (
@@ -100,7 +101,7 @@ function MarkDialog({ q, onClose, onSaved }) {
 }
 
 function Answer({ q }) {
-  if (q.type.startsWith("mcq")) return <Options options={q.options} />
+  if (q.type.startsWith("mcq")) return <Options options={q.options} answered={answered(q)} />
   if (q.type === "short" || q.type === "long") {
     const given = plain(q.answer_html)
     return (
@@ -205,7 +206,7 @@ export default function AttemptReview() {
   const pics = (onlyProblems && problems.length ? problems : p.snapshots.filter((s) => s.kind === "webcam"))
   const screens = p.snapshots.filter((s) => s.kind === "screen")
   const evaluate = user.can.evaluate
-  const passTone = a.below_cutoff ? "bad" : "good"
+  const [resultLabel, passTone] = RESULT[a.result]
   const right = rep.questions.filter((q) => verdictOf(q.score ?? 0, q.marks, answered(q)) === "good").length
 
   return (
@@ -219,7 +220,7 @@ export default function AttemptReview() {
       </div>
 
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-        {[["Score", `${a.total_score} / ${a.max_score}`, "none"], ["Percent", `${a.percent}%`, "none"], ["Result", a.below_cutoff ? "Not passed" : "Passed", passTone], ["Rank", a.rank ? `${a.rank} of ${a.of}` : "-", "none"]].map(([label, value, tone]) => (
+        {[["Score", `${a.total_score} / ${a.max_score}`, "none"], ["Percent", `${a.percent}%`, "none"], ["Result", resultLabel, passTone], ["Rank", a.rank ? `${a.rank} of ${a.of}` : "-", "none"]].map(([label, value, tone]) => (
           <div key={label} className={"grid gap-0.5 rounded-xl border p-4 " + (tone === "none" ? "bg-card" : TONE[tone])}>
             <span className="text-xs opacity-80">{label}</span>
             <span className="flex items-center gap-1.5 text-xl font-semibold" data-testid={`review-${label}`}>{tone !== "none" && (tone === "good" ? <Check className="size-5" /> : <X className="size-5" />)}{value}</span>

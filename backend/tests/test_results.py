@@ -43,7 +43,7 @@ def _wait(check, what, tries=120):
     raise AssertionError("timed out waiting for " + what)
 
 
-def _exam(client, h, title):
+def _exam(client, h, title, cutoff=8):
     mk = lambda body: client.post(f"{API}/questions", headers=h, json={"department_id": DEPT["Technical"], "body": "<p>x</p>", **body}).json()
     qs = {
         "mcq": mk({"type": "mcq_single", "title": f"{title} mcq", "marks": 1, "config": {"options": [{"id": "a", "text": "A", "correct": True}, {"id": "b", "text": "B", "correct": False}]}}),
@@ -52,7 +52,7 @@ def _exam(client, h, title):
             {"id": "r1", "name": "Content", "max": 3}, {"id": "r2", "name": "Clarity", "max": 2}]}}),
         "code": client.post(f"{API}/questions", headers=h, json=_coding(f"{title} code", "6")).json(),
     }
-    t = client.post(f"{API}/tests", headers=h, json={"department_id": DEPT["Technical"], "title": title, "duration_min": 30, "cutoff": 8,
+    t = client.post(f"{API}/tests", headers=h, json={"department_id": DEPT["Technical"], "title": title, "duration_min": 30, "cutoff": cutoff,
                                                       "shuffle_questions": False, "shuffle_options": False}).json()
     sid = client.post(f"{API}/tests/{t['id']}/sections", headers=h, json={"title": "All"}).json()["sections"][0]["id"]
     for q in qs.values():
@@ -153,8 +153,8 @@ def test_the_exam_is_calculated_after_its_end_time_then_reviewed_and_declared(cl
     assert _row(res, "Bala Terminated")["outcome_label"] == "Ended: left the window too often" and _row(res, "Chitra Absent")["outcome_label"] == "Did not attend"
     assert res["summary"]["assigned"] == 4 and res["summary"]["appeared"] == 3 and res["summary"]["absent"] == 1 and res["summary"]["ended_early"] == 1
     asha_row = _row(res, "Asha Finisher")
-    assert asha_row["score"] == 1 + 2 + 5 + 10 and asha_row["rank"] == 1 and asha_row["below_cutoff"] is False   # AI was sure about both of Asha's text answers
-    assert _row(res, "Dev Timeover")["score"] == 0 and _row(res, "Dev Timeover")["below_cutoff"] is True
+    assert asha_row["score"] == 1 + 2 + 5 + 10 and asha_row["rank"] == 1 and asha_row["result"] == "passed"   # AI was sure about both of Asha's text answers
+    assert _row(res, "Dev Timeover")["score"] == 0 and _row(res, "Dev Timeover")["result"] == "not_attempted"   # Dev answered nothing: never a pass
     assert res["attention"] == 2 and _row(res, "Bala Terminated")["attention"] == 2   # an unsure AI mark and a failed AI call wait for a person
     assert [r["rank"] for r in res["rows"]][:3] == [1, 2, 3] and _row(res, "Chitra Absent")["rank"] is None
 
@@ -178,9 +178,10 @@ def test_the_exam_is_calculated_after_its_end_time_then_reviewed_and_declared(cl
     assert _mine(client, asha, a_asg)["result"] is None
     assert client.post(f"{API}/tests/{tid}/declare", headers=staff, json={"declared": True}).status_code == 200
     mine = _mine(client, asha, a_asg)["result"]
-    assert mine["score"] == 18 and mine["percent"] == 100 and mine["passed"] is True and mine["sections"] == [{"title": "All", "score": 18.0, "max": 18.0}]
+    assert mine["score"] == 18 and mine["percent"] == 100 and mine["result"] == "passed" and mine["sections"] == [{"title": "All", "score": 18.0, "max": 18.0}]
     assert _mine(client, bala, b_asg)["result"]["reason"] == "violation_limit"
-    assert _mine(client, dev, d_asg)["result"]["passed"] is False
+    assert _mine(client, dev, d_asg)["result"]["result"] == "not_attempted"
+    assert _mine(client, bala, b_asg)["result"]["result"] == "passed"   # Bala was ended early but his saved program alone (10) is over the pass mark of 8
     long_a = _answers(client, creator, at_a)["long"]
     assert client.post(f"{API}/answers/{long_a['answer_id']}/evaluate", headers=staff, json={"final_score": 3, "override_reason": "missed the main point"}).status_code == 200
     assert _mine(client, asha, a_asg)["result"]["score"] == 16
@@ -192,6 +193,7 @@ def test_the_exam_is_calculated_after_its_end_time_then_reviewed_and_declared(cl
     # the export says what happened to each person
     csv = client.get(f"{API}/tests/{tid}/export", headers=recruiter).text
     assert "Outcome" in csv.splitlines()[0] and "Did not attend" in csv and "Ended: left the window too often" in csv
+    assert "Result" in csv.splitlines()[0] and "Did not attempt" in csv and "Passed" in csv
 
     # who may do what
     for who, path, body in [(recruiter, "calculate", None), (recruiter, "accept-ai", None), (recruiter, "declare", {"declared": True})]:
@@ -234,3 +236,43 @@ def test_calculating_again_regrades_machine_marked_answers_and_keeps_hand_marks(
     assert _answers(client, creator, ats["one"])["mcq"]["score"] == 0   # re-marked with the corrected key
     assert _answers(client, creator, ats["two"])["mcq"]["score"] == 1   # the hand mark stays
     assert ai_calls == {"short": 0, "long": 0}
+
+
+def _submit_and_wait(client, cand, at):
+    assert client.post(f"{API}/attempts/{at}/submit", headers=cand, json={}).status_code == 200
+    _wait(lambda: _finished(client, cand, at), "a submission")
+
+
+def test_a_blank_paper_is_never_passed_and_an_exam_without_a_pass_mark_gives_no_verdict(client, ai_calls):
+    creator = _login(client, "creator@globx.co.in", PW["creator@globx.co.in"])
+    recruiter = _login(client, "recruiter@globx.co.in", PW["recruiter@globx.co.in"])
+
+    # no pass mark (0): a score but no verdict; a blank paper is still "did not attempt", not a pass
+    tid0, q0 = _exam(client, creator, "No pass mark exam", cutoff=0)
+    blank, blank_asg = _person(client, recruiter, tid0, "Blank Paper")
+    some, some_asg = _person(client, recruiter, tid0, "Some Answers")
+    at_blank, at_some = _start(client, blank, blank_asg), _start(client, some, some_asg)
+    _answer(client, some, at_some, q0["mcq"], {"selected": ["a"]})
+    _submit_and_wait(client, blank, at_blank)
+    _submit_and_wait(client, some, at_some)
+    rows = _results(client, creator, tid0)
+    assert _row(rows, "Blank Paper")["score"] == 0 and _row(rows, "Blank Paper")["result"] == "not_attempted"
+    assert _row(rows, "Some Answers")["score"] == 1 and _row(rows, "Some Answers")["result"] == "no_pass_mark"
+    review = client.get(f"{API}/reports/attempts/{at_blank}", headers=creator).json()["attempt"]
+    assert review["result"] == "not_attempted" and review["attempted"] == 0 and "below_cutoff" not in review
+    assert rows["summary"]["passed"] == 0 and rows["summary"]["failed"] == 0 and rows["summary"]["not_attempted"] == 1
+
+    # a pass mark of 1: the right answer passes, the wrong one does not, the blank paper did not attempt
+    tid1, q1 = _exam(client, creator, "Pass mark one exam", cutoff=1)
+    people = {}
+    for name, pick in (("Right One", ["a"]), ("Wrong One", ["b"]), ("Empty One", None)):
+        cand, asg = _person(client, recruiter, tid1, name)
+        at = _start(client, cand, asg)
+        if pick:
+            _answer(client, cand, at, q1["mcq"], {"selected": pick})
+        _submit_and_wait(client, cand, at)
+    rows = _results(client, creator, tid1)
+    assert {r["name"]: r["result"] for r in rows["rows"]} == {"Right One": "passed", "Wrong One": "not_passed", "Empty One": "not_attempted"}
+    assert (rows["summary"]["passed"], rows["summary"]["failed"], rows["summary"]["not_attempted"]) == (1, 1, 1)
+    assert client.get(f"{API}/tests/{tid1}/analytics", headers=creator).json()["funnel"]["cleared_cutoff"] == 1   # only the person who really passed
+    assert client.get(f"{API}/dashboard", headers=creator).json()["cleared"] >= 1

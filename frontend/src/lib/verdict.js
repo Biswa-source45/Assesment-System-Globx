@@ -12,6 +12,8 @@ export const TONE = {
 export const OUTCOME_TONE = { submitted: "good", time_over: "part", violation_limit: "bad", face_violation: "bad", admin_ended: "bad", absent: "none", in_progress: "info" }
 export const STATE_TONE = { open: "none", calculating: "part", needs_attention: "bad", ready: "info", declared: "good" }
 export const EDGE = { good: "border-green-600/50", bad: "border-red-600/50", part: "border-amber-500/60", none: "border-border" }  // a thin outline in the verdict colour
+// The result of a whole attempt (the server decides it, see result_of in services/reports.py): label and colour.
+export const RESULT = { passed: ["Passed", "good"], not_passed: ["Not passed", "bad"], not_attempted: ["Did not attempt", "bad"], no_pass_mark: ["No pass mark set", "none"] }
 export const VERDICT_TEXT = { good: "Correct", bad: "Wrong", part: "Partly correct", none: "Not answered" }
 
 export function verdictOf(score, marks, answered) {
