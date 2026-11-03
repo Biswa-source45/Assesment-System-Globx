@@ -36,6 +36,9 @@ Read at the start of every task; update after every change. Plan and decisions: 
 
 ## Log
 
+### 2026-11-03 (server measurements)
+- Server: IP 192.168.1.50 on LAN, 7.9 GB RAM (0.8 GB free with OneTrack running), 111 GB free disk, WSL2 ok, Docker starts by itself. Judge limited to 1.5 GB / 2 programs at once (`docker-compose.yml`); drill re-run: 39 of 39. Needed: CPU core count, number of candidates per exam, DNS record `assessment` -> 192.168.1.50 (not added yet).
+
 ### 2026-11-03 (the server is a spare office PC)
 - User ran the check on the server: Windows 11 (10.0.26200), Docker 29.7.2, OneTrack up (watchtower restart loop), LAN cable. The PC is sometimes switched off at closing and power cuts happen, so it is not always on; consequences and the auto-start checklist are in DEPLOYMENT section 5. Still needed: its Ethernet IP, RAM, free disk (commands failed in cmd, need PowerShell).
 
