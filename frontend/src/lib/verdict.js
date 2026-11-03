@@ -11,7 +11,7 @@ export const TONE = {
 // The coloured pills of the results screens: what happened to a person, and where an exam's results stand.
 export const OUTCOME_TONE = { submitted: "good", time_over: "part", violation_limit: "bad", face_violation: "bad", admin_ended: "bad", absent: "none", in_progress: "info" }
 export const STATE_TONE = { open: "none", calculating: "part", needs_attention: "bad", ready: "info", declared: "good" }
-export const BAR = { good: "border-l-green-600", bad: "border-l-red-600", part: "border-l-amber-500", none: "border-l-border" }
+export const EDGE = { good: "border-green-600/50", bad: "border-red-600/50", part: "border-amber-500/60", none: "border-border" }  // a thin outline in the verdict colour
 export const VERDICT_TEXT = { good: "Correct", bad: "Wrong", part: "Partly correct", none: "Not answered" }
 
 export function verdictOf(score, marks, answered) {

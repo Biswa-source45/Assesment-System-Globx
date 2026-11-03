@@ -5,7 +5,7 @@ import { Check, Circle, Minus, X } from "lucide-react"
 import { get, post } from "@/lib/api"
 import { useAuth } from "@/lib/auth"
 import { ENDED, RISK, fmtDate } from "@/lib/labels"
-import { BAR, TONE, VERDICT_TEXT, verdictOf } from "@/lib/verdict"
+import { EDGE, TONE, VERDICT_TEXT, verdictOf } from "@/lib/verdict"
 import { TYPE_LABEL } from "@/pages/admin/Questions"
 import { Verdict } from "@/pages/candidate/CodeView"
 import Snapshot from "@/components/Snapshot"
@@ -204,7 +204,7 @@ export default function AttemptReview() {
         {rep.questions.map((q) => {
           const v = verdictOf(q.score ?? 0, q.marks, answered(q))
           return (
-            <Card key={q.question_id} data-testid="review-question" data-verdict={v} className={"border-l-4 " + BAR[v]}>
+            <Card key={q.question_id} data-testid="review-question" data-verdict={v} className={EDGE[v]}>
               <CardContent className="grid gap-3 pt-4">
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="grow font-medium">{q.title}</span>
