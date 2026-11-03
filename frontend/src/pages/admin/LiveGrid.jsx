@@ -18,6 +18,11 @@ function Stream({ stream, className, label }) {
   return <video ref={el} muted playsInline autoPlay aria-label={label} data-live={stream ? "yes" : "no"} className={"rounded-md bg-black object-contain " + className} />
 }
 
+// What a tile says while no picture flows: never a silent black box.
+const NOTE = { connecting: "Connecting...", connected: "" }
+const noteOf = (state) => NOTE[state] ?? "Cannot connect: the network does not let these two computers send video to each other. Tell IT."
+const badgeOf = (peer) => (!peer ? ["Not connected", "secondary"] : peer.state === "connected" ? ["Live", "default"] : peer.state === "connecting" ? ["Connecting", "secondary"] : ["Cannot connect", "destructive"])
+
 // Every candidate in progress, live: their screen and camera, a message, a private line. Needs the exam's "Live view" setting on.
 export default function LiveGrid({ testId, rows }) {
   const viewer = useRef(null)
@@ -52,10 +57,14 @@ export default function LiveGrid({ testId, rows }) {
   const focused = focus && people.find((r) => r.attempt.id === focus)
   const tile = (r, big) => {
     const peer = peerOf(r.attempt.id)
+    const note = peer && noteOf(peer.state)
     return (
-      <div className={"grid gap-2 " + (peer?.screen ? "grid-cols-[3fr_1fr]" : "grid-cols-1")}>
-        {peer?.screen && <Stream stream={peer.screen} label={`${r.name} screen`} className={big ? "aspect-video w-full" : "aspect-video w-full"} />}
-        <Stream stream={peer?.camera ?? null} label={`${r.name} camera`} className={"w-full " + (peer?.screen ? "aspect-[4/3] self-end" : "aspect-video")} />
+      <div className="relative">
+        <div className={"grid gap-2 " + (peer?.screen ? "grid-cols-[3fr_1fr]" : "grid-cols-1")}>
+          {peer?.screen && <Stream stream={peer.screen} label={`${r.name} screen`} className="aspect-video w-full" />}
+          <Stream stream={peer?.camera ?? null} label={`${r.name} camera`} className={"w-full " + (peer?.screen ? "aspect-[4/3] self-end" : "aspect-video")} />
+        </div>
+        {note && <p data-testid="live-note" className={"absolute inset-0 grid place-items-center p-4 text-center text-sm font-medium " + (peer.state === "connecting" ? "text-white/80" : "text-red-300")}>{note}</p>}
       </div>
     )
   }
@@ -73,7 +82,7 @@ export default function LiveGrid({ testId, rows }) {
               <CardContent className="grid gap-2 pt-4">
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="grow font-medium">{r.name}</span>
-                  <Badge variant={peer?.camera ? "default" : "secondary"} data-testid="live-state">{peer?.camera ? "Live" : peer ? "Connecting" : "Not connected"}</Badge>
+                  <Badge variant={badgeOf(peer)[1]} data-testid="live-state">{badgeOf(peer)[0]}</Badge>
                   <Badge variant={r.attempt.violations ? "destructive" : "secondary"}>Leaves {r.attempt.violations}</Badge>
                   <Badge variant={r.attempt.face_incidents ? "destructive" : "secondary"}>Face {r.attempt.face_incidents}</Badge>
                 </div>

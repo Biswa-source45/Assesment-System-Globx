@@ -2,15 +2,20 @@
 // camera, screen and voice then travel directly between the browsers. The candidate always makes the offer.
 import { accessToken, get } from "@/lib/api"
 
+export const CONNECT_WAIT_MS = 15_000  // a tile that has not connected after this long says so
+let ice = []  // the connection settings (STUN/TURN), fetched before the WebSocket opens, so no message ever has to wait for them
+
 // A WebSocket to the exam's room that reconnects by itself. `onOpen` runs on every (re)connection.
+// Messages are handled strictly one after the other: an offer is fully applied before the connection details that follow it,
+// which is what makes the connection details arrive at a connection that is ready for them.
 function socket(testId, onMessage, onOpen) {
-  let ws, closed = false, timer
+  let ws, closed = false, timer, chain = Promise.resolve()
   async function open() {
-    try { await get("/live/ice") } catch { /* only here to refresh an expired login before connecting */ }  // eslint-disable-line no-empty
+    try { ice = (await get("/live/ice")).iceServers } catch { /* the call also refreshes an expired login; without settings the browser still tries direct */ }  // eslint-disable-line no-empty
     if (closed) return
     ws = new WebSocket(`${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/api/v1/live/${testId}?access_token=${accessToken()}`)
     ws.onopen = () => onOpen?.()
-    ws.onmessage = (e) => { try { onMessage(JSON.parse(e.data)) } catch { /* not for us */ } }
+    ws.onmessage = (e) => { chain = chain.then(() => onMessage(JSON.parse(e.data))).catch(() => {}) }  // a bad message must not stop the ones after it
     ws.onclose = () => { if (!closed) timer = setTimeout(open, 3000) }
   }
   open()
@@ -20,7 +25,6 @@ function socket(testId, onMessage, onOpen) {
   }
 }
 
-const iceServers = async () => { try { return (await get("/live/ice")).iceServers } catch { return [] } }
 const cap = async (sender, maxBitrate) => {  // keep the video small: many streams share the office Wi-Fi
   try { const p = sender.getParameters(); p.encodings = p.encodings?.length ? p.encodings : [{}]; p.encodings[0].maxBitrate = maxBitrate; await sender.setParameters(p) } catch { /* the browser decides */ }  // eslint-disable-line no-empty
 }
@@ -28,18 +32,27 @@ const cap = async (sender, maxBitrate) => {  // keep the video small: many strea
 // Candidate side. Offers the camera, the screen and a silent microphone to every examiner in the room.
 // onTalk(true|false): an invigilator opened or closed a line to this candidate. onMessage(text): a written message.
 export function startPublishing({ testId, camera, screen, onTalk, onMessage }) {
-  const peers = new Map()  // examiner id -> { pc, audio, screenSender }
+  const peers = new Map()  // examiner id -> { pc, audio, tries }
   const mic = camera.getAudioTracks()[0]
-  let net
+  let net, stopped = false
 
-  async function offerTo(id) {
+  async function offerTo(id, tries = 0) {
     peers.get(id)?.pc.close()
-    const pc = new RTCPeerConnection({ iceServers: await iceServers() })
-    const peer = { pc, audio: new Audio() }
+    const pc = new RTCPeerConnection({ iceServers: ice })
+    const peer = { pc, audio: new Audio(), tries }
     peers.set(id, peer)
     pc.onicecandidate = (e) => e.candidate && net.send({ type: "ice", to: id, candidate: e.candidate })
     pc.ontrack = (e) => { peer.audio.srcObject = new MediaStream([e.track]); peer.audio.play().catch(() => {}) }  // the invigilator's voice
-    pc.onconnectionstatechange = () => { if (pc.connectionState === "failed") { pc.close(); peers.delete(id) } }
+    // A connection that fails (or stays broken for 10 s) is offered again, a few times, instead of being given up.
+    let waiting
+    pc.onconnectionstatechange = () => {
+      clearTimeout(waiting)
+      const state = pc.connectionState
+      if (state === "connected") peer.tries = 0
+      const retry = () => { if (!stopped && peers.get(id) === peer && peer.tries < 5) { pc.close(); offerTo(id, peer.tries + 1) } }
+      if (state === "failed") setTimeout(retry, 2000)
+      else if (state === "disconnected") waiting = setTimeout(retry, 10_000)
+    }
     const senders = [pc.addTrack(camera.getVideoTracks()[0], camera)]
     if (screen) senders.push(pc.addTrack(screen.getVideoTracks()[0], screen))
     const voice = pc.addTransceiver("audio", { direction: "sendrecv", streams: [camera] })  // one line both ways, silent until a talk starts
@@ -58,8 +71,8 @@ export function startPublishing({ testId, camera, screen, onTalk, onMessage }) {
   }
 
   net = socket(testId, async (m) => {
-    if (m.type === "examiners") m.ids.forEach(offerTo)
-    else if (m.type === "examiner") offerTo(m.id)
+    if (m.type === "examiners") { for (const id of m.ids) await offerTo(id) }
+    else if (m.type === "examiner") await offerTo(m.id)
     else if (m.type === "answer") peers.get(m.from)?.pc.setRemoteDescription({ type: "answer", sdp: m.sdp }).catch(() => {})
     else if (m.type === "ice") peers.get(m.from)?.pc.addIceCandidate(m.candidate).catch(() => {})
     else if (m.type === "examiner-left") drop(m.id)
@@ -69,12 +82,14 @@ export function startPublishing({ testId, camera, screen, onTalk, onMessage }) {
   })
 
   return {
-    stop() { net.close(); peers.forEach((p) => p.pc.close()); peers.clear(); if (mic) mic.enabled = false },
+    stop() { stopped = true; net.close(); peers.forEach((p) => p.pc.close()); peers.clear(); if (mic) mic.enabled = false },
   }
 }
 
 // Examiner side. Keeps one connection per candidate and reports changes through onChange({ peers, talking }).
-// peers: [{ id, name, camera: MediaStream | null, screen: MediaStream | null }]; talking: { candidateId: examinerId }.
+// peers: [{ id, name, state, camera: MediaStream | null, screen: MediaStream | null }]; talking: { candidateId: examinerId }.
+// state: connecting | connected | disconnected | failed | unreachable (nothing connected within CONNECT_WAIT_MS). A stream exists as soon as the
+// offer is read, long before pictures can flow, so only state === "connected" means the tile is live.
 export class LiveViewer {
   constructor({ testId, onChange }) {
     this.onChange = onChange
@@ -85,18 +100,19 @@ export class LiveViewer {
   }
 
   emit() {
-    this.onChange({ peers: [...this.peers].map(([id, p]) => ({ id, name: p.name, camera: p.camera ?? null, screen: p.screen ?? null })), talking: { ...this.talking } })
+    this.onChange({ peers: [...this.peers].map(([id, p]) => ({ id, name: p.name, state: p.state ?? "connecting", camera: p.camera ?? null, screen: p.screen ?? null })), talking: { ...this.talking } })
   }
 
   async handle(m) {
     if (m.type === "peers") {
-      this.peers.forEach((p) => p.pc?.close())  // a reconnection: the old lines are gone
+      this.peers.forEach((p) => { p.pc?.close(); clearTimeout(p.timer) })  // a reconnection: the old lines are gone
       this.me = m.you
       this.talking = m.talking
       this.peers = new Map(m.peers.map((p) => [p.id, { name: p.name }]))
     } else if (m.type === "peer") {
       this.peers.set(m.id, { ...(this.peers.get(m.id) ?? {}), name: m.name })
     } else if (m.type === "peer-left") {
+      clearTimeout(this.peers.get(m.id)?.timer)
       this.peers.get(m.id)?.pc?.close()
       this.peers.delete(m.id)
     } else if (m.type === "talking") {
@@ -107,7 +123,9 @@ export class LiveViewer {
     } else if (m.type === "offer") {
       await this.answer(m)
     } else if (m.type === "ice") {
-      this.peers.get(m.from)?.pc?.addIceCandidate(m.candidate).catch(() => {})
+      const peer = this.peers.get(m.from)
+      if (peer?.pc?.remoteDescription) peer.pc.addIceCandidate(m.candidate).catch(() => {})
+      else if (peer) (peer.early ??= []).push(m.candidate)  // arrived before the offer: kept for when the connection exists
     }
     this.emit()
   }
@@ -115,10 +133,18 @@ export class LiveViewer {
   async answer({ from, sdp, streams }) {
     const peer = this.peers.get(from) ?? {}
     peer.pc?.close()
+    clearTimeout(peer.timer)
     peer.camera = peer.screen = null
-    const pc = new RTCPeerConnection({ iceServers: await iceServers() })
-    Object.assign(peer, { pc, audio: new Audio() })
+    const pc = new RTCPeerConnection({ iceServers: ice })
+    Object.assign(peer, { pc, audio: new Audio(), state: "connecting" })
     this.peers.set(from, peer)
+    peer.timer = setTimeout(() => { if (peer.state !== "connected") { peer.state = "unreachable"; this.emit() } }, CONNECT_WAIT_MS)
+    pc.onconnectionstatechange = () => {
+      if (pc !== peer.pc) return  // an older connection closing
+      peer.state = pc.connectionState === "new" ? "connecting" : pc.connectionState
+      if (peer.state === "connected") clearTimeout(peer.timer)
+      this.emit()
+    }
     pc.onicecandidate = (e) => e.candidate && this.net.send({ type: "ice", to: from, candidate: e.candidate })
     pc.ontrack = (e) => {
       if (e.track.kind === "audio") { peer.audio.srcObject = new MediaStream([e.track]); peer.audio.muted = true; return }  // the candidate's voice, heard only during a talk
@@ -127,6 +153,7 @@ export class LiveViewer {
       this.emit()
     }
     await pc.setRemoteDescription({ type: "offer", sdp })
+    for (const c of peer.early?.splice(0) ?? []) pc.addIceCandidate(c).catch(() => {})
     peer.voice = pc.getTransceivers().find((t) => t.receiver.track.kind === "audio")
     if (peer.voice) peer.voice.direction = "sendrecv"  // so the examiner's voice can go back on the same line
     await pc.setLocalDescription(await pc.createAnswer())
@@ -161,7 +188,7 @@ export class LiveViewer {
 
   stop() {
     this.net.close()
-    this.peers.forEach((p) => p.pc?.close())
+    this.peers.forEach((p) => { p.pc?.close(); clearTimeout(p.timer) })
     this.mic?.getTracks().forEach((t) => t.stop())
   }
 }
