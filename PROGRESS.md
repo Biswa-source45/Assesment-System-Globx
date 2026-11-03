@@ -36,6 +36,9 @@ Read at the start of every task; update after every change. Plan and decisions: 
 
 ## Log
 
+### 2026-11-03 (the server is a spare office PC)
+- User ran the check on the server: Windows 11 (10.0.26200), Docker 29.7.2, OneTrack up (watchtower restart loop), LAN cable. The PC is sometimes switched off at closing and power cuts happen, so it is not always on; consequences and the auto-start checklist are in DEPLOYMENT section 5. Still needed: its Ethernet IP, RAM, free disk (commands failed in cmd, need PowerShell).
+
 ### 2026-11-03 (what the office server already runs)
 - The user shared the server's existing `docker-compose.yml` (OneTrack: Postgres 5433, Redis 6379, backend 8081, Adminer 8080, front on 80, Watchtower for all containers). Decision: deploy ours as a separate compose project `oap`, publish only 443, label our services against Watchtower, DNS-challenge certificate. Noted in DEPLOYMENT section 5. Nothing built yet for api/db/Caddy.
 
