@@ -1,12 +1,14 @@
 """Database engine / session."""
 from __future__ import annotations
 
+import time
 from pathlib import Path
 from typing import Iterator
 
 from alembic import command
 from alembic.config import Config
 from sqlalchemy import create_engine, event, inspect, text
+from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 
 from app.core.config import BACKEND_DIR, get_settings
@@ -54,6 +56,15 @@ def migrate() -> None:
 
 def reset_schema() -> None:
     """Drop every table, including the migration history. Development and tests only (seed --reset)."""
-    Base.metadata.drop_all(engine)
+    for attempt in range(5):
+        try:
+            Base.metadata.drop_all(engine)  # one transaction: a failure leaves every table in place
+            break
+        except OperationalError as e:
+            # A background job that is still finishing (grading, the sweeper) can lock tables in the opposite order; Postgres then
+            # ends one of the two as the "deadlock victim" and the advice is to ask again, which works once the job's transaction is over.
+            if "deadlock detected" not in str(e) or attempt == 4:
+                raise
+            time.sleep(1)
     with engine.begin() as conn:
         conn.execute(text("DROP TABLE IF EXISTS alembic_version"))

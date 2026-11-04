@@ -34,3 +34,33 @@ def test_the_models_and_the_migrations_agree():
     reset_schema()
     migrate()
     command.check(_config())
+
+
+def test_resetting_the_database_asks_again_after_a_deadlock_and_never_hides_other_errors(monkeypatch):
+    """A background job from the last test can lock tables the other way round while the next test wipes the database (seen on GitHub)."""
+    import pytest
+    from sqlalchemy.exc import OperationalError
+    from app import db
+    real, calls = db.Base.metadata.drop_all, []
+
+    def victim_twice(bind):
+        calls.append(1)
+        if len(calls) < 3:
+            raise OperationalError("DROP TABLE evaluations", {}, Exception("deadlock detected"))
+        real(bind)
+
+    monkeypatch.setattr(db.time, "sleep", lambda s: None)
+    monkeypatch.setattr(db.Base.metadata, "drop_all", victim_twice)
+    db.reset_schema()
+    assert len(calls) == 3                                    # asked again until it worked
+
+    calls.clear()
+
+    def refused(bind):
+        calls.append(1)
+        raise OperationalError("DROP TABLE evaluations", {}, Exception("connection refused"))
+
+    monkeypatch.setattr(db.Base.metadata, "drop_all", refused)
+    with pytest.raises(OperationalError):
+        db.reset_schema()
+    assert len(calls) == 1                                    # any other error is raised at once
