@@ -113,3 +113,17 @@ test("exam details: the schedule and proctoring rules are saved; a closing time 
   await page.reload()
   await expect(page.getByLabel("Window or full-screen leaves allowed")).toHaveCount(0)
 })
+
+test("the exams list fits a laptop screen without sideways scrolling, its action buttons are coloured and scrollbars are thin", async ({ page }) => {
+  await page.setViewportSize({ width: 1366, height: 768 })
+  await loginStaff(page)
+  await page.goto("/admin/exams")
+  await expect(page.locator("table").getByRole("link", { name: "Open", exact: true }).first()).toBeVisible()
+  const wide = await page.locator('[data-slot="table-container"]').evaluate((e) => e.scrollWidth - e.clientWidth)
+  expect(wide, "the table must not need a sideways scrollbar").toBeLessThanOrEqual(0)
+  const bg = (loc) => loc.evaluate((e) => getComputedStyle(e).backgroundColor)
+  expect(await bg(page.locator("table").getByRole("link", { name: "Open", exact: true }).first())).not.toBe("rgba(0, 0, 0, 0)")
+  expect(await page.locator("table").getByRole("link", { name: "Monitor" }).first().evaluate((e) => getComputedStyle(e).color)).toBe("rgb(29, 78, 216)")
+  expect(await page.evaluate(() => getComputedStyle(document.documentElement, "::-webkit-scrollbar").width)).toBe("8px")
+  await shot(page, "exams-list")
+})

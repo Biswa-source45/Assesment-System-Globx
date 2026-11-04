@@ -176,6 +176,30 @@ function Recordings({ attemptId }) {
   )
 }
 
+// A picture opened full size, with Previous / Next through the same list (arrow keys too).
+function PictureViewer({ list, index, onIndex, onClose }) {
+  const s = list[index]
+  const step = (d) => onIndex((index + d + list.length) % list.length)
+  return (
+    <Dialog open onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="sm:max-w-5xl" data-testid="picture-viewer"
+        onKeyDown={(e) => { if (e.key === "ArrowLeft") step(-1); if (e.key === "ArrowRight") step(1) }}>
+        <DialogHeader>
+          <DialogTitle>{s.kind === "screen" ? "Screen" : "Camera"} picture at {time(s.at)}</DialogTitle>
+          <DialogDescription>{s.kind === "screen" ? "" : `${s.faces ?? "?"} face(s) seen by the browser. `}Picture {index + 1} of {list.length}.</DialogDescription>
+        </DialogHeader>
+        <Snapshot key={s.id} id={s.id} alt={`Full size ${s.kind} picture at ${time(s.at)}`} className="max-h-[70vh] w-full bg-black object-contain" />
+        {list.length > 1 && (
+          <div className="flex justify-between">
+            <Button variant="outline" onClick={() => step(-1)}>Previous</Button>
+            <Button variant="outline" onClick={() => step(1)}>Next</Button>
+          </div>
+        )}
+      </DialogContent>
+    </Dialog>
+  )
+}
+
 // Did the candidate give any answer at all? (A blank is "not answered", not "wrong".)
 const answered = (q) => (q.type.startsWith("mcq") ? q.options.some((o) => o.chosen) : q.type === "coding" || q.type === "sql" ? !!q.submission?.id : !!plain(q.answer_html).trim() || q.files?.length > 0)
 
@@ -188,6 +212,7 @@ export default function AttemptReview() {
   const [onlyProblems, setOnlyProblems] = useState(true)
   const [shown, setShown] = useState(24)
   const [shownScreens, setShownScreens] = useState(24)
+  const [view, setView] = useState(null)  // { list, index } of the picture opened full size
   const load = useCallback(() => get(`/reports/attempts/${attemptId}`).then(setRep).catch((e) => toast.error(e.message)), [attemptId])
   useEffect(() => { load() }, [load])
 
@@ -205,6 +230,7 @@ export default function AttemptReview() {
   const problems = p.snapshots.filter((s) => s.kind === "webcam" && s.faces !== 1)
   const pics = (onlyProblems && problems.length ? problems : p.snapshots.filter((s) => s.kind === "webcam"))
   const screens = p.snapshots.filter((s) => s.kind === "screen")
+  const shownPics = pics.slice(0, shown), shownScreenPics = screens.slice(0, shownScreens)
   const evaluate = user.can.evaluate
   const [resultLabel, passTone] = RESULT[a.result]
   const right = rep.questions.filter((q) => verdictOf(q.score ?? 0, q.marks, answered(q)) === "good").length
@@ -295,9 +321,11 @@ export default function AttemptReview() {
               {problems.length > 0 && <Button size="sm" variant="outline" onClick={() => { setOnlyProblems(!onlyProblems); setShown(24) }}>{onlyProblems ? `Show all pictures` : `Show only the ${problems.length} with a problem`}</Button>}
             </div>
             <div className="flex flex-wrap gap-2" data-testid="pictures">
-              {pics.slice(0, shown).map((s) => (
+              {shownPics.map((s, i) => (
                 <figure key={s.id} className="grid gap-0.5 text-xs text-muted-foreground">
-                  <Snapshot id={s.id} alt={`Camera picture at ${time(s.at)}`} className="h-24 w-32" />
+                  <button type="button" className="cursor-zoom-in" aria-label={`Open the camera picture at ${time(s.at)}`} onClick={() => setView({ list: shownPics, index: i })}>
+                    <Snapshot id={s.id} alt={`Camera picture at ${time(s.at)}`} className="h-24 w-32" />
+                  </button>
                   <figcaption>{time(s.at)}{s.faces !== 1 ? ` · ${s.faces ?? "?"} face(s)` : ""}</figcaption>
                 </figure>
               ))}
@@ -309,9 +337,11 @@ export default function AttemptReview() {
             <div className="grid gap-2">
               <b>Screen pictures ({screens.length})</b>
               <div className="flex flex-wrap gap-2" data-testid="screen-pictures">
-                {screens.slice(0, shownScreens).map((s) => (
+                {shownScreenPics.map((s, i) => (
                   <figure key={s.id} className="grid gap-0.5 text-xs text-muted-foreground">
-                    <Snapshot id={s.id} alt={`Screen picture at ${time(s.at)}`} className="h-24 w-40" />
+                    <button type="button" className="cursor-zoom-in" aria-label={`Open the screen picture at ${time(s.at)}`} onClick={() => setView({ list: shownScreenPics, index: i })}>
+                      <Snapshot id={s.id} alt={`Screen picture at ${time(s.at)}`} className="h-24 w-40" />
+                    </button>
                     <figcaption>{time(s.at)}</figcaption>
                   </figure>
                 ))}
@@ -323,6 +353,7 @@ export default function AttemptReview() {
         </CardContent>
       </Card>
 
+      {view && <PictureViewer list={view.list} index={view.index} onIndex={(index) => setView({ ...view, index })} onClose={() => setView(null)} />}
       {mark && <MarkDialog q={mark} onClose={() => setMark(null)} onSaved={load} />}
     </div>
   )

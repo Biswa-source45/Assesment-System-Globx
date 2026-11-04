@@ -38,33 +38,34 @@ export default function Exams() {
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Title</TableHead><TableHead>Department</TableHead><TableHead>Status</TableHead><TableHead>Opens</TableHead><TableHead>Closes</TableHead><TableHead>Time</TableHead>
-              <TableHead>Questions</TableHead><TableHead>Marks</TableHead><TableHead>Invited</TableHead><TableHead>Taken</TableHead><TableHead />
+              <TableHead>Title</TableHead><TableHead>Department</TableHead><TableHead>Status</TableHead><TableHead>Available</TableHead><TableHead>Time</TableHead>
+              <TableHead>Questions</TableHead><TableHead>Marks</TableHead><TableHead>Taken</TableHead><TableHead />
             </TableRow>
           </TableHeader>
           <TableBody>
             {rows.map((t) => (
               <TableRow key={t.id}>
-                <TableCell className="font-medium"><Link className="hover:underline" to={`/admin/exams/${t.id}`}>{t.title}</Link></TableCell>
+                <TableCell className="max-w-64 font-medium whitespace-normal"><Link className="hover:underline" to={`/admin/exams/${t.id}`}>{t.title}</Link></TableCell>
                 <TableCell>{byId[t.department_id]?.name ?? "-"}</TableCell>
                 <TableCell>
                   <Badge variant={t.status === "published" ? "default" : "secondary"}>{t.status}</Badge>
                   {windowOf(t) && <div className="mt-1 text-xs text-muted-foreground" data-testid="exam-window">{windowOf(t)}</div>}
                 </TableCell>
-                <TableCell>{fmtDate(t.starts_at)}</TableCell>
-                <TableCell>{t.ends_at ? fmtDate(t.ends_at) : "No end time"}</TableCell>
+                <TableCell className="text-xs leading-5">
+                  <div><span className="text-muted-foreground">From</span> {t.starts_at ? fmtDate(t.starts_at) : "any time"}</div>
+                  <div><span className="text-muted-foreground">To</span> {t.ends_at ? fmtDate(t.ends_at) : "no end time"}</div>
+                </TableCell>
                 <TableCell>{t.duration_min} min</TableCell>
                 <TableCell>{t.question_count}</TableCell>
                 <TableCell>{t.total_marks}</TableCell>
-                <TableCell>{t.invited}</TableCell>
-                <TableCell>{t.taken}</TableCell>
+                <TableCell>{t.taken} of {t.invited}</TableCell>
                 <TableCell className="text-right">
-                  {t.status === "published" && <Button asChild variant="ghost" size="sm"><Link to={`/admin/monitor?exam=${t.id}`}>Monitor</Link></Button>}
-                  <Button asChild variant="ghost" size="sm"><Link to={`/admin/exams/${t.id}`}>Open</Link></Button>
+                  {t.status === "published" && <Button asChild variant="outline" size="sm" className="mr-2 border-primary text-primary hover:bg-primary/10"><Link to={`/admin/monitor?exam=${t.id}`}>Monitor</Link></Button>}
+                  <Button asChild size="sm"><Link to={`/admin/exams/${t.id}`}>Open</Link></Button>
                 </TableCell>
               </TableRow>
             ))}
-            {!rows.length && <TableRow><TableCell colSpan={11} className="text-muted-foreground">No exams yet. Create one to get started.</TableCell></TableRow>}
+            {!rows.length && <TableRow><TableCell colSpan={8} className="text-muted-foreground">No exams yet. Create one to get started.</TableCell></TableRow>}
           </TableBody>
         </Table>
       )}

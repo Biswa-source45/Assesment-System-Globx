@@ -110,9 +110,9 @@ export class Proctor {
     } catch { /* detector not ready yet */ } finally { this.busy = false }
   }
 
-  snapshot() { this.picture("webcam", this.video, 320, 0.7) }
+  snapshot() { this.picture("webcam", this.video, 480, 0.7) }  // big enough to tell what is in the picture when the reviewer opens it
 
-  screenPicture() { this.picture("screen", this.screenVideo, 1024, 0.6) }
+  screenPicture() { this.picture("screen", this.screenVideo, 1280, 0.6) }  // 1280: small text stays readable when opened
 
   // A small JPEG of a video element, kept as evidence. Only the camera's picture carries the browser's face count.
   picture(kind, v, width, quality) {

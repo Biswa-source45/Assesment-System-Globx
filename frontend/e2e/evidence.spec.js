@@ -40,6 +40,24 @@ test("pictures mode: the screen is shared, a picture of it is kept during the ex
   await expect(page.getByTestId("screen-pictures").locator("figure")).not.toHaveCount(0)
   await expect(page.getByTestId("recordings")).toHaveCount(0)  // this exam keeps pictures, not video
   await shot(page, "evidence-screen-pictures")
+
+  // A picture opens full size in a dialog, with Previous/Next and the arrow keys; Escape closes it.
+  const thumb = page.getByTestId("screen-pictures").locator("img").first()
+  await expect.poll(() => thumb.evaluate((i) => i.naturalWidth)).toBeGreaterThan(0)
+  const small = (await thumb.boundingBox()).width
+  await page.getByTestId("screen-pictures").getByRole("button", { name: /Open the screen picture/ }).first().click()
+  const viewer = page.getByTestId("picture-viewer")
+  const big = viewer.getByRole("img", { name: /Full size screen picture/ })
+  await expect(viewer).toContainText("Picture 1 of")
+  await expect.poll(() => big.evaluate((i) => i.naturalWidth)).toBeGreaterThan(0)
+  expect((await big.boundingBox()).width).toBeGreaterThan(small * 3)
+  await shot(page, "evidence-picture-viewer")
+  await viewer.getByRole("button", { name: "Next" }).click()
+  await expect(viewer).toContainText("Picture 2 of")
+  await page.keyboard.press("ArrowLeft")
+  await expect(viewer).toContainText("Picture 1 of")
+  await page.keyboard.press("Escape")
+  await expect(viewer).toHaveCount(0)
 })
 
 test("video mode: the whole exam is recorded in pieces, kept for review with a deletion date, and playable", async ({ page, browser, request }) => {

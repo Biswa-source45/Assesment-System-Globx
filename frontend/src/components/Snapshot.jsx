@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react"
+import { cn } from "cn"
 import { api } from "@/lib/api"
 
 // Camera pictures are protected files, so they are fetched with the login header and shown from memory.
@@ -22,5 +23,5 @@ export default function Snapshot({ id, alt = "Latest camera snapshot", className
   }, [id])
   useEffect(() => () => { if (shown.current) URL.revokeObjectURL(shown.current) }, [])
   if (!id) return <span className="text-xs text-muted-foreground">-</span>
-  return url ? <img src={url} alt={alt} className={className + " rounded object-cover"} /> : <span className={className + " inline-block rounded bg-muted"} />
+  return url ? <img src={url} alt={alt} className={cn("rounded object-cover", className)} /> : <span className={cn("inline-block rounded bg-muted", className)} />
 }
