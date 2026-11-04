@@ -16,6 +16,7 @@ from sqlalchemy import select
 from app.core.security import hash_password, new_password, new_token, sha256
 from app.services.departments import create_defaults
 from app.db import SessionLocal, migrate, reset_schema
+from app.sandbox.languages import STARTER_SUM
 from app.models import (Assignment, Organization, Question, QuestionGroup, Section, SectionItem, Test, TestCase,
                         User, UserRole, now, uid)
 
@@ -96,15 +97,6 @@ REF_BRACKETS = ("import sys\n\nlines = sys.stdin.read().split('\\n')\nt = int(li
                 "for k in range(1, t + 1):\n    st = []\n    ok = True\n    for ch in lines[k].strip():\n        if ch in '([{':\n            st.append(ch)\n"
                 "        elif ch in pair:\n            if not st or st.pop() != pair[ch]:\n                ok = False\n                break\n"
                 "    out.append('YES' if ok and not st else 'NO')\nprint('\\n'.join(out))\n")
-
-STARTER_SUM = {
-    "python": "a, b = map(int, input().split())\n# TODO: print a + b\n",
-    "java": "import java.util.*;\n\npublic class Main {\n    public static void main(String[] args) {\n        Scanner sc = new Scanner(System.in);\n        long a = sc.nextLong(), b = sc.nextLong();\n        // TODO: print a + b\n    }\n}\n",
-    "cpp": "#include <iostream>\nint main() {\n    long long a, b; std::cin >> a >> b;\n    // TODO: print a + b\n    return 0;\n}\n",
-    "c": "#include <stdio.h>\nint main(void) {\n    long long a, b; scanf(\"%lld %lld\", &a, &b);\n    /* TODO: print a + b */\n    return 0;\n}\n",
-    "javascript": "const [a, b] = require('fs').readFileSync(0, 'utf8').trim().split(/\\s+/).map(Number);\n// TODO: print a + b\n",
-}
-
 
 def _platforms_expected(pairs):
     a = sorted(p[0] for p in pairs)

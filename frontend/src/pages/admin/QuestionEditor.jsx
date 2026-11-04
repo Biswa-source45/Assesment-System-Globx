@@ -29,7 +29,7 @@ const blankOptions = () => Array.from({ length: 4 }, () => ({ id: rid(), text: "
 const blank = () => ({
   department_id: "", group_id: null, type: "mcq_single", title: "", body: "", difficulty: "medium", marks: 1, negative_marks: 0, skills: "",
   options: blankOptions(), model_answer: "", keywords: "", max_words: 150,
-  languages: ["python"], time_limit_ms: 2000, memory_mb: 256, constraints: "", ref_lang: "python", ref_source: "", cases: [],
+  languages: ["python"], time_limit_ms: 2000, memory_mb: 256, constraints: "", ref_lang: "python", ref_source: "", starter: {}, cases: [],
   tables: [], datasets: [], reference_sql: "", ordered: false, preview: null,  // SQL questions
 })
 
@@ -41,7 +41,7 @@ function fromQuestion(q) {
     options: q.type.startsWith("mcq") ? (c.options ?? []).map((o) => ({ id: o.id, text: o.text, correct: !!o.correct })) : blankOptions(),
     model_answer: c.model_answer ?? "", keywords: (c.keywords ?? []).join(", "), max_words: c.max_words ?? (q.type === "short" ? 150 : 800),
     languages: c.languages ?? ["python"], time_limit_ms: c.time_limit_ms ?? 2000, memory_mb: c.memory_mb ?? 256, constraints: c.constraints ?? "",
-    ref_lang: c.reference?.language ?? "python", ref_source: c.reference?.source ?? "",
+    ref_lang: c.reference?.language ?? "python", ref_source: c.reference?.source ?? "", starter: c.starter ?? {},
     cases: (q.cases ?? []).map((k) => ({ input: k.input, expected: k.expected, visibility: k.visibility, weight: k.weight, purpose: k.purpose ?? "" })),
   }
 }
@@ -121,7 +121,7 @@ export default function QuestionEditor({ id, onSaved, embedded = false }) {
       else config.allow_file = false
     }
     if (f.type === "coding") {
-      Object.assign(config, { languages: f.languages, time_limit_ms: Number(f.time_limit_ms), memory_mb: Number(f.memory_mb), constraints: f.constraints, comparator: "trim" })
+      Object.assign(config, { languages: f.languages, time_limit_ms: Number(f.time_limit_ms), memory_mb: Number(f.memory_mb), constraints: f.constraints, comparator: "trim", starter: f.starter })
       if (f.ref_source.trim()) config.reference = { language: f.ref_lang, source: f.ref_source }
     }
     return {
@@ -295,6 +295,16 @@ export default function QuestionEditor({ id, onSaved, embedded = false }) {
                   <SelectContent>{LANGS.map(([k, name]) => <SelectItem key={k} value={k}>{name}</SelectItem>)}</SelectContent>
                 </Select>
                 <Textarea aria-label="Reference solution" className="min-h-40 font-mono text-xs" value={f.ref_source} onChange={(e) => set("ref_source", e.target.value)} />
+              </div>
+              <div className="grid gap-2">
+                <Label>Starter code (optional)</Label>
+                <p className="text-xs text-muted-foreground">What the candidate's editor opens with: read the input the way the question describes, leave the solution out. A language left empty opens with a plain template. It is compiled and run when you save.</p>
+                {LANGS.filter(([k]) => f.languages.includes(k)).map(([k, name]) => (
+                  <div key={k} className="grid gap-1">
+                    <Label htmlFor={`starter-${k}`} className="text-xs font-normal text-muted-foreground">{name}</Label>
+                    <Textarea id={`starter-${k}`} aria-label={`Starter code ${name}`} className="min-h-28 font-mono text-xs" value={f.starter[k] ?? ""} onChange={(e) => set("starter", { ...f.starter, [k]: e.target.value })} />
+                  </div>
+                ))}
               </div>
             </CardContent>
           </Card>

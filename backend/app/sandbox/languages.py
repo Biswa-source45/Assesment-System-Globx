@@ -238,6 +238,24 @@ class JavaScriptSandbox(LanguageSandbox):
         return [self.executables()["node"], f"--max-old-space-size={memory_mb}", self.filename]
 
 
+# What a candidate's editor starts with when the question has no starter code of its own: never an empty editor.
+SKELETON = {
+    "python": "import sys\n\n# Read the input from standard input; print the answer with print(...)\ndata = sys.stdin.read().split()\n\n# write your code here\n",
+    "java": "import java.util.*;\n\npublic class Main {\n    public static void main(String[] args) {\n        Scanner sc = new Scanner(System.in);  // read the input\n        // write your code here\n        // print the answer with System.out.println(...)\n    }\n}\n",
+    "cpp": "#include <bits/stdc++.h>\nusing namespace std;\n\nint main() {\n    // read the input with cin, print the answer with cout\n    // write your code here\n    return 0;\n}\n",
+    "c": "#include <stdio.h>\n\nint main(void) {\n    /* read the input with scanf, print the answer with printf */\n    /* write your code here */\n    return 0;\n}\n",
+    "javascript": "const input = require('fs').readFileSync(0, 'utf8').trim();  // the whole input\n\n// write your code here\n// print the answer with console.log(...)\n",
+}
+
+# A worked starter (the "sum of two numbers" question): the prompt for the AI shows it, and the seed uses it.
+STARTER_SUM = {
+    "python": "a, b = map(int, input().split())\n# TODO: print a + b\n",
+    "java": "import java.util.*;\n\npublic class Main {\n    public static void main(String[] args) {\n        Scanner sc = new Scanner(System.in);\n        long a = sc.nextLong(), b = sc.nextLong();\n        // TODO: print a + b\n    }\n}\n",
+    "cpp": "#include <iostream>\nint main() {\n    long long a, b; std::cin >> a >> b;\n    // TODO: print a + b\n    return 0;\n}\n",
+    "c": "#include <stdio.h>\nint main(void) {\n    long long a, b; scanf(\"%lld %lld\", &a, &b);\n    /* TODO: print a + b */\n    return 0;\n}\n",
+    "javascript": "const [a, b] = require('fs').readFileSync(0, 'utf8').trim().split(/\\s+/).map(Number);\n// TODO: print a + b\n",
+}
+
 REGISTRY: Dict[str, LanguageSandbox] = {s.key: s for s in
                                          (PythonSandbox(), CSandbox(), CppSandbox(), JavaSandbox(), JavaScriptSandbox())}
 ALIASES = {"py": "python", "python3": "python", "js": "javascript", "node": "javascript", "c++": "cpp",

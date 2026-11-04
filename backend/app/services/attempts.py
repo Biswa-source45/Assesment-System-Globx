@@ -16,6 +16,7 @@ from app.domain import scoring
 from app.models import (Answer, Assignment, Attempt, AttemptQuestion, CodeSubmission, Evaluation, Question,
                         QuestionGroup, Section, SectionItem, Test, aware, now, uid)
 from app.sandbox import remote
+from app.sandbox.languages import SKELETON
 from app.sandbox.sql import describe_tables
 from app.services import ai
 
@@ -134,7 +135,7 @@ def candidate_question(aq: AttemptQuestion, db: Session) -> Dict:
         names = remote.language_names()  # what the judge can run now
         langs = [k for k in (c.get("languages") or []) if k in names]
         out.update({"languages": [{"key": k, "name": names[k]} for k in langs],
-                    "starter": {k: (c.get("starter") or {}).get(k, "") for k in langs},
+                    "starter": {k: (c.get("starter") or {}).get(k) or SKELETON[k] for k in langs},  # never an empty editor
                     "time_limit_ms": c.get("time_limit_ms", 2000), "memory_mb": c.get("memory_mb", 256),
                     "open_cases": [{"ordinal": t.ordinal, "input": t.input, "expected": t.expected, "weight": t.weight}
                                    for t in q.cases if t.visibility == "open"],

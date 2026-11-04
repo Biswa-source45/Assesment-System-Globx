@@ -22,6 +22,7 @@ from app.core.deps import audit
 from app.db import get_db
 from app.models import QTYPES, Department, Question, Section, SectionItem, Test, User, aware, uid
 from app.sandbox.judge import run_reference
+from app.sandbox.languages import STARTER_SUM
 from app.sandbox import remote
 from app.services.attempts import proctoring_config
 
@@ -47,8 +48,8 @@ EXAMPLES: Dict[str, Dict[str, Any]] = {
                         {"name": "Clarity", "max": 1, "descriptor": "Organised and concise"}],
              "marks": 5, "difficulty": "medium"},
     "coding": {"type": "coding", "title": "Sum of two numbers",
-               "statement": "<p>Read two integers <code>a b</code> on one line and print their sum.</p><p><b>Sample input</b></p><pre>2 3</pre><p><b>Sample output</b></p><pre>5</pre>",
-               "marks": 10, "difficulty": "easy", "languages": ["python", "java", "cpp", "c", "javascript"],
+               "statement": "<p>Read two integers and print their sum.</p><p><b>Input format</b></p><p>One line with two integers <code>a b</code>, separated by a space.</p><p><b>Output format</b></p><p>One line with the sum <code>a + b</code>.</p><p><b>Constraints</b></p><p>-10<sup>9</sup> &le; a, b &le; 10<sup>9</sup></p>",
+               "marks": 10, "difficulty": "easy", "languages": ["python", "java", "cpp", "c", "javascript"], "starter": STARTER_SUM,
                "reference": {"language": "python", "source": "a, b = map(int, input().split())\nprint(a + b)\n"},
                "test_cases": [{"input": "2 3", "visibility": "open", "purpose": "sample"}, {"input": "-5 5", "visibility": "open", "purpose": "negative number"},
                               {"input": "0 0", "visibility": "hidden", "purpose": "zeros"}, {"input": "1000000000 1000000000", "visibility": "hidden", "purpose": "large values"}]},
@@ -116,7 +117,9 @@ FORMAT
 - mcq_single and mcq_multi: "options" (2 to 8 texts, without letters) and "correct" (list of letters, "a" for the first option; exactly one letter for mcq_single). Optional "negative_marks".
 - short: "model_answer", optional "keywords" (list; use | between alternatives, for example "retry|retries") and "max_words".
 - long: "model_answer" and "rubric": a list of {{"name", "max", "descriptor"}} whose "max" values add up to the question's marks.
-- coding: "reference" ({{"language", "source"}}: a correct solution that reads standard input and prints the answer), "test_cases" (list of {{"input", "visibility": "open" or "hidden", "purpose"}}; at least one open sample and one hidden case; give inputs only, never expected outputs: the platform runs your reference solution to get them), optional "languages" (python, java, cpp, c, javascript), "time_limit_ms", "memory_mb". Put a sample input and output in the statement.
+- coding: "reference" ({{"language", "source"}}: a correct solution that reads standard input and prints the answer), "test_cases" (list of {{"input", "visibility": "open" or "hidden", "purpose"}}; at least one open sample and one hidden case; give inputs only, never expected outputs: the platform runs your reference solution to get them), optional "languages" (python, java, cpp, c, javascript; default all five), "time_limit_ms", "memory_mb".
+  The coding "statement" must have these parts: the problem, "Input format" (exactly what each line holds and in what order), "Output format" (exactly what to print: spacing, upper or lower case, one result per line) and "Constraints". Do not write sample outputs by hand: the platform shows the open test cases, with the real output, to the candidate.
+  Every coding question also needs "starter": an object with one entry for EACH language in "languages" (all five when "languages" is left out). A starter is the code the candidate's editor opens with: a short beginner-friendly program that reads the input exactly as the statement describes (python: input() or sys.stdin; java: "public class Main" with main and Scanner or BufferedReader; cpp: cin; c: scanf; javascript: require('fs').readFileSync(0)), puts the input into well-named variables, and has a "TODO" comment where the solution goes. It must print no answer and must not solve the problem, but it must compile and must read the sample input without crashing. The platform compiles and runs every starter and rejects the file if one fails or already solves the problem.
 - sql (SQLite syntax): "schema" (CREATE TABLE statements), "reference_sql" (the correct query), "datasets" (list of {{"data": "INSERT statements", "visibility": "open" or "hidden"}}; at least one of each), optional "ordered" (true when row order matters). Never give expected results: the platform runs your query.
 - Default marks if you leave them out: {", ".join(f"{TYPE_NAME[x]} {DEFAULT_MARKS[x]}" for x in QTYPES)}.
 
@@ -215,8 +218,12 @@ def _body(item: Any, dept_id: str, errs: List[str]) -> Optional[QuestionIn]:
             ref = {"language": "python", "source": ""}
         langs = _texts(item, "languages", errs) or list(remote.language_names())
         cases = _cases(item, "test_cases", "input", errs)
+        starter = item.get("starter")
+        if starter is not None and not (isinstance(starter, dict) and all(isinstance(k, str) and isinstance(v, str) for k, v in starter.items())):
+            errs.append("'starter' must be an object with the code text for each language, for example {\"python\": \"...\", \"java\": \"...\"}")
+            starter = None
         cfg = {"time_limit_ms": int(_num(item, "time_limit_ms", 2000, errs)), "memory_mb": int(_num(item, "memory_mb", 256, errs)), "comparator": "trim",
-               "languages": langs, "reference": {"language": str(ref.get("language") or "python"), "source": ref["source"]}}
+               "languages": langs, "reference": {"language": str(ref.get("language") or "python"), "source": ref["source"]}, "starter": starter or {}}
     else:  # sql
         for k in ("schema", "reference_sql"):
             if not (isinstance(item.get(k), str) and item[k].strip()):

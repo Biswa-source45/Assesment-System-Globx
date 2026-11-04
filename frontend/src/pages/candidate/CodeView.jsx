@@ -146,6 +146,20 @@ export function CodeView({ q, r, onChange, attemptId, closed, blockPaste }) {
           {dark ? <Sun /> : <Moon />} {dark ? "Light editor" : "Dark editor"}
         </Button>
       </div>
+      {!isSql && q.open_cases.length > 0 && (
+        <div className="grid gap-2" data-testid="examples">
+          <b className="text-sm">Examples</b>
+          <div className="grid gap-2 md:grid-cols-2">
+            {q.open_cases.map((c) => (
+              <div key={c.ordinal} className="grid gap-1 rounded-md border p-2 text-xs">
+                <span className="font-medium">Example {c.ordinal}</span>
+                <span className="text-muted-foreground">Input</span><pre className="max-h-24 overflow-auto whitespace-pre-wrap rounded bg-muted p-1.5">{c.input.slice(0, 600)}</pre>
+                <span className="text-muted-foreground">Output</span><pre className="max-h-24 overflow-auto whitespace-pre-wrap rounded bg-muted p-1.5">{c.expected.slice(0, 600)}</pre>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
       {!langs.length && <Alert variant="destructive" className="p-3">Nothing is installed on the server to run this question. Tell the invigilator.</Alert>}
       <div className="overflow-hidden rounded-lg border" data-testid="code-editor">
         <CodeMirror value={src} height="340px" extensions={extensions} editable={!closed} onChange={setSrc}

@@ -130,6 +130,26 @@ def _normalise_weights(q: Question) -> None:
         c.weight = w
 
 
+def _starter_problems(cfg: Dict, cases: List[Dict]) -> List[str]:
+    """Starter code is what a candidate's editor opens with. Each one must compile, read the first sample without crashing,
+    and must not solve the question. Starters for languages the question does not allow, and empty ones, are dropped (the plain template is used)."""
+    langs = cfg.get("languages") or []
+    cfg["starter"] = starters = {k: v for k, v in (cfg.get("starter") or {}).items() if k in langs and isinstance(v, str) and v.strip()}
+    errs: List[str] = []
+    for lang, source in starters.items():
+        name = remote.language_names().get(lang, lang)
+        res = judge_code(cfg, cases, lang, source, "validate")
+        if res.get("status") != "done":
+            errs.append(f"Starter code for {name} could not be checked: {res.get('error', 'the code judge is not available')}")
+        elif not res["compile"]["ok"]:
+            errs.append(f"Starter code for {name} does not compile: {res['compile']['message'][:300]}")
+        elif next((c["verdict"] for c in res["cases"] if c["visibility"] == "open"), "AC") not in ("AC", "WA"):
+            errs.append(f"Starter code for {name} stops with an error on the first sample: it must read the input as the question describes")
+        elif res["passed"] == res["total"]:
+            errs.append(f"Starter code for {name} already solves the question: it must leave the solution to the candidate")
+    return errs
+
+
 def _check_on_save(q: Question) -> None:
     """Decide from the saved data whether the question can go into a published exam, never from a flag the client sends.
     SQL: the expected output is computed from the solution query, so it matches by construction.
@@ -146,6 +166,9 @@ def _check_on_save(q: Question) -> None:
         ref = cfg.get("reference") or {}
         cases = [{"ordinal": c.ordinal, "visibility": c.visibility, "input": c.input, "expected": c.expected,
                   "weight": float(c.weight)} for c in q.cases]
+        errs = _starter_problems(cfg, cases) if cases else []
+        if errs:
+            raise HTTPException(422, {"errors": errs})
         ok = False
         if (ref.get("source") or "").strip() and cases:
             res = judge_code(cfg, cases, ref.get("language", "python"), ref["source"], "validate")
