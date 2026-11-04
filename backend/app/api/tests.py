@@ -10,7 +10,7 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.core.deps import AUTHOR, RECRUIT, VIEW, audit, same_org
+from app.core.deps import AUTHOR, RECRUIT, SUPER, VIEW, audit, same_org
 from app.core.security import hash_password, new_password
 from app.db import get_db
 from app.api.library import q_out
@@ -78,6 +78,8 @@ def _test(db: Session, tid: str, user: User) -> Test:
     if not t:
         raise HTTPException(404, "Test not found")
     same_org(user, t.org_id)
+    if t.status == "archived" and not user.has("super_admin"):  # an archived exam exists only for the Super Admin, even by its direct address
+        raise HTTPException(404, "Test not found")
     return t
 
 
@@ -151,8 +153,12 @@ def test_out(db: Session, t: Test, full: bool = True) -> dict:
 
 
 @router.get("/tests")
-def list_tests(user: User = Depends(VIEW), db: Session = Depends(get_db)):
-    ts = db.scalars(select(Test).where(Test.org_id == user.org_id, Test.status != "archived").order_by(Test.updated_at.desc())).all()
+def list_tests(archived: bool = False, user: User = Depends(VIEW), db: Session = Depends(get_db)):
+    """The exams, or with ?archived=true the archived ones (Super Admin only)."""
+    if archived and not user.has("super_admin"):
+        raise HTTPException(403, "You do not have permission for this action")
+    where = Test.status == "archived" if archived else Test.status != "archived"
+    ts = db.scalars(select(Test).where(Test.org_id == user.org_id, where).order_by(Test.updated_at.desc())).all()
     return [test_out(db, t, full=False) for t in ts]
 
 
@@ -203,12 +209,28 @@ def update_test(tid: str, body: TestIn, request: Request, user: User = Depends(A
 
 
 @router.delete("/tests/{tid}")
-def archive_test(tid: str, request: Request, user: User = Depends(AUTHOR), db: Session = Depends(get_db)):
+def archive_test(tid: str, request: Request, user: User = Depends(SUPER), db: Session = Depends(get_db)):
+    """Nothing is deleted: the exam, its candidates and their results stay, and restoring puts the exam back as it was."""
     t = _test(db, tid, user)
-    t.status = "archived"
+    if t.status == "archived":
+        raise HTTPException(409, "This exam is already archived")
+    if db.scalar(select(Attempt.id).where(Attempt.test_id == t.id, Attempt.status == "in_progress")):
+        raise HTTPException(409, "Candidates are taking this exam right now. End their exams first.")
+    t.archived_from, t.status = t.status, "archived"
     audit(db, user, "archive", "test", t.id, request=request)
     db.commit()
     return {"ok": True}
+
+
+@router.post("/tests/{tid}/restore")
+def restore_test(tid: str, request: Request, user: User = Depends(SUPER), db: Session = Depends(get_db)):
+    t = _test(db, tid, user)
+    if t.status != "archived":
+        raise HTTPException(409, "This exam is not archived")
+    t.status, t.archived_from = t.archived_from or "draft", None
+    audit(db, user, "restore", "test", t.id, request=request)
+    db.commit()
+    return test_out(db, t)
 
 
 @router.post("/tests/{tid}/clone")

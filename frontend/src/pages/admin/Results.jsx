@@ -2,6 +2,7 @@ import { useEffect, useState } from "react"
 import { Link } from "react-router-dom"
 import { toast } from "sonner"
 import { get } from "@/lib/api"
+import { useAuth } from "@/lib/auth"
 import { fmtDate, RESULT_STATE } from "@/lib/labels"
 import { STATE_TONE, TONE } from "@/lib/verdict"
 import { useDepartments } from "@/lib/useDepartments"
@@ -9,17 +10,18 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 
-// One line per published exam: where its results stand.
+// One line per published exam: where its results stand. The Super Admin also sees the archived exams here, with their results.
 export default function Results() {
   const { byId } = useDepartments()
+  const { user } = useAuth()
   const [rows, setRows] = useState(null)
 
   useEffect(() => {
-    get("/tests")
-      .then((list) => Promise.all(list.filter((t) => t.status === "published").map(async (t) => ({ ...t, results: await get(`/tests/${t.id}/results`) }))))
+    Promise.all([get("/tests"), user.can.super ? get("/tests?archived=true") : []])
+      .then(([list, old]) => Promise.all([...list.filter((t) => t.status === "published"), ...old].map(async (t) => ({ ...t, results: await get(`/tests/${t.id}/results`) }))))
       .then(setRows)
       .catch((e) => toast.error(e.message))
-  }, [])
+  }, [user.can.super])
 
   return (
     <div className="grid gap-4">
@@ -34,7 +36,7 @@ export default function Results() {
         <TableBody>
           {rows?.map((t) => (
             <TableRow key={t.id} data-testid="results-exam">
-              <TableCell className="font-medium"><Link className="hover:underline" to={`/admin/results/${t.id}`}>{t.title}</Link></TableCell>
+              <TableCell className="font-medium"><Link className="hover:underline" to={`/admin/results/${t.id}`}>{t.title}</Link>{t.status === "archived" && <Badge variant="secondary" className="ml-2" data-testid="archived-badge">Archived</Badge>}</TableCell>
               <TableCell>{byId[t.department_id]?.name ?? "-"}</TableCell>
               <TableCell>{t.ends_at ? fmtDate(t.ends_at) : "No end time"}</TableCell>
               <TableCell><Badge variant="outline" className={TONE[STATE_TONE[t.results.state]]}>{RESULT_STATE[t.results.state]}</Badge></TableCell>

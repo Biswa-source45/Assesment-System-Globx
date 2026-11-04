@@ -1,12 +1,15 @@
-import { useEffect, useState } from "react"
+import { useCallback, useEffect, useState } from "react"
 import { Link } from "react-router-dom"
-import { Plus } from "lucide-react"
-import { get } from "@/lib/api"
+import { Archive, Plus, RotateCcw } from "lucide-react"
+import { toast } from "sonner"
+import { del, get, post } from "@/lib/api"
 import { useAuth } from "@/lib/auth"
 import { fmtDate } from "@/lib/labels"
 import { useDepartments } from "@/lib/useDepartments"
+import { useConfirm } from "@/components/ConfirmDialog"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 
 // Can candidates start this exam right now? Read from the exam's own dates, which the admin can change at any time.
@@ -20,19 +23,34 @@ function windowOf(t) {
 export default function Exams() {
   const { byId } = useDepartments()
   const { user } = useAuth()
+  const confirm = useConfirm()
   const [rows, setRows] = useState(null)
   const [error, setError] = useState("")
+  const [view, setView] = useState("active")  // "archived" is the Super Admin's window
+  const archived = view === "archived"
 
-  useEffect(() => {
-    get("/tests").then(setRows).catch((e) => setError(e.message))
-  }, [])
+  const load = useCallback(() => get(archived ? "/tests?archived=true" : "/tests").then(setRows).catch((e) => setError(e.message)), [archived])
+  useEffect(() => { load() }, [load])
+
+  async function archive(t) {
+    if (!(await confirm({ title: `Archive "${t.title}"?`, description: "It leaves the Exams list and the candidates no longer see it. Nothing is deleted: its questions, candidates and results stay, and you can restore it from the Archived tab.", action: "Archive", destructive: true }))) return
+    try { await del(`/tests/${t.id}`); toast.success("Exam archived"); load() } catch (e) { toast.error(e.message) }
+  }
+  async function restore(t) {
+    try { await post(`/tests/${t.id}/restore`); toast.success("Exam restored"); load() } catch (e) { toast.error(e.message) }
+  }
 
   return (
     <div className="grid gap-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h1 className="text-2xl font-semibold">Exams</h1>
-        {user.can.author && <Button asChild><Link to="/admin/exams/new"><Plus /> New exam</Link></Button>}
+        {user.can.author && !archived && <Button asChild><Link to="/admin/exams/new"><Plus /> New exam</Link></Button>}
       </div>
+      {user.can.super && (
+        <Tabs value={view} onValueChange={(v) => { setRows(null); setView(v) }}>
+          <TabsList><TabsTrigger value="active">Exams</TabsTrigger><TabsTrigger value="archived">Archived</TabsTrigger></TabsList>
+        </Tabs>
+      )}
       {error && <p className="text-sm text-destructive">{error}</p>}
       {rows && (
         <Table>
@@ -60,12 +78,14 @@ export default function Exams() {
                 <TableCell>{t.total_marks}</TableCell>
                 <TableCell>{t.taken} of {t.invited}</TableCell>
                 <TableCell className="text-right">
-                  {t.status === "published" && <Button asChild variant="outline" size="sm" className="mr-2 border-primary text-primary hover:bg-primary/10"><Link to={`/admin/monitor?exam=${t.id}`}>Monitor</Link></Button>}
+                  {archived && <Button size="sm" className="mr-2" onClick={() => restore(t)}><RotateCcw /> Restore</Button>}
+                  {!archived && t.status === "published" && <Button asChild variant="outline" size="sm" className="mr-2 border-primary text-primary hover:bg-primary/10"><Link to={`/admin/monitor?exam=${t.id}`}>Monitor</Link></Button>}
                   <Button asChild size="sm"><Link to={`/admin/exams/${t.id}`}>Open</Link></Button>
+                  {user.can.super && !archived && <Button variant="ghost" size="icon-sm" className="ml-1" aria-label={`Archive ${t.title}`} title="Archive" onClick={() => archive(t)}><Archive /></Button>}
                 </TableCell>
               </TableRow>
             ))}
-            {!rows.length && <TableRow><TableCell colSpan={8} className="text-muted-foreground">No exams yet. Create one to get started.</TableCell></TableRow>}
+            {!rows.length && <TableRow><TableCell colSpan={8} className="text-muted-foreground">{archived ? "No archived exams." : "No exams yet. Create one to get started."}</TableCell></TableRow>}
           </TableBody>
         </Table>
       )}

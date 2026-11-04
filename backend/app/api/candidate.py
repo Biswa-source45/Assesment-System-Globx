@@ -74,6 +74,8 @@ def my_assignments(user: User = Depends(current_user), db: Session = Depends(get
     out = []
     for a in db.scalars(select(Assignment).where(Assignment.candidate_id == user.id).order_by(Assignment.invited_at.desc())).all():
         t = db.get(Test, a.test_id)
+        if t.status == "archived":  # taken out of use by the Super Admin: the candidate no longer sees it
+            continue
         at = db.scalar(select(Attempt).where(Attempt.assignment_id == a.id, Attempt.status != "reset").order_by(Attempt.started_at.desc()))
         publish_result = bool((t.settings or {}).get("show_result_to_candidate", True))
         res = None
