@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react"
+import { useEffect, useState } from "react"
 import { Link } from "react-router-dom"
 import { Archive, Plus, RotateCcw } from "lucide-react"
 import { toast } from "sonner"
@@ -29,8 +29,13 @@ export default function Exams() {
   const [view, setView] = useState("active")  // "archived" is the Super Admin's window
   const archived = view === "archived"
 
-  const load = useCallback(() => get(archived ? "/tests?archived=true" : "/tests").then(setRows).catch((e) => setError(e.message)), [archived])
-  useEffect(() => { load() }, [load])
+  const [again, setAgain] = useState(0)
+  const load = () => setAgain((n) => n + 1)
+  useEffect(() => {  // an answer that arrives after the tab was switched (or asked again) is ignored, so it can never fill the wrong list
+    let current = true
+    get(archived ? "/tests?archived=true" : "/tests").then((r) => current && setRows(r)).catch((e) => current && setError(e.message))
+    return () => { current = false }
+  }, [archived, again])
 
   async function archive(t) {
     if (!(await confirm({ title: `Archive "${t.title}"?`, description: "It leaves the Exams list and the candidates no longer see it. Nothing is deleted: its questions, candidates and results stay, and you can restore it from the Archived tab.", action: "Archive", destructive: true }))) return

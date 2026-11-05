@@ -4,7 +4,7 @@ Read at the start of every task; update after every change. Plan and decisions: 
 
 ## Current state (2026-11-02)
 
-- Codebase: FastAPI backend (`backend/app`) and a React **JSX** frontend (`frontend/`: Vite, Tailwind, shadcn/ui). 76 pytest tests and 62 Playwright browser tests pass; the browser tests run all code through the judge service.
+- Codebase: FastAPI backend (`backend/app`) and a React **JSX** frontend (`frontend/`: Vite, Tailwind, shadcn/ui). 80 pytest tests and 64 Playwright browser tests pass; the browser tests run all code through the judge service.
 - Built and browser-tested: login (staff email or candidate username); admin Exams list; **question bank** (list, filter, create/edit/archive MCQ, short,
   explained, coding and **SQL** questions; coding has a case table, reference-solution check and "Generate with AI", both working on the unsaved form; saving returns to the bank with the question at the top); **candidate flow** (home, camera check-in with
   MediaPipe face gate and consent, exam runner with section tabs, palette, mark for review, autosave, server timer, CodeMirror editor with Run/Submit,
@@ -35,6 +35,16 @@ Read at the start of every task; update after every change. Plan and decisions: 
    through the judge container once it exists; old email-OTP/invite flow still in the backend; bundle is one 1.4 MB chunk (split later); rotate the OpenAI key.
 
 ## Log
+
+### 2026-11-05 (readable exam logins, optional email, an eye on the login page)
+- **Asked for.** Show-password eye on the login page; the participant password made from the person's name; email optional; students got "wrong password" with the downloaded sheet.
+- **Logins.** Username = first word of the name in lower case (`asha`; `asha2`, `asha3` only when taken, no more random digits). Password = first 3 letters of the first name + `@globx` + 3 random digits (`ash@globx472`). One function, `login_password` in `services/invites.py`, is used by "Create logins", "New password" and "Get a fresh login sheet". Names with no letters fall back to `cand`.
+- **Email.** A line in the participants box is `Name` or `Name, email` (comma, semicolon or tab). The email is stored in lower case and can be used to sign in (username and email both always worked, any case). The whole list is checked first: an invalid email, an email repeated in the list, or one already used by any login (staff too) gives a 422 naming the line and creates nobody. No email = the old placeholder `username@exam.local`.
+- **"Wrong password" root cause.** The password on screen, in the CSV and in the database are the same value, and login already matched username or email, so no server bug was found. The causes left: look-alike characters in the old random alphabet (S/5, Z/2, g/q), a space pasted with the password, and phone keyboards capitalising/auto-correcting. Fixed: name-based passwords, login accepts the password with surrounding spaces removed, and both login boxes switch off auto-capitalise/auto-correct.
+- **Login page.** Eye button (Show/Hide password). The two e2e locators for the Password box are now exact because the eye's label also contains "password".
+- **Also found and fixed.** The Exams list could be filled with the wrong list when the first request finished after the tab was switched (the archive spec failed in the full run): `Exams.jsx` now ignores answers that arrive late.
+- **Tests.** `backend/tests/test_participant_logins.py` (4: names, username/email/space/case sign-in, email rules and all-or-nothing, new passwords) and `e2e/participant-logins.spec.js` (2: the eye; sheet CSV read back and typed into the real login page by username, capitals, email, pasted space, and a wrong password). The trailing-space test fails without the login change. 80 pytest and 64 Playwright pass.
+- **Know.** A name-based password is guessable if someone knows the format (only 3 digits are random); the lock after 10 wrong tries and exam-only accounts limit that. Existing logins keep their old username and password until a fresh sheet is made.
 
 ### 2026-11-04 (GitHub run #5 failed: a test-database deadlock, not a bug in the features)
 - **What happened.** The `tests` job on GitHub failed with 74 passed and 1 error: at the start of `test_live_edit.py` the test database reset (`DROP TABLE evaluations`) hit `DeadlockDetected`. A background job from the previous test module (grading or the sweeper) was still finishing and locked tables in the opposite order; Postgres ended the reset as the deadlock victim. The same 75 tests passed on Windows and on Linux in Docker (as root and as a normal user), so it is a timing race that only shows on a slower runner. The judge drill passed and `publish` was skipped, so nothing reached the server.

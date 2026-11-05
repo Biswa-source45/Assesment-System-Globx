@@ -71,10 +71,11 @@ def login(body: LoginIn, request: Request, db: Session = Depends(get_db)):
     email = body.email.strip().lower()
     users = db.scalars(select(User).where(or_(func.lower(User.email) == email, func.lower(User.username) == email),
                                            User.password_hash.is_not(None))).all()
+    typed = {body.password, body.password.strip()}  # a space pasted along with the password must not cost a login
     for u in users:
         if u.failed_logins >= 10:
             raise HTTPException(423, "Account locked after 10 failed logins. Ask an administrator to unlock it.")
-        if verify_password(body.password, u.password_hash):
+        if any(verify_password(p, u.password_hash) for p in typed):
             if u.status != "active":
                 raise HTTPException(403, "Account is disabled")
             if u.mfa_enabled:

@@ -9,7 +9,7 @@ An exam platform for hiring, used inside one office.
 
 - One office server; 5-6 candidates per exam, all on the office Wi-Fi. No remote candidates.
 - Admin logs in, creates an exam ahead of time, schedules it, adds questions and participants.
-- Each participant gets a generated **username and password** for that exam (printable list). No email, no OTP.
+- Each participant gets a **username** (first name in lower case) and a **password** made from the name (`ash@globx472`) for that exam (printable list); an email can be added per line and also signs in. No OTP.
 - Question types: MCQ, explained (descriptive) answers with a model answer, coding (stdin/stdout programs).
 - Coding: 1-2 sample cases visible to the candidate, 6-7 hidden cases (edge cases) used for marking.
 - Written answers are marked by AI (OpenAI `gpt-4o-mini`) after the exam; admin can override any mark.

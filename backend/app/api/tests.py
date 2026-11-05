@@ -11,7 +11,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.deps import AUTHOR, RECRUIT, SUPER, VIEW, audit, same_org
-from app.core.security import hash_password, new_password
+from app.core.security import hash_password
 from app.db import get_db
 from app.api.library import q_out
 from app.models import (Assignment, Attempt, Department, PlagiarismMatch, Question, QuestionGroup, Section, SectionItem, Test,
@@ -487,10 +487,9 @@ def add_participants(tid: str, body: ParticipantsIn, request: Request, user: Use
     t = _test(db, tid, user)
     if t.status == "archived":
         raise HTTPException(422, "This test is archived")
-    names = [n for n in (x.strip() for x in body.names) if n]
-    if not names or len(names) > 200:
+    if not 0 < sum(1 for x in body.names if x.strip()) <= 200:
         raise HTTPException(422, "Give between 1 and 200 names")
-    res = inv.create_participants(db, t, names)
+    res = inv.create_participants(db, t, inv.parse_participants(db, t.org_id, body.names))  # each line: "Name" or "Name, email"
     audit(db, user, "participants_create", "test", t.id, {"count": len(res)}, request)
     db.commit()
     return {"participants": res}
@@ -498,7 +497,7 @@ def add_participants(tid: str, body: ParticipantsIn, request: Request, user: Use
 
 def _fresh_login(a: Assignment) -> dict:
     """A new password for this person (the old one stops working). Only its hash is stored, so this is the one time it can be shown."""
-    pw = new_password()
+    pw = inv.login_password(a.candidate.name)
     a.candidate.password_hash, a.candidate.failed_logins = hash_password(pw), 0
     return {"assignment_id": a.id, "name": a.candidate.name, "username": a.candidate.username or a.candidate.email, "password": pw}
 

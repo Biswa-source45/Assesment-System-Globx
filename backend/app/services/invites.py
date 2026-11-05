@@ -6,13 +6,14 @@ import io
 import re
 import secrets
 from datetime import datetime, timedelta
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 
-from sqlalchemy import select
+from fastapi import HTTPException
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
-from app.core.security import hash_password, new_password, new_token, sha256
+from app.core.security import hash_password, new_token, sha256
 from app.models import Assignment, Test, User, UserRole, aware, now, uid
 from app.services.mail import queue_mail
 
@@ -81,24 +82,52 @@ def send_invite_mail(db: Session, a: Assignment, token: Optional[str]) -> None:
     a.sent_at = now()
 
 
+def _first_word(name: str) -> str:
+    """The first word of a name in lower case, letters and digits only ('Asha Rao' -> 'asha')."""
+    return re.sub(r"[^a-z0-9]", "", (name.split() or ["cand"])[0].lower())[:20] or "cand"
+
+
 def _free_username(db: Session, org_id: str, name: str) -> str:
-    base = re.sub(r"[^a-z0-9]", "", (name.split() or ["cand"])[0].lower())[:12] or "cand"
-    while True:
-        cand = f"{base}{secrets.randbelow(900) + 100}"
-        if not db.scalar(select(User.id).where(User.org_id == org_id, User.username == cand)):
-            return cand
+    """The first word of the name; a number is added only when somebody already has it (asha, asha2, asha3...)."""
+    base = _first_word(name)
+    cand, n = base, 1
+    while db.scalar(select(User.id).where(User.org_id == org_id, User.username == cand)):
+        n += 1
+        cand = f"{base}{n}"
+    return cand
 
 
-def create_participants(db: Session, test: Test, names: List[str]) -> List[Dict]:
-    """Exam-specific logins: one new candidate per name with a generated username and password.
-    Passwords are returned here once; only the hash is stored."""
-    out = []
-    for raw in names:
-        name = raw.strip()
+def login_password(name: str) -> str:
+    """Readable and easy to type from a sheet: 3 letters of the first name, @globx, 3 random digits ('Asha Rao' -> 'ash@globx472')."""
+    return f"{_first_word(name)[:3]}@globx{secrets.randbelow(900) + 100}"
+
+
+def parse_participants(db: Session, org_id: str, lines: List[str]) -> List[Tuple[str, Optional[str]]]:
+    """Each line is 'Name' or 'Name, email' (a comma, semicolon or tab). The whole list is checked first, so a bad line creates nobody."""
+    people, seen, problems = [], set(), []
+    for i, raw in enumerate(lines, 1):
+        name, *rest = re.split(r"\s*[,;\t]\s*", raw.strip(), maxsplit=1)
         if not name:
             continue
-        username, password = _free_username(db, test.org_id, name), new_password()
-        u = User(id=uid(), org_id=test.org_id, email=f"{username}@exam.local", username=username, name=name,
+        email = rest[0].lower() if rest and rest[0] else None
+        if email and not EMAIL.match(email):
+            problems.append(f"Line {i}: '{email}' is not a valid email")
+        elif email and (email in seen or db.scalar(select(User.id).where(User.org_id == org_id, func.lower(User.email) == email))):
+            problems.append(f"Line {i}: {email} is already used by another login. Leave the email empty or use a different one")
+        seen.add(email)
+        people.append((name, email))
+    if problems:
+        raise HTTPException(422, "; ".join(problems))
+    return people
+
+
+def create_participants(db: Session, test: Test, people: List[Tuple[str, Optional[str]]]) -> List[Dict]:
+    """Exam-specific logins: one new candidate per person with a username and a password made from the name.
+    Passwords are returned here once; only the hash is stored."""
+    out = []
+    for name, email in people:
+        username, password = _free_username(db, test.org_id, name), login_password(name)
+        u = User(id=uid(), org_id=test.org_id, email=email or f"{username}@exam.local", username=username, name=name,
                  password_hash=hash_password(password))
         u.roles = [UserRole(role="candidate")]
         db.add(u)

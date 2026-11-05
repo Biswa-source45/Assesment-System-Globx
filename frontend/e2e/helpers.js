@@ -7,7 +7,7 @@ export const creds = () => JSON.parse(fs.readFileSync("e2e/.creds.json", "utf8")
 export async function login(page, who, password) {
   await page.goto("/login")
   await page.getByLabel("Username or email").fill(who)
-  await page.getByLabel("Password").fill(password)
+  await page.getByLabel("Password", { exact: true }).fill(password)
   await page.getByRole("button", { name: "Sign in" }).click()
 }
 

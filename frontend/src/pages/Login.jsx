@@ -1,14 +1,19 @@
 import { useState } from "react"
 import { Navigate, useNavigate } from "react-router-dom"
+import { Eye, EyeOff } from "lucide-react"
 import { useAuth } from "@/lib/auth"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 
+// Phones capitalise the first letter and "correct" words; neither is wanted in a username or password.
+const PLAIN = { autoCapitalize: "none", autoCorrect: "off", spellCheck: false }
+
 export default function Login() {
   const { user, login } = useAuth()
   const navigate = useNavigate()
+  const [shown, setShown] = useState(false)
   const [identifier, setIdentifier] = useState("")
   const [password, setPassword] = useState("")
   const [totp, setTotp] = useState("")
@@ -44,11 +49,16 @@ export default function Login() {
           <form onSubmit={submit} className="grid gap-4">
             <div className="grid gap-2">
               <Label htmlFor="identifier">Username or email</Label>
-              <Input id="identifier" autoFocus required value={identifier} onChange={(e) => setIdentifier(e.target.value)} />
+              <Input id="identifier" autoFocus required autoComplete="username" {...PLAIN} value={identifier} onChange={(e) => setIdentifier(e.target.value)} />
             </div>
             <div className="grid gap-2">
               <Label htmlFor="password">Password</Label>
-              <Input id="password" type="password" required value={password} onChange={(e) => setPassword(e.target.value)} />
+              <div className="relative">
+                <Input id="password" type={shown ? "text" : "password"} required autoComplete="current-password" {...PLAIN} className="pr-10" value={password} onChange={(e) => setPassword(e.target.value)} />
+                <Button type="button" variant="ghost" size="icon-sm" className="absolute right-1 top-1/2 -translate-y-1/2 text-muted-foreground" aria-label={shown ? "Hide password" : "Show password"} aria-pressed={shown} onClick={() => setShown(!shown)}>
+                  {shown ? <EyeOff /> : <Eye />}
+                </Button>
+              </div>
             </div>
             {needTotp && (
               <div className="grid gap-2">

@@ -72,12 +72,12 @@ export default function ExamParticipants({ test }) {
       {recruit && <Card>
         <CardHeader>
           <CardTitle>Add participants</CardTitle>
-          <CardDescription>One name per line. Each person gets their own username and password for this exam.</CardDescription>
+          <CardDescription>One person per line: the name, or the name and email separated by a comma (email is optional). Each person gets their own username and password for this exam.</CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={create} className="grid gap-3">
             <Label htmlFor="names" className="sr-only">Participant names</Label>
-            <Textarea id="names" className="min-h-28" placeholder={"Asha Rao\nVikram Das"} value={names} onChange={(e) => setNames(e.target.value)} />
+            <Textarea id="names" className="min-h-28" placeholder={"Asha Rao\nVikram Das, vikram@example.com"} value={names} onChange={(e) => setNames(e.target.value)} />
             <div><Button type="submit" disabled={busy || !names.trim()}>{busy ? "Creating..." : "Create logins"}</Button></div>
           </form>
         </CardContent>

@@ -34,7 +34,7 @@ def _new_candidate(c, name):
     staff = _login(c, "recruiter@globx.co.in", PW["recruiter@globx.co.in"])
     tid = next(t["id"] for t in c.get("/api/v1/tests", headers=staff).json() if t["title"] == EXAM)
     p = c.post(f"/api/v1/tests/{tid}/participants", headers=staff, json={"names": [name]}).json()["participants"][0]
-    assert len(p["password"]) == 8 and p["username"].startswith(name.split()[0].lower())
+    assert p["password"].endswith(tuple("0123456789")) and "@globx" in p["password"] and p["username"].startswith(name.split()[0].lower())
     cand = _login(c, p["username"], p["password"])  # candidate signs in with the generated username
     return staff, cand, p["assignment_id"]
 

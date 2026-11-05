@@ -26,7 +26,7 @@ async function candidateStarts(browser, p, title) {
   const { ctx, page } = await candidateWindow(browser)
   await page.goto("/login")
   await page.getByLabel("Username or email").fill(p.username)
-  await page.getByLabel("Password").fill(p.password)
+  await page.getByLabel("Password", { exact: true }).fill(p.password)
   await page.getByRole("button", { name: "Sign in" }).click()
   await page.locator("div[data-slot=card]").filter({ hasText: title }).getByRole("link", { name: /Start|Resume/ }).click()
   await page.getByRole("button", { name: "Start exam" }).click()
