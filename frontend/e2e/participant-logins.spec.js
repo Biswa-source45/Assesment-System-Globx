@@ -29,6 +29,25 @@ test("the eye on the login page shows and hides the password", async ({ page }) 
   await expect(page.getByLabel("Username or email")).toHaveAttribute("autocapitalize", "none")  // phones must not capitalise the username
 })
 
+test("the eye stays exactly where it is while it is pressed", async ({ page }) => {
+  await page.goto("/login")
+  const eye = page.getByRole("button", { name: "Show password" })
+  const before = await eye.boundingBox()
+  const box = await page.getByLabel("Password", { exact: true }).boundingBox()
+  expect(before.y + before.height / 2).toBeCloseTo(box.y + box.height / 2, 0)  // it sits in the middle of the box
+
+  // hold it in the pressed (:active) state, which is when it used to drop by half its height
+  const cdp = await page.context().newCDPSession(page)
+  await cdp.send("DOM.enable")
+  await cdp.send("CSS.enable")
+  const { root } = await cdp.send("DOM.getDocument")
+  const { nodeId } = await cdp.send("DOM.querySelector", { nodeId: root.nodeId, selector: "button[aria-label='Show password']" })
+  await cdp.send("CSS.forcePseudoState", { nodeId, forcedPseudoClasses: ["active"] })
+  expect(await eye.evaluate((el) => el.matches(":active"))).toBe(true)  // the test really holds it pressed
+  await page.waitForTimeout(500)                                        // the button animates its moves: let any move finish
+  expect(await eye.boundingBox()).toEqual(before)
+})
+
 test("logins made from the name work from the downloaded sheet, by username or by email", async ({ page, browser, request }) => {
   const api = await staffRequest(request)
   const exam = await examWithOneQuestion(api, "E2E Name Login Exam")

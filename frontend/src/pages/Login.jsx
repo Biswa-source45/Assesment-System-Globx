@@ -55,7 +55,7 @@ export default function Login() {
               <Label htmlFor="password">Password</Label>
               <div className="relative">
                 <Input id="password" type={shown ? "text" : "password"} required autoComplete="current-password" {...PLAIN} className="pr-10" value={password} onChange={(e) => setPassword(e.target.value)} />
-                <Button type="button" variant="ghost" size="icon-sm" className="absolute right-1 top-1/2 -translate-y-1/2 text-muted-foreground" aria-label={shown ? "Hide password" : "Show password"} aria-pressed={shown} onClick={() => setShown(!shown)}>
+                <Button type="button" variant="ghost" size="icon-sm" className="absolute inset-y-0 right-1 my-auto text-muted-foreground active:translate-y-0!" aria-label={shown ? "Hide password" : "Show password"} aria-pressed={shown} onClick={() => setShown(!shown)}>
                   {shown ? <EyeOff /> : <Eye />}
                 </Button>
               </div>
