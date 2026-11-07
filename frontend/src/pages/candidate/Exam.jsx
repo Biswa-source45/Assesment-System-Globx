@@ -367,7 +367,7 @@ export default function Exam() {
             <DialogTitle>End the exam?</DialogTitle>
             <DialogDescription>
               {unanswered ? `${unanswered} question(s) are unanswered. ` : "All questions are answered. "}
-              Coding answers count only after you press Submit on each question. You cannot return after submitting.
+              {all.some(isCode) && "Coding answers count only after you press Submit on each question. "}You cannot return after submitting.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>

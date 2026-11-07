@@ -27,7 +27,7 @@ export function McqView({ q, r, onChange, closed }) {
           <Checkbox checked={selected.includes(o.id)} disabled={closed} onCheckedChange={() => toggle(o.id)} /> {o.text}
         </Label>
       ))}
-      <p className="text-xs text-muted-foreground">More than one answer can be correct. Choosing more options than there are correct answers scores negative.</p>
+      <p className="text-xs text-muted-foreground">More than one answer can be correct. Each wrong option you tick takes away 0.25 marks. Ticking every option scores 0.</p>
     </div>
   )
 }

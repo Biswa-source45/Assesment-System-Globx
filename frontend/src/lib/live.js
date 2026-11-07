@@ -30,10 +30,11 @@ const cap = async (sender, maxBitrate) => {  // keep the video small: many strea
 }
 
 // Candidate side. Offers the camera, the screen and a silent microphone to every examiner in the room.
+// The camera may be missing (an exam without the camera check): the screen alone is then offered, and the examiner can still speak to the candidate.
 // onTalk(true|false): an invigilator opened or closed a line to this candidate. onMessage(text): a written message.
 export function startPublishing({ testId, camera, screen, onTalk, onMessage }) {
   const peers = new Map()  // examiner id -> { pc, audio, tries }
-  const mic = camera.getAudioTracks()[0]
+  const mic = camera?.getAudioTracks()[0]
   let net, stopped = false
 
   async function offerTo(id, tries = 0) {
@@ -53,14 +54,14 @@ export function startPublishing({ testId, camera, screen, onTalk, onMessage }) {
       if (state === "failed") setTimeout(retry, 2000)
       else if (state === "disconnected") waiting = setTimeout(retry, 10_000)
     }
-    const senders = [pc.addTrack(camera.getVideoTracks()[0], camera)]
-    if (screen) senders.push(pc.addTrack(screen.getVideoTracks()[0], screen))
-    const voice = pc.addTransceiver("audio", { direction: "sendrecv", streams: [camera] })  // one line both ways, silent until a talk starts
+    const senders = []
+    if (camera) senders.push([pc.addTrack(camera.getVideoTracks()[0], camera), 100_000])
+    if (screen) senders.push([pc.addTrack(screen.getVideoTracks()[0], screen), 200_000])
+    const voice = pc.addTransceiver("audio", { direction: "sendrecv", streams: camera ? [camera] : [] })  // one line both ways, silent until a talk starts
     if (mic) voice.sender.replaceTrack(mic)
     await pc.setLocalDescription(await pc.createOffer())
-    cap(senders[0], 100_000)
-    if (senders[1]) cap(senders[1], 200_000)
-    net.send({ type: "offer", to: id, sdp: pc.localDescription.sdp, streams: { camera: camera.id, screen: screen?.id } })
+    senders.forEach(([sender, bitrate]) => cap(sender, bitrate))
+    net.send({ type: "offer", to: id, sdp: pc.localDescription.sdp, streams: { camera: camera?.id, screen: screen?.id } })
   }
 
   function drop(id) {

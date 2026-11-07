@@ -36,7 +36,7 @@ export function useEvidence({ st, cfg, attemptId, proctorRef }) {
       if (screen) r.recorders.push(new Recorder({ attemptId, kind: "screen", stream: screen, bitsPerSecond: 200_000 }))
       r.recorders.forEach((x) => x.start())
     }
-    if (cfg.live_view && media.stream) r.publisher = startPublishing({ testId: st.test.id, camera: media.stream, screen, onTalk: setTalk, onMessage: setMessage })
+    if (cfg.live_view && (media.stream || screen)) r.publisher = startPublishing({ testId: st.test.id, camera: media.stream, screen, onTalk: setTalk, onMessage: setMessage })
   }
 
   function attachScreen(stream) {

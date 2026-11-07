@@ -60,9 +60,9 @@ export default function LiveGrid({ testId, rows }) {
     const note = peer && noteOf(peer.state)
     return (
       <div className="relative">
-        <div className={"grid gap-2 " + (peer?.screen ? "grid-cols-[3fr_1fr]" : "grid-cols-1")}>
+        <div className={"grid gap-2 " + (peer?.screen && peer.camera ? "grid-cols-[3fr_1fr]" : "grid-cols-1")}>
           {peer?.screen && <Stream stream={peer.screen} label={`${r.name} screen`} className="aspect-video w-full" />}
-          <Stream stream={peer?.camera ?? null} label={`${r.name} camera`} className={"w-full " + (peer?.screen ? "aspect-[4/3] self-end" : "aspect-video")} />
+          {(peer?.camera || !peer?.screen) && <Stream stream={peer?.camera ?? null} label={`${r.name} camera`} className={"w-full " + (peer?.screen ? "aspect-[4/3] self-end" : "aspect-video")} />}  {/* an exam without the camera shows the screen alone */}
         </div>
         {note && <p data-testid="live-note" className={"absolute inset-0 grid place-items-center p-4 text-center text-sm font-medium " + (peer.state === "connecting" ? "text-white/80" : "text-red-300")}>{note}</p>}
       </div>

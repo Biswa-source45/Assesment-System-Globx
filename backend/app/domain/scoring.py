@@ -15,15 +15,18 @@ def quarter(x: float) -> float:
 
 
 # ---------------------------------------------------------------- MCQ / Linked MCQ
+WRONG_TICK = 0.25  # multiple answer: every wrong option ticked takes this much off, whatever the question's own negative marks say
+
+
 def score_mcq(selected: Iterable[str], correct: Sequence[str], all_options: Sequence[str],
               marks: float, negative: float, multi: bool, partial: bool = True) -> float:
-    """SRS 4.1 - single / multiple correct with HackerEarth-style partial scoring.
+    """Strict marking.
 
     * blank -> 0
-    * single: correct -> marks, wrong -> -negative
-    * multi + over-selection (more options than correct answers) -> -negative
-    * multi + partial: each correct option +marks/k, each wrong option -negative/m
-    * multi without partial: exact set -> marks else -negative
+    * single: correct -> marks, wrong -> -negative (the question's own negative marks, 0 unless set)
+    * multi: every option ticked while not every option is right -> 0 (ticking everything cannot win)
+    * multi + partial: each right option earns marks/k, each wrong option ticked takes WRONG_TICK off; never below 0
+    * multi without partial: exactly the right set -> marks, anything else -> 0
     """
     sel = {s for s in (selected or []) if s in set(all_options)}
     cor = set(correct or [])
@@ -31,15 +34,11 @@ def score_mcq(selected: Iterable[str], correct: Sequence[str], all_options: Sequ
         return 0.0
     if not multi:
         return r2(marks) if sel == cor else r2(-negative)
-    if len(sel) > len(cor):
-        return r2(-negative)
+    if sel == set(all_options) and sel != cor:
+        return 0.0
     if not partial:
-        return r2(marks) if sel == cor else r2(-negative)
-    k = max(1, len(cor))
-    m = max(1, len(set(all_options) - cor))
-    hits = len(sel & cor)
-    wrong = len(sel - cor)
-    return r2(hits * marks / k - wrong * negative / m)
+        return r2(marks) if sel == cor else 0.0
+    return r2(max(0.0, len(sel & cor) * marks / max(1, len(cor)) - len(sel - cor) * WRONG_TICK))
 
 
 # ---------------------------------------------------------------- Short answer keywords

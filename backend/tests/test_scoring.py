@@ -10,20 +10,29 @@ def test_mcq_single():
     assert score_mcq([], ["b"], OPTS, 1, 0.25, False) == 0
 
 
-def test_linked_mcq_worked_example_from_srs():
-    # 2 marks, -0.5 negative, correct A and C
-    f = lambda sel: score_mcq(sel, ["a", "c"], OPTS, 2, 0.5, True, True)
-    assert f(["a"]) == 1.0
-    assert f(["a", "c"]) == 2.0
-    assert f(["a", "b"]) == 0.75
-    assert f(["b"]) == -0.25
-    assert f(["b", "d"]) == -0.5
-    assert f(["a", "c", "d"]) == -0.5  # over-selection
+def test_multiple_answer_is_strict():
+    # 5 options (a-e), 3 right (a, b, c), 3 marks. Right ticks share the marks; each wrong tick takes 0.25; never below 0.
+    opts = ["a", "b", "c", "d", "e"]
+    f = lambda sel, marks=3: score_mcq(sel, ["a", "b", "c"], opts, marks, 0, True, True)
+    assert f(["a", "b", "c"]) == 3.0
+    assert f(["a", "b", "c", "d"]) == 2.75      # all right plus one wrong: only 0.25 off (used to be negative)
+    assert f(["a", "b"]) == 2.0                  # two thirds
+    assert f(["a", "d"]) == 0.75                 # 1 right (1.0) - 0.25
+    assert f(["d"]) == 0.0                       # a wrong tick alone never goes below zero
+    assert f(["d", "e"]) == 0.0
+    assert f([]) == 0.0
+    assert f(["a", "b", "c", "d", "e"]) == 0.0   # ticking everything does not win
+    assert f(["a", "x"]) == 1.0                  # an option that does not exist is ignored
+    assert f(["a"], marks=0.5) == 0.17           # small marks: the share is rounded to 2 places
+    assert score_mcq(["a", "b"], ["a", "b"], ["a", "b"], 2, 0, True, True) == 2.0  # every option is right: ticking all is right
+    # without partial marks only the exact set earns anything
+    g = lambda sel: score_mcq(sel, ["a", "b", "c"], opts, 3, 0, True, False)
+    assert [g(["a", "b", "c"]), g(["a", "b"]), g(["a", "b", "c", "d"])] == [3.0, 0.0, 0.0]
 
 
-def test_hackerearth_partial_example():
-    f = lambda sel: score_mcq(sel, ["a", "c"], OPTS, 4, 2, True, True)
-    assert [f(["a"]), f(["b"]), f(["a", "c"]), f(["a", "b"]), f(["b", "d"]), f(["a", "c", "d"])] == [2, -1, 4, 1, -2, -2]
+def test_the_question_s_own_negative_marks_do_not_change_multiple_answer():
+    f = lambda neg: score_mcq(["a", "d"], ["a", "b"], OPTS, 2, neg, True, True)
+    assert f(0) == f(2) == 0.75
 
 
 def test_short_answer():

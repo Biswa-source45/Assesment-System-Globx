@@ -313,6 +313,8 @@ def save_answer(db: Session, at: Attempt, question_id: str, response: Dict, flag
     if aq.question.type in SUBJECTIVE and "html" in resp:
         from app.services.sanitize import sanitize_html
         resp["html"] = sanitize_html(resp.get("html", ""))[:60000]
+    if isinstance(resp.get("text"), str):
+        resp["text"] = resp["text"][:60000]  # plain text from the answer box: same cap as html
     if aq.question.type in CODELIKE and a.response:
         # keep server-side best submission pointer
         for k in ("best_submission_id", "best_score"):

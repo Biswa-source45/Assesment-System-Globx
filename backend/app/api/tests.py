@@ -655,7 +655,7 @@ def _source_of(db: Session, attempt_id: str, question_id: str) -> dict:
     r = (a.response if a else {}) or {}
     sub = db.get(CodeSubmission, r.get("best_submission_id")) if r.get("best_submission_id") else None
     at = db.get(Attempt, attempt_id)
-    return {"text": sub.source if sub else (r.get("html") or r.get("source") or ""), "language": sub.language if sub else "",
+    return {"text": sub.source if sub else (r.get("html") or r.get("text") or r.get("source") or ""), "language": sub.language if sub else "",
             "submitted_at": _iso(sub.created_at) if sub else None, "ip": at.ip if at else ""}
 
 

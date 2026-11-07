@@ -4,7 +4,7 @@ Read at the start of every task; update after every change. Plan and decisions: 
 
 ## Current state (2026-11-02)
 
-- Codebase: FastAPI backend (`backend/app`) and a React **JSX** frontend (`frontend/`: Vite, Tailwind, shadcn/ui). 80 pytest tests and 65 Playwright browser tests pass; the browser tests run all code through the judge service.
+- Codebase: FastAPI backend (`backend/app`) and a React **JSX** frontend (`frontend/`: Vite, Tailwind, shadcn/ui). 81 pytest tests and 66 Playwright browser tests pass; the browser tests run all code through the judge service.
 - Built and browser-tested: login (staff email or candidate username); admin Exams list; **question bank** (list, filter, create/edit/archive MCQ, short,
   explained, coding and **SQL** questions; coding has a case table, reference-solution check and "Generate with AI", both working on the unsaved form; saving returns to the bank with the question at the top); **candidate flow** (home, camera check-in with
   MediaPipe face gate and consent, exam runner with section tabs, palette, mark for review, autosave, server timer, CodeMirror editor with Run/Submit,
@@ -35,6 +35,15 @@ Read at the start of every task; update after every change. Plan and decisions: 
    through the judge container once it exists; old email-OTP/invite flow still in the backend; bundle is one 1.4 MB chunk (split later); rotate the OpenAI key.
 
 ## Log
+
+### 2026-11-07 (fixes from the first real HR exam)
+- **Asked for.** After the first real exam (4 candidates, camera off, screen share + live view on): explained answers showed "No answer" in the review (the admin had to give grace marks), the live monitor showed nothing, the submit box talked about coding in an HR exam, and multiple-answer marking was not strict.
+- **Written answer blank in the review.** The candidate's box saves `{"text": ...}`; the review report read only `{"html": ...}` (`services/reports.py`), so it showed "No answer" even though the answer was saved and marked. The old tests saved `html` through the API, so it was never caught. Now the report uses `_text_of` (both shapes); the plagiarism compare screen too; the server caps saved `text` at 60 000 characters like `html`.
+- **Multiple answer, strict (`domain/scoring.py`).** Right options share the marks; every wrong option ticked takes a flat 0.25 off (`WRONG_TICK`, the question's own negative marks no longer matter); never below 0; ticking every option when not all are right scores 0. The old rule (more ticks than right answers = minus the negative marks) gave a negative score to someone who ticked all the right options plus one wrong one. Single answer is unchanged. The candidate hint says the new rule. **After deploy: press Calculate again on the exam that already ran** (it re-grades all choice questions; answers an admin marked by hand are kept).
+- **Live view with the camera off.** The candidate side only started when a camera stream existed, so with the camera off nobody joined the room and the tile said "Not connected" (screen pictures use another path, which is why the review had them). The camera is now optional in `useEvidence.js` and `live.js` (the screen alone is offered; the invigilator can still talk to the candidate); the tile shows the screen full width with no empty camera box.
+- **Submit box.** The "Coding answers count only after you press Submit" sentence shows only when the exam has a coding or SQL question.
+- **Looked through, nothing else found:** answer saving (order numbers, retries), section timers, submit and time-over, grading and totals, results and report, proctor client, evidence and live view.
+- **Tests.** pytest: strict marking cases in `test_scoring.py` (old SRS examples replaced), new `test_review_answers.py` (a `text` answer shows in the review and the plagiarism source; four candidates marked 3, 2.75, 0, 0 through the real submit path); 81 pass. Playwright: new `exam-honesty.spec.js` runs a camera-off exam on the real screens (types the answer, ticks options, checks the submit box text, the live tile with the screen only, the review text and the marks 3 / 3, 2.75 / 3, 0 / 3); it fails on the old code with "Not connected" and passes now; 66 pass.
 
 ### 2026-11-05 (readable exam logins, optional email, an eye on the login page)
 - **Asked for.** Show-password eye on the login page; the participant password made from the person's name; email optional; students got "wrong password" with the downloaded sheet.

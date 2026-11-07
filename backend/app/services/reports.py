@@ -98,7 +98,7 @@ def attempt_report(db: Session, at: Attempt, staff_view: bool = True) -> Dict:
                 item["options"] = [{"text": by_id[i]["text"], "correct": bool(by_id[i].get("correct")), "chosen": i in chosen} for i in order]
             elif q.type in ("short", "long"):
                 item["model_answer"], item["keywords"] = c.get("model_answer", ""), c.get("keywords", [])
-                item["answer_html"] = resp.get("html", "")
+                item["answer_html"] = _text_of(resp)  # the candidate's box saves {"text"}; older and API answers hold {"html"}: both are shown
                 item["files"] = resp.get("files", [])
                 item["ai_score"] = a.ai_score if a else None
                 item["ai_rationale"] = a.ai_rationale if a else ""
