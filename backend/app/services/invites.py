@@ -111,7 +111,7 @@ def parse_participants(db: Session, org_id: str, lines: List[str]) -> List[Tuple
             continue
         email = rest[0].lower() if rest and rest[0] else None
         if email and not EMAIL.match(email):
-            problems.append(f"Line {i}: '{email}' is not a valid email")
+            problems.append(f"Line {i}: '{email}' is not a valid email. Type one person per line (press Enter between names); only an email goes after a comma")
         elif email and (email in seen or db.scalar(select(User.id).where(User.org_id == org_id, func.lower(User.email) == email))):
             problems.append(f"Line {i}: {email} is already used by another login. Leave the email empty or use a different one")
         seen.add(email)
