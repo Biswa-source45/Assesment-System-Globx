@@ -171,6 +171,7 @@ Every event is stored with a timestamp, plus when and why the exam ended. Browse
 - [done] GitHub Actions (`.github/workflows/ci.yml`): tests on Linux (Postgres service), judge drill, then publish the three images to ghcr.io; `deploy.ps1` pulls and starts them on the server; tried locally against a local registry in a simulated server folder
 - [done] First real exam fixes (2026-11-07): written answers show in the review, strict multiple-answer marking, live view with the camera off, submit box without the coding line. **After deploying this, press Calculate again on the exam that already ran** (marks are redone; answers an admin marked by hand are kept)
 - [done] Renamed to APTIVON by GLOBX with the new APTIVON logos and favicon (2026-11-10): after deploying, hard-refresh once (Ctrl+F5) to see the new tab icon; if `server.env` sets `SMTP_FROM` by hand, change its display name to APTIVON
+- [done] Minimum reading time per question (2026-11-10): off for exams that already exist; to use it, open the exam, Details, set "Seconds each question stays on screen before Next unlocks" (5), Save exam
 - [planned] Backups; push to GitHub and see the workflow turn green; real certificate and DNS record on the office server
 - [planned] LAN test with 2-3 PCs
 

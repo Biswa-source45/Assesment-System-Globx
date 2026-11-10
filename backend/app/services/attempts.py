@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+import math
 import random
 import time
 from datetime import timedelta
@@ -198,7 +199,7 @@ def attempt_state(db: Session, at: Attempt, test: Test) -> Dict:
                         "risk_level": at.risk_level, "violations": at.violations,
                         "max_score": at.max_score, "content_version": content_version(db, at)},
             "test": {"id": test.id, "title": test.title, "instructions": test.instructions,
-                     "proctoring": proctoring_config(test)},
+                     "proctoring": proctoring_config(test), "min_question_seconds": min_question_seconds(test)},
             "sections": secs,
             "answers": {qid: {"response": a.response, "flagged": a.flagged, "seq": a.seq,
                               "saved_at": aware(a.saved_at).isoformat()} for qid, a in answers.items()}}
@@ -224,6 +225,12 @@ def proctoring_config(test: Test) -> Dict:
     p.setdefault("block_multi_display", True)
     p.setdefault("weights", {})
     return p
+
+
+def min_question_seconds(test: Test) -> int:
+    """How long each question stays on screen before the candidate may move on (0 = no wait). Set by the exam author."""
+    v = (test.settings or {}).get("min_question_seconds")
+    return max(0, min(60, int(v))) if isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(v) else 0
 
 
 def terminate_attempt(db: Session, at: Attempt, reason: str) -> None:

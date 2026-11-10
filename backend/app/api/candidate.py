@@ -88,7 +88,7 @@ def my_assignments(user: User = Depends(current_user), db: Session = Depends(get
                     "description": t.description, "duration_min": t.duration_min, "instructions": t.instructions,
                     "starts_at": aware(t.starts_at).isoformat() if t.starts_at else None,
                     "ends_at": aware(t.ends_at).isoformat() if t.ends_at else None, "items": n_q,
-                    "proctoring": svc.proctoring_config(t)},
+                    "proctoring": svc.proctoring_config(t), "min_question_seconds": svc.min_question_seconds(t)},
                     "attempt": {"id": at.id, "status": at.status, "deadline_at": aware(at.deadline_at).isoformat()} if at else None,
                     "result": res, "can_start": _window_error(t, a) is None and (not at or at.status == "in_progress")
                     and a.status in ("invited", "in_progress"), "message": _window_error(t, a)})

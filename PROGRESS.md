@@ -4,7 +4,7 @@ Read at the start of every task; update after every change. Plan and decisions: 
 
 ## Current state (2026-11-02)
 
-- Codebase: FastAPI backend (`backend/app`) and a React **JSX** frontend (`frontend/`: Vite, Tailwind, shadcn/ui). 82 pytest tests and 70 Playwright browser tests pass; the browser tests run all code through the judge service.
+- Codebase: FastAPI backend (`backend/app`) and a React **JSX** frontend (`frontend/`: Vite, Tailwind, shadcn/ui). 99 pytest tests and 74 Playwright browser tests pass; the browser tests run all code through the judge service.
 - Built and browser-tested: login (staff email or candidate username); admin Exams list; **question bank** (list, filter, create/edit/archive MCQ, short,
   explained, coding and **SQL** questions; coding has a case table, reference-solution check and "Generate with AI", both working on the unsaved form; saving returns to the bank with the question at the top); **candidate flow** (home, camera check-in with
   MediaPipe face gate and consent, exam runner with section tabs, palette, mark for review, autosave, server timer, CodeMirror editor with Run/Submit,
@@ -35,6 +35,14 @@ Read at the start of every task; update after every change. Plan and decisions: 
    through the judge container once it exists; old email-OTP/invite flow still in the backend; bundle is one 1.4 MB chunk (split later); rotate the OpenAI key.
 
 ## Log
+
+### 2026-11-10 (minimum reading time on every question)
+- **Asked for.** Candidates could click Next within a fraction of a second and skip a question unread. Each question now has to stay on screen for a few seconds (5 by default) before the candidate can move on.
+- **Rule.** Per-exam setting "Seconds each question stays on screen before Next unlocks" in the exam Details (`settings.min_question_seconds`, 0 to 60, 0 = off; a new exam starts at 5, existing exams stay off until someone sets it). The wait starts when a question is first shown (monotonic timer, so changing the PC clock does nothing). While it runs, every way forward is locked together: Save and next / Next section / Finish (with the seconds left in the button and a one-line hint), later palette numbers and later section tabs. Previous, earlier numbers and tabs, Mark for review, answering and End exam stay open. A question that had its time is free for the rest of the exam. No wait in a closed section, for questions already answered when the page is reloaded (Resume does not make people wait again), or for the automatic moves (section time over, exam time over, admin ending the exam). Shown to candidates on the check-in page as one line.
+- **Code.** `min_question_seconds()` in `services/attempts.py` (clamps; handles strings, booleans, negative, infinite) and exposed in the attempt state and on the check-in data; one field in `ExamDetails.jsx`; `Exam.jsx` (a ref of first-shown times, `hold`, disabled buttons); one line in `CheckIn.jsx`. No endpoint, no migration, no SQL: the value rides in the existing `settings` JSON that only exam authors can write.
+- **Limit (honest).** This is a screen rule, not a server check; a tampered page could skip it, but developer tools are blocked and flagged by the proctor and grading only uses what is saved. A server-side time-on-question record would be a separate feature.
+- **Tests.** pytest `test_read_time.py` (16 values and no settings); Playwright `read-time.spec.js` on the real screens (every way forward locked with a countdown, answering does not unlock, Previous/earlier numbers/mark for review/End exam open, unlock by itself, revisit is instant, Next section and Finish locked on the last questions, reload frees answered questions and the unanswered one waits, setting off = no wait and no check-in line, form default 5, saved value kept, browser refuses above 60, empty = off). 99 pytest / 74 Playwright.
+- **To turn it on for the General exam already made:** open the exam, Details, set the field to 5, Save exam.
 
 ### 2026-11-10 (the product is now called APTIVON, by GLOBX, with the new logos)
 - **Asked for.** Rename "GLOBX Assess" to APTIVON ("Enterprise Assessment Platform", "Assess capabilities. Identify excellence."), "by GLOBX" under the name at the top left, the new APTIVON logos in place of the old GLOBX ones, the AV mark as favicon.

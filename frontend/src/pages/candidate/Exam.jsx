@@ -51,6 +51,8 @@ export default function Exam() {
   const video = useRef(null)
   const proctor = useRef(null)
   const finished = useRef(false)
+  const opened = useRef({})  // question id -> when it was first shown (monotonic ms); -Infinity = seen in an earlier session
+  const [, tick] = useState(0)
   const latest = useRef({})  // newest callbacks, so timers and the proctor never use stale ones
   const cfg = st?.test.proctoring ?? {}
   const ev = useEvidence({ st, cfg, attemptId, proctorRef: proctor })  // screen, video, live view, the invigilator's voice and messages
@@ -62,7 +64,7 @@ export default function Exam() {
         skew.current = new Date(d.attempt.server_time).getTime() - Date.now()
         version.current = d.attempt.content_version
         const r = {}, f = {}
-        Object.entries(d.answers).forEach(([k, v]) => { r[k] = v.response; f[k] = v.flagged; seqs.current[k] = v.seq || 0 })
+        Object.entries(d.answers).forEach(([k, v]) => { r[k] = v.response; f[k] = v.flagged; seqs.current[k] = v.seq || 0; opened.current[k] = -Infinity })
         respRef.current = r
         flagRef.current = f
         setResp(r)
@@ -79,6 +81,14 @@ export default function Exam() {
   const q = curSec?.questions[qi]
   const left = useCountdown(deadline, skew.current)
   const secLeft = useCountdown(curSec?.deadline, skew.current)
+
+  // Minimum reading time: a question has to stay on screen N seconds the first time it is opened before the forward buttons unlock.
+  // The timer is monotonic (the PC clock cannot move it) and a closed section never waits.
+  const minRead = st?.test.min_question_seconds ?? 0
+  if (q && minRead && !curSec.closed) opened.current[q.id] ??= performance.now()
+  const holdLeft = q && minRead && !curSec.closed ? Math.max(0, Math.ceil(minRead - (performance.now() - opened.current[q.id]) / 1000)) : 0
+  const hold = holdLeft > 0
+  useEffect(() => { if (!hold) return; const t = setTimeout(() => tick((n) => n + 1), 250); return () => clearTimeout(t) })
 
   // ---- saving
   async function flushOne(qid) {
@@ -251,15 +261,15 @@ export default function Exam() {
         <div className="grid gap-4">
         <div className="flex flex-wrap gap-2">
           {sections.map((s, i) => (
-            <Button key={s.id} size="sm" variant={i === sec ? "default" : "outline"} disabled={s.closed && i !== sec} onClick={() => i !== sec && enterSection(i)}>
+            <Button key={s.id} size="sm" variant={i === sec ? "default" : "outline"} disabled={(s.closed && i !== sec) || (hold && i > sec)} onClick={() => i !== sec && enterSection(i)}>
               {s.title} · {answeredIn(s)}/{s.count}{s.closed ? " (closed)" : ""}
             </Button>
           ))}
         </div>
         <div className="flex flex-wrap gap-1.5" aria-label="Question palette">
           {curSec.questions.map((x, i) => (
-            <button key={x.id} onClick={() => go(i)} aria-label={`Question ${i + 1}`}
-              className={"size-8 rounded-md border text-sm font-medium " + (i === qi ? "ring-2 ring-ring " : "") +
+            <button key={x.id} onClick={() => go(i)} disabled={hold && i > qi} aria-label={`Question ${i + 1}`}
+              className={"size-8 rounded-md border text-sm font-medium disabled:opacity-50 " + (i === qi ? "ring-2 ring-ring " : "") +
                 (isAnswered(x, resp[x.id]) ? "border-primary bg-primary text-white" : flags[x.id] ? "border-destructive text-destructive" : "bg-white")}>{i + 1}</button>
           ))}
           <span className="ml-2 self-center text-xs text-muted-foreground">Blue = answered, red outline = marked for review</span>
@@ -323,12 +333,13 @@ export default function Exam() {
               <Button variant="outline" onClick={() => toggleFlag(q.id)}><Flag /> {flags[q.id] ? "Unmark review" : "Mark for review"}</Button>
             </div>
             <div className="flex items-center gap-3">
+              {hold && <span data-testid="read-hint" className="text-xs text-muted-foreground">Take a moment to read the question. Next unlocks in {holdLeft}s.</span>}
               <span className="text-xs text-muted-foreground">{saved && `Saved ${saved}`}</span>
               {qi < curSec.questions.length - 1
-                ? <Button onClick={() => go(qi + 1)}>Save and next</Button>
+                ? <Button disabled={hold} onClick={() => go(qi + 1)}>Save and next{hold && ` (${holdLeft}s)`}</Button>
                 : sec < sections.length - 1
-                  ? <Button onClick={() => enterSection(sec + 1)}>Next section</Button>
-                  : <Button onClick={() => { flushAll(); setEndOpen(true) }}>Finish</Button>}
+                  ? <Button disabled={hold} onClick={() => enterSection(sec + 1)}>Next section{hold && ` (${holdLeft}s)`}</Button>
+                  : <Button disabled={hold} onClick={() => { flushAll(); setEndOpen(true) }}>Finish{hold && ` (${holdLeft}s)`}</Button>}
             </div>
           </div>
         )}

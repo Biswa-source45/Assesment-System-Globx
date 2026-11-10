@@ -22,7 +22,7 @@ const toForm = (t) => ({
   department_id: t?.department_id ?? "", title: t?.title ?? "", description: t?.description ?? "", instructions: fromHtml(t?.instructions ?? ""),
   duration_min: t?.duration_min ?? 60, starts_at: toLocalInput(t?.starts_at), ends_at: toLocalInput(t?.ends_at), cutoff: t?.cutoff ?? 0,
   shuffle_questions: t?.shuffle_questions ?? true, shuffle_options: t?.shuffle_options ?? true,
-  show_result: t?.settings?.show_result_to_candidate ?? true, proctoring: { ...PROCTORING, ...(t?.settings?.proctoring ?? {}) },
+  show_result: t?.settings?.show_result_to_candidate ?? true, min_question_seconds: t ? (t.settings?.min_question_seconds ?? 0) : 5, proctoring: { ...PROCTORING, ...(t?.settings?.proctoring ?? {}) },
 })
 
 function toBody(f, t) {
@@ -32,7 +32,7 @@ function toBody(f, t) {
     starts_at: fromLocalInput(f.starts_at), ends_at: fromLocalInput(f.ends_at), access_enabled: t?.access_enabled ?? true,
     cutoff: Number(f.cutoff) || 0, shuffle_questions: f.shuffle_questions, shuffle_options: f.shuffle_options,
     settings: {
-      ...(t?.settings ?? {}), show_result_to_candidate: f.show_result,
+      ...(t?.settings ?? {}), show_result_to_candidate: f.show_result, min_question_seconds: Math.max(0, Math.min(60, Math.floor(Number(f.min_question_seconds)) || 0)),
       proctoring: {
         ...(t?.settings?.proctoring ?? {}), ...p, tab_switch_limit: Number(p.tab_switch_limit), face_limit: Number(p.face_limit),
         face_min_seconds: Number(p.face_min_seconds), snapshot_seconds: Number(p.snapshot_seconds),
@@ -126,6 +126,8 @@ export default function ExamDetails({ test, onSaved }) {
             <Field id="exam-duration" label="Time allowed per candidate (minutes)" type="number" min="1" max="600" value={f.duration_min} onChange={(e) => set("duration_min", e.target.value)} />
             <Field id="exam-cutoff" label="Pass mark (total marks)" type="number" min="0" step="0.5" value={f.cutoff} onChange={(e) => set("cutoff", e.target.value)}
               hint="0 means no pass mark: scores are shown without a Passed or Not passed verdict. Someone who answers nothing is never shown as passed." />
+            <Field id="exam-read" label="Seconds each question stays on screen before Next unlocks" type="number" min="0" max="60" value={f.min_question_seconds} onChange={(e) => set("min_question_seconds", e.target.value)}
+              hint="Stops people clicking through without reading. 0 turns it off. Counted the first time a candidate opens each question." />
           </div>
           <Toggle id="shuffle-q" label="Shuffle question order" checked={f.shuffle_questions} onChange={(v) => set("shuffle_questions", v)} />
           <Toggle id="shuffle-o" label="Shuffle answer options" checked={f.shuffle_options} onChange={(v) => set("shuffle_options", v)} />

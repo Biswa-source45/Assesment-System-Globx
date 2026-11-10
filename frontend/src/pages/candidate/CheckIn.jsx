@@ -106,6 +106,7 @@ export default function CheckIn() {
           </CardHeader>
           <CardContent className="grid gap-4 text-sm">
             {item.test.instructions && <div className="prose-sm" dangerouslySetInnerHTML={{ __html: item.test.instructions }} />}
+            {item.test.min_question_seconds > 0 && <p>Each question stays on screen for at least <b>{item.test.min_question_seconds} seconds</b> before you can move on, so please read it.</p>}
             {cfg.enabled ? (
               <ul className="list-disc space-y-1.5 pl-5">
                 {cfg.fullscreen && <li>The exam runs in full screen. You may leave full screen or switch tabs <b>{cfg.tab_switch_limit} times</b>, each with a warning; the next time your exam ends.</li>}
