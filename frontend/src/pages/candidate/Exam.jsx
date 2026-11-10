@@ -8,6 +8,7 @@ import { useEvidence } from "@/lib/useEvidence"
 import { Proctor } from "@/lib/proctor"
 import { hms, useCountdown } from "@/lib/useCountdown"
 import { Badge } from "@/components/ui/badge"
+import Brand from "@/components/Brand"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
@@ -234,7 +235,7 @@ export default function Exam() {
       <video ref={ev.screenVideo} muted playsInline className="pointer-events-none fixed top-0 left-0 size-px opacity-0" />
       {ev.talk && <div role="status" data-testid="talk-banner" className="fixed inset-x-0 top-0 z-[60] bg-red-600 py-2 text-center text-sm font-medium text-white">The invigilator is speaking with you. Your microphone is on.</div>}
       <header className="sticky top-0 z-10 flex flex-wrap items-center gap-3 border-b bg-white px-4 py-2.5">
-        <span className="font-brand text-lg font-bold">GLOBX <span className="text-primary">Assess</span></span>
+        <Brand />
         <b className="grow truncate">{st.test.title}</b>
         {cfg.enabled && <Badge variant="secondary">Proctoring on</Badge>}
         {cfg.enabled && cfg.tab_switch_limit > 0 && (

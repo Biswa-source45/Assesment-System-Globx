@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test"
 import { loginStaff, shot } from "./helpers"
 
-test("the sidebar is narrower, its buttons are tall, and the brand lines up with the company name", async ({ page }) => {
+test("the sidebar is narrower, its buttons are tall, and the brand sits level in the top block (no company name in the top bar)", async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 900 })
   await loginStaff(page)
   const sidebar = page.locator("[data-sidebar=sidebar]")
@@ -10,9 +10,11 @@ test("the sidebar is narrower, its buttons are tall, and the brand lines up with
   for (const name of ["Exams", "Question bank", "Results"]) {
     expect((await sidebar.getByText(name, { exact: true }).locator("xpath=ancestor-or-self::*[@data-sidebar='menu-button']").boundingBox()).height).toBeGreaterThanOrEqual(44)
   }
-  // the brand and the company name sit on one level line: the sidebar's top block is as tall as the top bar
-  const [brand, company, topbar] = await Promise.all(["brand", "company", "topbar"].map((id) => page.getByTestId(id).boundingBox()))
-  expect(Math.abs(brand.y + brand.height / 2 - (company.y + company.height / 2))).toBeLessThanOrEqual(2)
+  // the sidebar's top block is as tall as the top bar, and the logo is centred in it
+  const [brand, topbar] = await Promise.all(["brand", "topbar"].map((id) => page.getByTestId(id).boundingBox()))
+  expect(Math.abs(brand.y + brand.height / 2 - (topbar.y + topbar.height / 2))).toBeLessThanOrEqual(2)
+  await expect(page.getByTestId("company")).toHaveCount(0)
+  await expect(page.getByTestId("topbar")).not.toContainText("Pvt Ltd")
   expect(Math.abs((await sidebar.locator("[data-sidebar=header]").boundingBox()).height - topbar.height)).toBeLessThanOrEqual(1)
   await expect(page.getByTestId("brand-rule")).toHaveCount(0)  // no dotted line under the brand
   await shot(page, "sidebar")

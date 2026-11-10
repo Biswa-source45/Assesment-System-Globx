@@ -121,6 +121,6 @@ def totp_verify(secret: str, code: str, window: int = 1) -> bool:
                for k in range(-window, window + 1))
 
 
-def totp_uri(secret: str, email: str, issuer: str = "GLOBX Assess") -> str:
+def totp_uri(secret: str, email: str, issuer: str = "APTIVON") -> str:
     from urllib.parse import quote
     return f"otpauth://totp/{quote(issuer)}:{quote(email)}?secret={secret}&issuer={quote(issuer)}"

@@ -5,6 +5,7 @@ import { useAuth } from "@/lib/auth"
 import { ENDED } from "@/lib/labels"
 import { RESULT, TONE } from "@/lib/verdict"
 import { Badge } from "@/components/ui/badge"
+import Brand from "@/components/Brand"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 
@@ -23,7 +24,7 @@ export default function CandidateHome() {
   return (
     <div className="min-h-svh bg-muted/40">
       <header className="flex items-center justify-between border-b bg-white px-6 py-3">
-        <span className="font-brand text-lg font-bold">GLOBX <span className="text-primary">Assess</span></span>
+        <Brand />
         <div className="flex items-center gap-3 text-sm">
           <span>{user.name || user.email}</span>
           <Button variant="outline" size="sm" onClick={logout}>Sign out</Button>

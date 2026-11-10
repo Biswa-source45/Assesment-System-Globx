@@ -3,8 +3,8 @@ import { NavLink, Outlet } from "react-router-dom"
 import { Building2, ClipboardList, FileQuestion, LogOut, MonitorPlay, Trophy, Users } from "lucide-react"
 import { useAuth } from "@/lib/auth"
 import { get } from "@/lib/api"
+import Brand from "@/components/Brand"
 import { Button } from "@/components/ui/button"
-import { Separator } from "@/components/ui/separator"
 import {
   Sidebar, SidebarContent, SidebarFooter, SidebarGroup, SidebarGroupContent, SidebarHeader, SidebarInset,
   SidebarMenu, SidebarMenuButton, SidebarMenuItem, SidebarProvider, SidebarTrigger,
@@ -27,7 +27,7 @@ export default function AdminLayout() {
   return (
     <SidebarProvider>
       <Sidebar>
-        <SidebarHeader className="h-12 flex-row items-center px-4 py-0"><span className="font-brand text-lg font-bold" data-testid="brand">GLOBX <span className="text-primary">Assess</span></span></SidebarHeader>
+        <SidebarHeader className="h-12 flex-row items-center px-4 py-0"><Brand data-testid="brand" /></SidebarHeader>
         <SidebarContent>
           <SidebarGroup>
             <SidebarGroupContent>
@@ -58,8 +58,6 @@ export default function AdminLayout() {
       <SidebarInset>
         <header className="flex h-12 items-center gap-2 border-b px-4" data-testid="topbar">
           <SidebarTrigger />
-          <Separator orientation="vertical" className="h-5" />
-          <span className="text-sm text-muted-foreground" data-testid="company">{user.org_name}</span>
         </header>
         {unsafe && (
           <div role="alert" data-testid="unsafe-judge" className="border-b border-destructive/30 bg-destructive/10 px-4 py-2 text-sm font-medium text-destructive">

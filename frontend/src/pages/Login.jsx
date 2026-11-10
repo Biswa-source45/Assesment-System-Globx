@@ -2,8 +2,9 @@ import { useState } from "react"
 import { Navigate, useNavigate } from "react-router-dom"
 import { Eye, EyeOff } from "lucide-react"
 import { useAuth } from "@/lib/auth"
+import Brand from "@/components/Brand"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent, CardDescription, CardHeader } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 
@@ -42,8 +43,8 @@ export default function Login() {
     <div className="flex min-h-svh items-center justify-center bg-muted/40 p-4">
       <Card className="w-full max-w-sm">
         <CardHeader>
-          <CardTitle className="font-brand text-xl font-bold">GLOBX <span className="text-primary">Assess</span></CardTitle>
-          <CardDescription>Sign in with the username and password you were given.</CardDescription>
+          <Brand lg />
+          <CardDescription className="pt-2 text-center text-balance">Assess capabilities. Identify excellence.<br />Sign in with the username and password you were given.</CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={submit} className="grid gap-4">

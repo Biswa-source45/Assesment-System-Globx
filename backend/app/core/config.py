@@ -15,7 +15,7 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=(str(ROOT_DIR / ".env"), str(BACKEND_DIR / ".env")),
                                       env_file_encoding="utf-8", extra="ignore")
 
-    app_name: str = "GLOBX Assess"
+    app_name: str = "APTIVON"
     environment: str = "dev"
     host: str = "127.0.0.1"
     port: int = 8000
@@ -41,7 +41,7 @@ class Settings(BaseSettings):
     smtp_port: int = 587
     smtp_user: str = ""
     smtp_password: str = ""
-    smtp_from: str = "GLOBX Assess <no-reply@globx.co.in>"
+    smtp_from: str = "APTIVON <no-reply@globx.co.in>"
     smtp_tls: bool = True
 
     # Sandboxes (no Docker). Leave a path empty to auto-detect on PATH.

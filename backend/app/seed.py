@@ -426,7 +426,7 @@ def main():
         print(res["message"])
         return
     base = get_settings().public_base_url.rstrip("/")
-    lines = ["GLOBX Assess - seeded accounts", "", "STAFF (password login at /#/login):"]
+    lines = ["APTIVON - seeded accounts", "", "STAFF (password login at /#/login):"]
     for e, p, r in res["staff"]:
         lines.append(f"  {e:<28} {p:<14} {', '.join(r)}")
     lines += ["", f"CANDIDATES (username rahul / sneha / amit, password {res['candidate_password']}, or the old email-OTP invite link):"]

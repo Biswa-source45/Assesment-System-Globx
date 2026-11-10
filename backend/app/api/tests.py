@@ -553,7 +553,7 @@ def assignment_action(aid: str, body: ActionIn, request: Request, user: User = D
     if act == "shortlist":
         a.status = "shortlisted"
         queue_mail(db, a.candidate.email, f"Update on {t.title}", f"Dear {a.candidate.name or a.candidate.email},\n\n"
-                   "Congratulations - you have been shortlisted for the next round. The recruiter will contact you.\n\nGLOBX Assess",
+                   "Congratulations - you have been shortlisted for the next round. The recruiter will contact you.\n\nAPTIVON by GLOBX",
                    "shortlist", t.org_id)
     elif act == "archive":
         a.status = "archived"

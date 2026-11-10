@@ -4,7 +4,7 @@ Read at the start of every task; update after every change. Plan and decisions: 
 
 ## Current state (2026-11-02)
 
-- Codebase: FastAPI backend (`backend/app`) and a React **JSX** frontend (`frontend/`: Vite, Tailwind, shadcn/ui). 81 pytest tests and 66 Playwright browser tests pass; the browser tests run all code through the judge service.
+- Codebase: FastAPI backend (`backend/app`) and a React **JSX** frontend (`frontend/`: Vite, Tailwind, shadcn/ui). 82 pytest tests and 70 Playwright browser tests pass; the browser tests run all code through the judge service.
 - Built and browser-tested: login (staff email or candidate username); admin Exams list; **question bank** (list, filter, create/edit/archive MCQ, short,
   explained, coding and **SQL** questions; coding has a case table, reference-solution check and "Generate with AI", both working on the unsaved form; saving returns to the bank with the question at the top); **candidate flow** (home, camera check-in with
   MediaPipe face gate and consent, exam runner with section tabs, palette, mark for review, autosave, server timer, CodeMirror editor with Run/Submit,
@@ -35,6 +35,14 @@ Read at the start of every task; update after every change. Plan and decisions: 
    through the judge container once it exists; old email-OTP/invite flow still in the backend; bundle is one 1.4 MB chunk (split later); rotate the OpenAI key.
 
 ## Log
+
+### 2026-11-10 (the product is now called APTIVON, by GLOBX, with the new logos)
+- **Asked for.** Rename "GLOBX Assess" to APTIVON ("Enterprise Assessment Platform", "Assess capabilities. Identify excellence."), "by GLOBX" under the name at the top left, the new APTIVON logos in place of the old GLOBX ones, the AV mark as favicon.
+- **Done.** One component, `frontend/src/components/Brand.jsx`: the sign-in card shows the whole logo (AV mark, APTIVON, "Enterprise Assessment Platform", "by GLOBX"); the admin sidebar, candidate home and exam header show the compact one (AV mark, the name, "by GLOBX" under it, a little to the right). The supplied pictures were cleaned (faint haze and floating specks around the AV mark removed, edges kept smooth), cropped and shrunk: `frontend/src/assets/aptivon-lockup.png`, `aptivon-mark.png`, `aptivon-wordmark.png`, `by-globx.png`; the favicon (`public/favicon.png`) and apple-touch icon are the AV mark. The three supplied originals are kept in `frontend/brand-source/` (re-export from them if the logo changes); the old GLOBX-only logo files are removed. Tab title "APTIVON - Enterprise Assessment Platform". Words in the backend changed too: `app_name`, API title, sign-in code email subject, the sign-off of every email ("APTIVON by GLOBX"), authenticator issuer, default `SMTP_FROM`, `.env.example`, seeded accounts file header.
+- **Then.** In the compact logo "by GLOBX" is very small (9 px high) under a larger APTIVON; the company name "GLOBX System & Network Pvt Ltd" (and the divider before it) is removed from the admin top bar, which now holds only the menu button. `layout.spec.js` now checks the logo is centred in the sidebar's top block and that no company name is in the top bar.
+- **Not renamed on purpose.** The company (GLOBX System & Network Pvt Ltd, `@globx.co.in` logins and mail domain), the sample exam title, the domain, the repo, package and container names.
+- **Tests.** New `e2e/branding.spec.js` (whole logo and tagline on the sign-in page, tab title, favicon and apple-touch icon served as PNG, phone width without sideways scroll, and on the admin sidebar, candidate home and exam header: every picture really loaded, "by GLOBX" under and smaller than the name, the old text nowhere) and `backend/tests/test_branding.py`. `layout.spec.js` (brand and company name on one line, header as tall as the top bar) passes unchanged. 82 pytest / 70 Playwright.
+- **After deploy.** A tab that still shows the old icon needs one hard refresh (Ctrl+F5). If the server's `server.env` ever set `SMTP_FROM` by hand, change its display name to APTIVON there; otherwise the new default applies. Authenticator-app entries already made keep working (only the label of new ones says APTIVON).
 
 ### 2026-11-07 (fixes from the first real HR exam)
 - **Asked for.** After the first real exam (4 candidates, camera off, screen share + live view on): explained answers showed "No answer" in the review (the admin had to give grace marks), the live monitor showed nothing, the submit box talked about coding in an HR exam, and multiple-answer marking was not strict.
@@ -128,7 +136,7 @@ Read at the start of every task; update after every change. Plan and decisions: 
 - Restart the backend after pulling (new migration `0004`, new router, new package: `pip install -r requirements.txt`).
 
 ### 2026-11-03 (sidebar)
-- Sidebar narrower (14rem, was 16rem), menu buttons taller (48px) with larger text and icons and more space between them. The brand block is as tall as the top bar (3rem), so "GLOBX Assess" and the company name sit on one level line (a dotted line under the brand was tried and removed: it made the misalignment obvious). One layout test checks the width, the button height and the alignment. 49 Playwright tests.
+- Sidebar narrower (14rem, was 16rem), menu buttons taller (48px) with larger text and icons and more space between them. The brand block is as tall as the top bar (3rem), so the brand and the company name sit on one level line (a dotted line under the brand was tried and removed: it made the misalignment obvious). One layout test checks the width, the button height and the alignment. 49 Playwright tests.
 
 ### 2026-11-03 (coloured buttons and pills in the results screens)
 - The faint text-only **Open** and **Review** buttons are now solid blue buttons (and **All results** / **Back to the results** outlined); what happened to a person and where an exam's results stand are coloured pills from one place (`lib/verdict.js`: `OUTCOME_TONE`, `STATE_TONE`): Submitted green, Time over amber, Ended early red, Did not attend grey, In progress blue; exam state open grey, calculating amber, needs attention red, ready blue, declared green. Existing results tests re-run green.
