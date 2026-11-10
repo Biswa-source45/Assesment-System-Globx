@@ -3,19 +3,16 @@ import { loginStaff, newParticipant, shot, startProctoredExam } from "./helpers"
 
 const loaded = (loc) => loc.evaluate((i) => i.complete && i.naturalWidth > 0)  // the picture really arrived
 
-// Compact logo (headers): AV mark, the name, and "by GLOBX" under the name, a little to the right.
+// Compact logo (every screen after sign-in): the AV mark and the name, and no "by GLOBX".
 async function expectCompact(page, scope = page) {
   const name = scope.getByRole("img", { name: "APTIVON", exact: true })
-  const by = scope.getByRole("img", { name: "by GLOBX", exact: true })
   await expect(name).toBeVisible()
-  await expect(by).toBeVisible()
   expect(await loaded(name)).toBe(true)
-  expect(await loaded(by)).toBe(true)
   expect(await loaded(scope.locator("img").first())).toBe(true)  // the AV mark
-  const [n, b] = [await name.boundingBox(), await by.boundingBox()]
-  expect(b.y).toBeGreaterThanOrEqual(n.y + n.height - 1)  // under the name
-  expect(b.x).toBeGreaterThan(n.x)  // with its own small margin
-  expect(b.height).toBeLessThanOrEqual(n.height / 1.5)  // and much smaller
+  const [m, n] = [await scope.locator("img").first().boundingBox(), await name.boundingBox()]
+  expect(m.x + m.width).toBeLessThanOrEqual(n.x)  // the mark is left of the name
+  expect(Math.abs(m.y + m.height / 2 - (n.y + n.height / 2))).toBeLessThanOrEqual(2)  // on one level line
+  await expect(scope.getByRole("img", { name: /GLOBX/ })).toHaveCount(0)
   await expect(page.locator("body")).not.toContainText("GLOBX Assess")
 }
 
