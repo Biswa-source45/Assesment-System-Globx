@@ -14,6 +14,9 @@ export async function login(page, who, password) {
 export const loginStaff = (page, email = "creator@globx.co.in") => login(page, email, creds()[email]).then(() => expect(page).toHaveURL(/\/admin/))
 export const loginCandidate = (page, user) => login(page, user, creds().candidate)
 
+// The in-app confirmation box: press its button (it is the only dialog open).
+export const confirmDialog = (page, name) => page.getByRole("dialog").getByRole("button", { name, exact: true }).click()
+export const signOut = async (page) => { await page.getByRole("button", { name: "Sign out" }).click(); await confirmDialog(page, "Sign out") }
 export const shot = (page, name) => page.screenshot({ path: `test-results/screens/${name}.png`, fullPage: true })
 
 // Opens a proctored exam as a candidate and returns once the exam screen is showing.

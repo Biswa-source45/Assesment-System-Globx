@@ -43,7 +43,10 @@ export default function ExamResults() {
     setBusy(true)
     try { const out = await fn(); if (done) toast.success(done(out)); await load() } catch (e) { toast.error(e.message) } finally { setBusy(false) }
   }
-  const calculate = () => run(() => post(`/tests/${testId}/calculate`), () => "Calculating the results")
+  async function calculate() {
+    const yes = await confirm({ title: d.calculated_at ? "Calculate the results again?" : "Calculate the results?", description: "Every candidate is marked again from the saved answers. Marks you set by hand are kept.", action: "Calculate" })
+    if (yes) run(() => post(`/tests/${testId}/calculate`), () => "Calculating the results")
+  }
   async function acceptAll() {
     if (!(await confirm({ title: "Accept all suggested marks?", description: `The ${d.attention} answer(s) waiting for you take the mark the AI suggested (or the keyword mark when there was no AI mark). Answers with no suggestion stay for you to mark by hand.`, action: "Accept" }))) return
     run(() => post(`/tests/${testId}/accept-ai`), (o) => `${o.accepted} answer(s) accepted`)

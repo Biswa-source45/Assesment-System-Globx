@@ -86,7 +86,7 @@ export default function Exams() {
                   {archived && <Button size="sm" className="mr-2" onClick={() => restore(t)}><RotateCcw /> Restore</Button>}
                   {!archived && t.status === "published" && <Button asChild variant="outline" size="sm" className="mr-2 border-primary text-primary hover:bg-primary/10"><Link to={`/admin/monitor?exam=${t.id}`}>Monitor</Link></Button>}
                   <Button asChild size="sm"><Link to={`/admin/exams/${t.id}`}>Open</Link></Button>
-                  {user.can.super && !archived && <Button variant="ghost" size="icon-sm" className="ml-1" aria-label={`Archive ${t.title}`} title="Archive" onClick={() => archive(t)}><Archive /></Button>}
+                  {user.can.super && !archived && <Button variant="danger" size="icon-sm" className="ml-1" aria-label={`Archive ${t.title}`} title="Archive" onClick={() => archive(t)}><Archive /></Button>}
                 </TableCell>
               </TableRow>
             ))}

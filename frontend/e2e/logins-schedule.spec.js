@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test"
 import fs from "node:fs"
-import { BASE_URL, login, loginStaff, shot, staffRequest } from "./helpers"
+import { BASE_URL, login, loginStaff, shot, staffRequest, confirmDialog } from "./helpers"
 
 const dialog = (page) => page.getByRole("dialog")
 
@@ -24,6 +24,7 @@ test("the login sheet keeps every batch, downloads them all, and can be had agai
   const add = async (names) => {
     await page.getByLabel("Participant names").fill(names)
     await page.getByRole("button", { name: "Create logins" }).click()
+    await confirmDialog(page, "Create")
   }
   const status = (u, p) => request.post("/api/v1/auth/login", { data: { email: u, password: p } }).then((r) => r.status())
 

@@ -73,7 +73,7 @@ export function SqlSamples({ q }) {
 const EXT = { python, java, javascript, c: cpp, cpp }
 const DIALECT = { sqlite: SQLite, postgresql: PostgreSQL, mysql: MySQL }
 // For SQL questions `lang` is the engine key (sqlite, postgresql, mysql), so the language comes from the dialect, not from EXT.
-const languageFor = (lang, isSql) => (isSql ? sql({ dialect: DIALECT[lang] }) : EXT[lang]?.() ?? [])
+export const languageFor = (lang, isSql) => (isSql ? sql({ dialect: DIALECT[lang] }) : EXT[lang]?.() ?? [])
 
 // One placeholder row per test case while the judge works.
 function Running({ samples, privateCases }) {

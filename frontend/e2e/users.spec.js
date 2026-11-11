@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test"
-import { BASE_URL, creds, login, loginStaff, shot, staffRequest } from "./helpers"
+import { BASE_URL, creds, login, loginStaff, shot, staffRequest, signOut } from "./helpers"
 
 const dialog = (page) => page.getByRole("dialog")
 const ORG = "orgadmin@globx.co.in"
@@ -117,7 +117,7 @@ test("protections: a Super Admin's row is locked for an Org Admin, and nobody ca
   await dialog(page).getByRole("button", { name: "Cancel" }).click()
 
   // a Super Admin sees the Super Admin role and can use it
-  await page.getByRole("button", { name: "Sign out" }).click()
+  await signOut(page)
   await expect(page).toHaveURL(/\/login/)
   await loginStaff(page, "superadmin@globx.co.in")
   await page.goto("/admin/users")
@@ -169,7 +169,7 @@ test("each role sees only what it may use", async ({ page }) => {
   await page.getByRole("link", { name: "Departments" }).click()
   await expect(page.getByTestId("department-row").first()).toBeVisible()
   await expect(page.getByRole("button", { name: "New department" })).toHaveCount(0)
-  await page.getByRole("button", { name: "Sign out" }).click()
+  await signOut(page)
   await expect(page).toHaveURL(/\/login/)
 
   // Evaluator: reads the bank and watches, cannot change questions or manage participants
@@ -186,7 +186,7 @@ test("each role sees only what it may use", async ({ page }) => {
   await page.getByRole("tab", { name: "Participants" }).click()
   await expect(page.getByText("Add participants")).toHaveCount(0)
   await expect(page.getByRole("button", { name: /^Actions for / })).toHaveCount(0)
-  await page.getByRole("button", { name: "Sign out" }).click()
+  await signOut(page)
   await expect(page).toHaveURL(/\/login/)
 
   // Test Creator: builds, but has no Users screen

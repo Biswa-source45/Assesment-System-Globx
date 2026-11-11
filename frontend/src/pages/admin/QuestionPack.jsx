@@ -15,7 +15,7 @@ import { Textarea } from "@/components/ui/textarea"
 const MAX_BYTES = 2_000_000
 
 // An AI chat often wraps the JSON in a sentence or a ```json fence; take what lies between the first { and the last }.
-function parsePack(text) {
+export function parsePack(text) {
   const start = text.indexOf("{"), end = text.lastIndexOf("}")
   if (start < 0 || end < start) throw new Error("This file does not contain a JSON document.")
   try {
@@ -23,6 +23,38 @@ function parsePack(text) {
   } catch (e) {
     throw new Error(`The file is not valid JSON: ${e.message}`)
   }
+}
+
+// What the server's check of a file says: every problem, or what would be created. `trial` = the Help playground (nothing to import).
+export function PackReport({ report, trial = false }) {
+  if (!report) return null
+  if (!report.ok) {
+    return (
+      <Alert variant="destructive" className="p-3" data-testid="pack-errors">
+        <p className="font-medium">{report.errors.length} problem(s) found. {trial ? "" : "Nothing was added. "}Fix the file, or ask the AI to fix these, and {trial ? "check" : "upload"} it again:</p>
+        <ul className="mt-1 max-h-40 list-disc overflow-auto pl-5">{report.errors.map((m, i) => <li key={i}>{m}</li>)}</ul>
+      </Alert>
+    )
+  }
+  return (
+    <div className="grid gap-2" data-testid="pack-preview">
+      <p className="text-sm font-medium">{report.total_questions} questions, {report.total_marks} marks, in {report.sections.length} sections. {trial ? "This file is correct and would import." : "Check them, then import."}</p>
+      <div className="grid max-h-56 gap-2 overflow-auto">
+        {report.sections.map((s, i) => (
+          <div key={i} className="rounded-md border p-2 text-sm" data-testid="pack-section">
+            <p className="font-medium">{s.title}{s.timer_min ? ` (${s.timer_min} min)` : ""} <span className="font-normal text-muted-foreground">{s.count} {s.count === 1 ? "question" : "questions"}, {s.marks} {s.marks === 1 ? "mark" : "marks"}</span></p>
+            {s.questions.map((q, j) => (
+              <div key={j} className="mt-1 flex items-center gap-2">
+                <span className="grow">{q.title}</span>
+                <Badge variant="secondary">{TYPE_LABEL[q.type]}</Badge>
+                <span className="w-14 text-right text-xs text-muted-foreground">{q.marks} {q.marks === 1 ? "mark" : "marks"}</span>
+              </div>
+            ))}
+          </div>
+        ))}
+      </div>
+    </div>
+  )
 }
 
 // Step 1: the app writes the prompt (exam details + how many questions of each type). Step 2: the JSON the AI answered with is checked and,
@@ -106,7 +138,7 @@ export default function QuestionPack({ test, onClose, onImported }) {
       <DialogContent className="sm:max-w-3xl">
         <DialogHeader>
           <DialogTitle>Build "{test.title}" with AI</DialogTitle>
-          <DialogDescription>Get a prompt, give it to ChatGPT or Claude with your question set, then upload the JSON file it gives you.</DialogDescription>
+          <DialogDescription>Get a prompt, give it to ChatGPT or Claude with your question set, then upload the JSON file it gives you. <a className="underline" href="/admin/help?topic=json-route" target="_blank" rel="noreferrer">Format help and samples</a></DialogDescription>
         </DialogHeader>
 
         <section className="grid gap-3">
@@ -138,31 +170,7 @@ export default function QuestionPack({ test, onClose, onImported }) {
             onChange={(e) => setPasted(e.target.value)} />
           <div><Button variant="outline" size="sm" disabled={busy || !pasted.trim()} onClick={() => check(pasted)}>Check pasted JSON</Button></div>
           {fileError && <Alert variant="destructive" className="p-3" data-testid="pack-file-error">{fileError}</Alert>}
-          {report && !report.ok && (
-            <Alert variant="destructive" className="p-3" data-testid="pack-errors">
-              <p className="font-medium">{report.errors.length} problem(s) found. Nothing was added. Fix the file, or ask the AI to fix these, and upload it again:</p>
-              <ul className="mt-1 max-h-40 list-disc overflow-auto pl-5">{report.errors.map((m, i) => <li key={i}>{m}</li>)}</ul>
-            </Alert>
-          )}
-          {report?.ok && (
-            <div className="grid gap-2" data-testid="pack-preview">
-              <p className="text-sm font-medium">{report.total_questions} questions, {report.total_marks} marks, in {report.sections.length} sections. Check them, then import.</p>
-              <div className="grid max-h-56 gap-2 overflow-auto">
-                {report.sections.map((s, i) => (
-                  <div key={i} className="rounded-md border p-2 text-sm" data-testid="pack-section">
-                    <p className="font-medium">{s.title}{s.timer_min ? ` (${s.timer_min} min)` : ""} <span className="font-normal text-muted-foreground">{s.count} {s.count === 1 ? "question" : "questions"}, {s.marks} {s.marks === 1 ? "mark" : "marks"}</span></p>
-                    {s.questions.map((q, j) => (
-                      <div key={j} className="mt-1 flex items-center gap-2">
-                        <span className="grow">{q.title}</span>
-                        <Badge variant="secondary">{TYPE_LABEL[q.type]}</Badge>
-                        <span className="w-14 text-right text-xs text-muted-foreground">{q.marks} {q.marks === 1 ? "mark" : "marks"}</span>
-                      </div>
-                    ))}
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
+          <PackReport report={report} />
         </section>
 
         <DialogFooter>

@@ -1,10 +1,10 @@
 import { useEffect, useState } from "react"
 import { NavLink, Outlet } from "react-router-dom"
-import { Building2, ClipboardList, FileQuestion, LogOut, MonitorPlay, Trophy, Users } from "lucide-react"
+import { Building2, CircleHelp, ClipboardList, FileQuestion, MonitorPlay, Trophy, Users } from "lucide-react"
 import { useAuth } from "@/lib/auth"
 import { get } from "@/lib/api"
 import Brand from "@/components/Brand"
-import { Button } from "@/components/ui/button"
+import SignOutButton from "@/components/SignOutButton"
 import {
   Sidebar, SidebarContent, SidebarFooter, SidebarGroup, SidebarGroupContent, SidebarHeader, SidebarInset,
   SidebarMenu, SidebarMenuButton, SidebarMenuItem, SidebarProvider, SidebarTrigger,
@@ -18,10 +18,11 @@ const NAV = [
   { to: "/admin/monitor", label: "Live monitor", icon: MonitorPlay, can: "view" },
   { to: "/admin/results", label: "Results", icon: Trophy, can: "view" },
   { to: "/admin/users", label: "Users", icon: Users, can: "admin" },
+  { to: "/admin/help", label: "Help", icon: CircleHelp, can: "view" },
 ]
 
 export default function AdminLayout() {
-  const { user, logout } = useAuth()
+  const { user } = useAuth()
   const [unsafe, setUnsafe] = useState(false)  // production without the isolated judge: candidate code would run inside the server
   useEffect(() => { get("/system/sandboxes").then((s) => setUnsafe(s.unsafe_in_production)).catch(() => {}) }, [])
   return (
@@ -52,7 +53,7 @@ export default function AdminLayout() {
             <div className="font-medium">{user.name || user.email}</div>
             <div className="text-xs text-muted-foreground">{user.roles.join(", ")}</div>
           </div>
-          <Button variant="outline" size="sm" onClick={logout}><LogOut /> Sign out</Button>
+          <SignOutButton icon />
         </SidebarFooter>
       </Sidebar>
       <SidebarInset>

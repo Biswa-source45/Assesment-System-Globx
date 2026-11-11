@@ -10,6 +10,7 @@ import html
 import json
 import re
 from datetime import timezone
+from types import SimpleNamespace
 from typing import Any, Dict, List, Optional, Tuple
 
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -18,7 +19,8 @@ from sqlalchemy.orm import Session
 
 from app.api.library import TYPE_NAME, CaseIn, QuestionIn, _apply, _check_on_save, _department, validate_question
 from app.api.tests import AUTHOR, _draft, _test, test_out
-from app.core.deps import audit
+from app.core.deps import VIEW, audit
+from app.domain.scoring import score_mcq
 from app.db import get_db
 from app.models import QTYPES, Department, Question, Section, SectionItem, Test, User, aware, uid
 from app.sandbox.judge import run_reference
@@ -319,6 +321,13 @@ def build(db: Session, user: User, t: Test, pack: Any) -> Tuple[Plan, List[str]]
     return plan, errs
 
 
+def _report(plan: Plan, errs: List[str]) -> Dict[str, Any]:
+    """What a check of a file says: every problem, and what would be created (the import dry run and the Help playground both show this)."""
+    secs = [{"title": title, "timer_min": timer, "count": len(qs), "marks": round(sum(q.marks for q in qs), 2),
+             "questions": [{"title": q.title, "type": q.type, "marks": q.marks, "difficulty": q.difficulty} for q in qs]} for title, timer, qs in plan]
+    return {"ok": not errs, "errors": errs, "sections": secs, "total_questions": sum(s["count"] for s in secs), "total_marks": round(sum(s["marks"] for s in secs), 2)}
+
+
 @router.post("/tests/{tid}/question-prompt")
 def question_prompt(tid: str, body: PromptIn, user: User = Depends(AUTHOR), db: Session = Depends(get_db)):
     t = _test(db, tid, user)
@@ -347,9 +356,7 @@ def import_questions(tid: str, body: ImportIn, request: Request, user: User = De
         raise HTTPException(413, "The file is too large (2 MB at most)")
     plan, errs = build(db, user, t, body.pack)
     if body.dry_run:
-        secs = [{"title": title, "timer_min": timer, "count": len(qs), "marks": round(sum(q.marks for q in qs), 2),
-                 "questions": [{"title": q.title, "type": q.type, "marks": q.marks, "difficulty": q.difficulty} for q in qs]} for title, timer, qs in plan]
-        return {"ok": not errs, "errors": errs, "sections": secs, "total_questions": sum(s["count"] for s in secs), "total_marks": round(sum(s["marks"] for s in secs), 2)}
+        return _report(plan, errs)
     if errs:
         raise HTTPException(422, {"errors": errs})
     for title, timer, qs in plan:
@@ -363,3 +370,40 @@ def import_questions(tid: str, body: ImportIn, request: Request, user: User = De
     audit(db, user, "import_pack", "test", t.id, {"sections": len(plan), "questions": sum(len(qs) for _, _, qs in plan)}, request)
     db.commit()
     return test_out(db, t)
+
+
+# ---- Help screen: stateless tools for its playgrounds. They save nothing.
+@router.get("/help/samples")
+def help_samples(user: User = Depends(VIEW)):
+    """The one valid question per type that the AI prompt shows (a test imports them all), and a whole valid file."""
+    return {"format": FORMAT, "examples": EXAMPLES, "pack": _example_pack(list(QTYPES))}
+
+
+class CheckPackIn(BaseModel):
+    pack: Any
+    department_id: str
+
+
+@router.post("/help/check-pack")
+def help_check_pack(body: CheckPackIn, user: User = Depends(AUTHOR), db: Session = Depends(get_db)):
+    """The same whole-file check as an import's dry run, without needing an exam. Nothing is created."""
+    if len(json.dumps(body.pack)) > MAX_BYTES:
+        raise HTTPException(413, "The file is too large (2 MB at most)")
+    return _report(*build(db, user, SimpleNamespace(department_id=body.department_id), body.pack))
+
+
+class TryMcqIn(BaseModel):
+    options: List[str]
+    correct: List[str]
+    selected: List[str]
+    marks: float = 1
+    negative: float = 0
+    multi: bool = False
+
+
+@router.post("/help/try-mcq")
+def help_try_mcq(body: TryMcqIn, user: User = Depends(VIEW)):
+    """The real marking rule (domain/scoring.py) on a made-up answer, for the exam-screen playground."""
+    if not 1 <= len(body.options) <= 8 or not 0 <= body.marks <= 100 or not 0 <= body.negative <= 100:
+        raise HTTPException(422, "Give 1 to 8 options and marks between 0 and 100")
+    return {"score": score_mcq(body.selected, body.correct, body.options, body.marks, body.negative, body.multi)}

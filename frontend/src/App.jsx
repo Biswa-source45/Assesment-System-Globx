@@ -3,6 +3,7 @@ import { useAuth } from "@/lib/auth"
 import Login from "@/pages/Login"
 import AdminLayout from "@/pages/admin/AdminLayout"
 import Exams from "@/pages/admin/Exams"
+import Help from "@/pages/admin/help/Help"
 import AttemptReview from "@/pages/admin/AttemptReview"
 import Departments from "@/pages/admin/Departments"
 import ExamResults from "@/pages/admin/ExamResults"
@@ -58,6 +59,7 @@ export default function App() {
         <Route path="results/:testId/:attemptId" element={<AttemptReview />} />
         <Route path="departments" element={<Departments />} />
         <Route path="monitor" element={<Monitor />} />
+        <Route path="help" element={<Help />} />
         <Route path="users" element={<Need can="admin"><Users /></Need>} />
       </Route>
       <Route path="/exam" element={<Guard staff={false}><CandidateHome /></Guard>} />

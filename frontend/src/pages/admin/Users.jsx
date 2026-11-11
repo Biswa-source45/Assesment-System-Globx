@@ -238,8 +238,8 @@ export default function Users() {
               <TableCell className="text-sm text-muted-foreground">{u.last_login_at ? fmtDate(u.last_login_at) : "Never"}</TableCell>
               <TableCell className="text-right">
                 {u.locked && <Button variant="outline" size="sm" onClick={() => unlock(u)} aria-label={`Unlock ${u.name || u.email}`}>Unlock</Button>}
-                <Button variant="ghost" size="icon" aria-label={`Edit ${u.name || u.email}`} disabled={protectedRow(u)} onClick={() => setDialog({ kind: "edit", target: u })}><Pencil /></Button>
-                <Button variant="ghost" size="icon" aria-label={`Change password for ${u.name || u.email}`} disabled={protectedRow(u)} onClick={() => setDialog({ kind: "password", target: u })}><KeyRound /></Button>
+                <Button variant="edit" size="icon" aria-label={`Edit ${u.name || u.email}`} title="Edit" disabled={protectedRow(u)} onClick={() => setDialog({ kind: "edit", target: u })}><Pencil /></Button>
+                <Button variant="edit" size="icon" className="ml-1" title="Change password" aria-label={`Change password for ${u.name || u.email}`} disabled={protectedRow(u)} onClick={() => setDialog({ kind: "password", target: u })}><KeyRound /></Button>
               </TableCell>
             </TableRow>
           ))}

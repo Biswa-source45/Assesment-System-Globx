@@ -6,6 +6,7 @@ import { ENDED } from "@/lib/labels"
 import { RESULT, TONE } from "@/lib/verdict"
 import { Badge } from "@/components/ui/badge"
 import Brand from "@/components/Brand"
+import SignOutButton from "@/components/SignOutButton"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 
@@ -13,7 +14,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 const LABEL = { invited: "Ready", in_progress: "In progress", banned: "Locked", test_taken: "Submitted", review_pending: "Submitted", evaluated: "Submitted" }
 
 export default function CandidateHome() {
-  const { user, logout } = useAuth()
+  const { user } = useAuth()
   const [items, setItems] = useState(null)
   const [error, setError] = useState("")
 
@@ -27,7 +28,7 @@ export default function CandidateHome() {
         <Brand />
         <div className="flex items-center gap-3 text-sm">
           <span>{user.name || user.email}</span>
-          <Button variant="outline" size="sm" onClick={logout}>Sign out</Button>
+          <SignOutButton />
         </div>
       </header>
       <main className="mx-auto grid max-w-2xl gap-4 p-6">

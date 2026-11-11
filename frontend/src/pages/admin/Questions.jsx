@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react"
 import { Link } from "react-router-dom"
 import { toast } from "sonner"
-import { Plus } from "lucide-react"
+import { Archive, CircleHelp, Pencil, Plus } from "lucide-react"
 import { del, get } from "@/lib/api"
 import { useAuth } from "@/lib/auth"
 import { useDepartments } from "@/lib/useDepartments"
@@ -45,7 +45,10 @@ export default function Questions() {
     <div className="grid gap-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h1 className="text-2xl font-semibold">Question bank</h1>
-        {author && <Button asChild><Link to="/admin/questions/new"><Plus /> New question</Link></Button>}
+        <div className="flex items-center gap-2">
+          <Button asChild variant="outline"><Link to="/admin/help?topic=question-types"><CircleHelp /> Question help</Link></Button>
+          {author && <Button asChild><Link to="/admin/questions/new"><Plus /> New question</Link></Button>}
+        </div>
       </div>
       <div className="flex flex-wrap gap-2">
         <Input className="w-64" placeholder="Search by title" aria-label="Search questions" value={search} onChange={(e) => setSearch(e.target.value)} />
@@ -80,8 +83,8 @@ export default function Questions() {
                 <TableCell>{q.marks}</TableCell>
                 <TableCell>{q.case_count || "-"}</TableCell>
                 <TableCell className="text-right">
-                  {author && <Button asChild variant="ghost" size="sm"><Link to={`/admin/questions/${q.id}`}>Edit</Link></Button>}
-                  {author && <Button variant="ghost" size="sm" onClick={() => archive(q)}>Archive</Button>}
+                  {author && <Button asChild variant="edit" size="sm"><Link to={`/admin/questions/${q.id}`}><Pencil /> Edit</Link></Button>}
+                  {author && <Button variant="danger" size="sm" className="ml-2" onClick={() => archive(q)}><Archive /> Archive</Button>}
                 </TableCell>
               </TableRow>
             ))}

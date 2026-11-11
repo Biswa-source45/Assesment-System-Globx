@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test"
 import fs from "node:fs"
-import { candidateWindow, login, loginStaff, shot, staffRequest } from "./helpers"
+import { candidateWindow, login, loginStaff, shot, staffRequest, confirmDialog } from "./helpers"
 
 // The login page has an eye to check what was typed; exam logins are made from the name, the email is optional,
 // and what the downloaded sheet says is exactly what signs the person in.
@@ -56,6 +56,7 @@ test("logins made from the name work from the downloaded sheet, by username or b
   const add = async (text) => {
     await page.getByLabel("Participant names").fill(text)
     await page.getByRole("button", { name: "Create logins" }).click()
+    await confirmDialog(page, "Create")
   }
 
   // a bad email stops the whole list: a clear message, nobody is made

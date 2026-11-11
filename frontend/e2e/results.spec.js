@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test"
-import { BASE_URL, login, loginStaff, shot, staffRequest } from "./helpers"
+import { BASE_URL, login, loginStaff, shot, staffRequest, confirmDialog, signOut } from "./helpers"
 
 const dialog = (page) => page.getByRole("dialog")
 const PIXEL = Buffer.from("/9j/4AAQSkZJRgABAQEASABIAAD/2wBDAP//////////////////////////////////////////////////////////////////////////////////////wgALCAABAAEBAREA/8QAFBABAAAAAAAAAAAAAAAAAAAAAP/aAAgBAQABPxA=", "base64")
@@ -185,9 +185,10 @@ test("no end time: the results are calculated by pressing a button; each role se
   await expect(page.getByTestId("results-banner")).toContainText("no end time")
   await expect(page.getByRole("button", { name: "CSV" })).toHaveCount(0)  // an evaluator cannot export
   await page.getByRole("button", { name: "Calculate results" }).click()
+  await confirmDialog(page, "Calculate")
   await expect(page.getByTestId("results-state")).toHaveText("Ready to declare", { timeout: 30_000 })  // nothing needed a person
   await expect(page.getByTestId("results-row").filter({ hasText: "Dev Finisher" })).toContainText("1 / 1")
-  await page.getByRole("button", { name: "Sign out" }).click()
+  await signOut(page)
   await expect(page).toHaveURL(/\/login/)
 
   await loginStaff(page, "recruiter@globx.co.in")  // a recruiter can look and export, not calculate or declare

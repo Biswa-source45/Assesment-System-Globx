@@ -101,8 +101,8 @@ export default function Departments() {
                 <TableCell>{d.questions}</TableCell>
                 <TableCell>{d.exams}</TableCell>
                 <TableCell className="text-right">
-                  {author && <Button variant="ghost" size="icon" aria-label={`Edit ${d.name}`} onClick={() => setTarget(d)}><Pencil /></Button>}
-                  {author && <Button variant="ghost" size="icon" aria-label={`Delete ${d.name}`} onClick={() => remove(d)}><Trash2 /></Button>}
+                  {author && <Button variant="edit" size="icon" aria-label={`Edit ${d.name}`} title="Edit" onClick={() => setTarget(d)}><Pencil /></Button>}
+                  {author && <Button variant="danger" size="icon" className="ml-1" aria-label={`Delete ${d.name}`} title="Delete" onClick={() => remove(d)}><Trash2 /></Button>}
                 </TableCell>
               </TableRow>
             ))}

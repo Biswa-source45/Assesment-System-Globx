@@ -41,9 +41,11 @@ export default function ExamParticipants({ test }) {
 
   async function create(e) {
     e.preventDefault()
+    const list = names.split("\n").map((s) => s.trim()).filter(Boolean)
+    const yes = await confirm({ title: `Create ${list.length} ${list.length === 1 ? "login" : "logins"}?`, description: "Each person gets a username and a password. The passwords are shown once, so download the sheet before you leave this page.", action: "Create" })
+    if (!yes) return
     setBusy(true)
     try {
-      const list = names.split("\n").map((s) => s.trim()).filter(Boolean)
       const out = await post(`/tests/${test.id}/participants`, { names: list })
       setCreated((old) => merge(old, out.participants))  // keep the earlier logins on the sheet: passwords cannot be shown again
       setNames("")

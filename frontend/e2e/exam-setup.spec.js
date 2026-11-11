@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test"
-import { candidateWindow, loginStaff, shot, staffRequest, startProctoredExam } from "./helpers"
+import { candidateWindow, loginStaff, shot, staffRequest, startProctoredExam, confirmDialog } from "./helpers"
 
 // Publishing asks for confirmation in the app's own dialog.
 const publish = async (page) => {
@@ -61,6 +61,7 @@ test("admin builds an exam, adds people, publishes it; a candidate then takes it
   await page.getByRole("tab", { name: "Participants" }).click()
   await page.getByLabel("Participant names").fill("Asha Rao\nVikram Das")
   await page.getByRole("button", { name: "Create logins" }).click()
+  await confirmDialog(page, "Create")
   const sheet = page.getByTestId("credentials")
   await expect(sheet.getByTestId("cred-username")).toHaveCount(2)
   const username = await sheet.getByTestId("cred-username").first().innerText()
