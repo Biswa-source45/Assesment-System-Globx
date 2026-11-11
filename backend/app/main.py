@@ -37,7 +37,7 @@ async def lifespan(app: FastAPI):
     jobs.stop_background()
 
 
-app = FastAPI(title="APTIVON API", version="2.1.0", lifespan=lifespan, docs_url="/api/docs",
+app = FastAPI(title="KAUTILYA API", version="2.1.0", lifespan=lifespan, docs_url="/api/docs",
               openapi_url="/api/openapi.json")
 app.add_middleware(CORSMiddleware, allow_origins=settings.cors_origins, allow_credentials=True,
                    allow_methods=["*"], allow_headers=["*"])

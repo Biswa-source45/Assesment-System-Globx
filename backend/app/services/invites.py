@@ -77,7 +77,7 @@ def send_invite_mail(db: Session, a: Assignment, token: Optional[str]) -> None:
                f"Dear {u.name or u.email},\n\nYou are invited to take the assessment '{test.title}' "
                f"({test.duration_min} minutes).\n\nStart here: {invite_link(token)}\n\n"
                f"The link is personal and valid until {exp}. You will sign in with a one-time code sent to this email.\n"
-               "Please use a laptop/desktop with Chrome, Edge or Firefox, a webcam and a microphone.\n\nAPTIVON by GLOBX",
+               "Please use a laptop/desktop with Chrome, Edge or Firefox, a webcam and a microphone.\n\nKAUTILYA by GLOBX",
                "invite", test.org_id)
     a.sent_at = now()
 

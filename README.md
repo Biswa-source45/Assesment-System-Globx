@@ -1,4 +1,4 @@
-# APTIVON by GLOBX - Intelligent Assessment Platform (MVP v2.1)
+# KAUTILYA by GLOBX - Intelligent Assessment Platform (MVP v2.1)
 
 A HackerEarth / HackerRank-class assessment platform built to the GLOBX SRS v2.1 (the SRS document is kept locally, not in git).
 One Python process serves the web app, the REST API and the code sandboxes; data lives in PostgreSQL.

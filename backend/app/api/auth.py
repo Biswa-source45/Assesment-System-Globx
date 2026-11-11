@@ -202,7 +202,7 @@ def otp_request(body: OtpRequestIn, db: Session = Depends(get_db)):
         raise HTTPException(429, f"Please wait {60 - int((now() - last).total_seconds())} s before requesting a new code")
     code = new_otp()
     db.add(OtpCode(id=uid(), email=email, code_hash=hash_otp(email, code), expires_at=now() + timedelta(minutes=s.otp_minutes)))
-    queue_mail(db, email, "Your APTIVON sign-in code",
+    queue_mail(db, email, "Your KAUTILYA sign-in code",
                f"Your one-time sign-in code is {code}. It is valid for {s.otp_minutes} minutes.\n"
                "If you did not request it, ignore this email.", "otp", org_id)
     db.commit()

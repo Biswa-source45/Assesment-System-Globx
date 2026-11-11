@@ -1,15 +1,16 @@
-import lockup from "@/assets/aptivon-lockup.png"
-import mark from "@/assets/aptivon-mark.png"
-import wordmark from "@/assets/aptivon-wordmark.png"
+import lockup from "@/assets/kautilya-lockup.png"
+import mark from "@/assets/kautilya-mark.png"
+import wordmark from "@/assets/kautilya-wordmark.png"
 
-// The APTIVON logo. `lg` is the whole logo (with "by GLOBX") for the sign-in card; the default is the compact one
-// for the headers after sign-in: the AV mark and the name.
+// The KAUTILYA logo. `lg` is the whole logo (with "by GLOBX") for the sign-in card; the default is the compact one
+// (the K mark and the name on one line, no "by GLOBX") for every screen after sign-in. Widths are set and heights follow
+// (h-auto), so a picture can never be stretched or squeezed.
 export default function Brand({ lg = false, className = "", ...rest }) {
-  if (lg) return <img src={lockup} alt="APTIVON by GLOBX - Enterprise Assessment Platform" draggable={false} className={"mx-auto h-auto w-80 max-w-full " + className} {...rest} />
+  if (lg) return <img src={lockup} alt="KAUTILYA by GLOBX - Enterprise Assessment Platform" draggable={false} className={"mx-auto h-auto w-80 max-w-full " + className} {...rest} />
   return (
     <div className={"flex items-center gap-2 " + className} {...rest}>
-      <img src={mark} alt="" draggable={false} className="h-6 w-auto" />
-      <img src={wordmark} alt="APTIVON" draggable={false} className="h-[18px] w-auto" />
+      <img src={mark} alt="" draggable={false} className="h-auto w-8" />
+      <img src={wordmark} alt="KAUTILYA" draggable={false} className="h-auto w-32" />
     </div>
   )
 }

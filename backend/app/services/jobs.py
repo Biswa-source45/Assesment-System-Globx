@@ -98,7 +98,7 @@ def _finalize_job(attempt_id: str, reason: str) -> None:
                 queue_mail(db, u.email, f"Submission received - {test.title}",
                            f"Dear {u.name or u.email},\n\nYour answers for '{test.title}' were received at "
                            f"{aware(at.submitted_at).strftime('%d %b %Y %H:%M UTC') if at.submitted_at else ''}.\n\n"
-                           "Thank you.\nAPTIVON by GLOBX", "receipt", test.org_id)
+                           "Thank you.\nKAUTILYA by GLOBX", "receipt", test.org_id)
                 db.commit()
             schedule_plagiarism(at.test_id)
     except Exception:
@@ -187,7 +187,7 @@ def sweep_once() -> None:
                 queue_mail(db, a.candidate.email, f"Reminder: {test.title} closes soon",
                            f"Dear {a.candidate.name or a.candidate.email},\n\nYour assessment '{test.title}' expires on "
                            f"{exp.strftime('%d %b %Y %H:%M UTC')}. Please use the link in your invitation email.\n\n"
-                           "APTIVON by GLOBX", "reminder", test.org_id)
+                           "KAUTILYA by GLOBX", "reminder", test.org_id)
                 a.reminders_sent += 1
         db.commit()
         deliver_pending(db)
