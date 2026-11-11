@@ -21,7 +21,7 @@ async function expectCompact(page, scope = page) {
 
 // Whole logo (sign-in card).
 async function expectLogin(page) {
-  const logo = page.getByRole("img", { name: /KAUTILYA by GLOBX.*Enterprise Assessment Platform/ })
+  const logo = page.getByRole("img", { name: /KAUTILYA by GLOBX.*Online Exam Platform/ })
   await expect(logo).toBeVisible()
   expect(await loaded(logo)).toBe(true)
   expect(await keepsShape(logo)).toBe(true)
@@ -34,7 +34,7 @@ async function expectLogin(page) {
 test("sign-in page: logo, tagline, tab title and favicon", async ({ page, request }) => {
   await page.goto("/login")
   await expectLogin(page)
-  await expect(page).toHaveTitle(/KAUTILYA.*Assessment Platform/)
+  await expect(page).toHaveTitle(/KAUTILYA.*Online Exam Platform/)
   for (const rel of ["icon", "apple-touch-icon"]) {
     const res = await request.get(await page.locator(`link[rel=${rel}]`).getAttribute("href"))
     expect(res.status()).toBe(200)
