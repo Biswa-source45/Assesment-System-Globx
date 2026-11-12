@@ -220,3 +220,25 @@ test("RUN_AI: the real model reads the Word paper and attaches its pictures", as
   expect(await dialog(page).getByTestId("paper-question").locator("img").count()).toBeGreaterThanOrEqual(2)
   await dialog(page).getByTestId("paper-review").screenshot({ path: "test-results/screens/paper-upload-real-ai.png" })  // the whole review, not only what fits the window
 })
+
+test("RUN_AI: a paper shaped like a real one (sections, marks in brackets, a chart in a question, coding and SQL with their solutions in an answer key)", async ({ page }) => {
+  test.skip(!process.env.RUN_AI, "calls the real OpenAI API (cents); run with RUN_AI=1")
+  test.setTimeout(300_000)
+  await loginStaff(page)
+  await createExam(page, "Technical", "E2E Paper Real PDF")
+  await openUpload(page)
+  await choose(page, "e2e/fixtures/aptitude-paper.pdf")
+  const review = dialog(page).getByTestId("paper-review")
+  await expect(review).toBeVisible({ timeout: 250_000 })
+  const text = await review.innerText()
+  fs.mkdirSync("test-results/screens", { recursive: true })
+  fs.writeFileSync("test-results/screens/real-pdf-review.txt", text)
+  await review.screenshot({ path: "test-results/screens/real-pdf-review.png" })
+  // the paper's own sections are kept, the coding and SQL questions come through, the chart is attached to its question, the key's picture is not
+  for (const title of ["Quantitative Aptitude", "English", "Coding", "SQL"]) expect(text).toContain(title)
+  const rows = review.getByTestId("paper-question")
+  expect(await rows.count()).toBe(5)
+  expect(await review.locator("[data-ok=true]").count()).toBe(5)
+  await expect(rows.nth(0).locator(".q-html img")).toHaveCount(1)
+  expect(await review.locator("img").count()).toBe(1)
+})

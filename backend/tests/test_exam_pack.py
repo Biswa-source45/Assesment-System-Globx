@@ -89,7 +89,7 @@ def test_a_wrong_file_creates_nothing_and_every_problem_is_listed(client):
     crashes = {**EXAMPLES["coding"], "title": "Crashing ZZ", "reference": {"language": "python", "source": "print(1/0)"}}
     bad_sql = {**EXAMPLES["sql"], "title": "Bad SQL ZZ", "reference_sql": "SELECT nope FROM employees"}
     no_text = {k: v for k, v in EXAMPLES["short"].items() if k != "statement"}
-    unknown = {"type": "essay", "title": "Unknown type ZZ"}
+    unknown = {"type": "puzzle", "title": "Unknown type ZZ"}  # ("essay" and similar names count as a long answer)
     good = {**EXAMPLES["mcq_single"], "title": "Fine one ZZ"}
     pack = {"sections": [{"title": "A", "questions": [good, bad_mcq, two_right, bad_rubric, no_hidden]},
                          {"title": "B", "timer_min": 0, "questions": [crashes, bad_sql, no_text, unknown, "just text"]}, {"title": "C", "questions": []}]}

@@ -315,3 +315,91 @@ def test_markers_the_ai_copies_into_the_text_become_pictures(client, monkeypatch
     assert not any("not attached" in n for n in got["notes"])                                         # both pictures were used
     rep = client.post(f"{API}/tests/{t['id']}/import-questions", headers=h, json={"pack": got["pack"], "dry_run": True, "detail": True}).json()
     assert rep["ok"], rep["errors"]
+
+
+def _pdf(items, size=(300, 400)):
+    """A one-page PDF: items are ("text", x, y, words) or ("image", x, y, side, (r, g, b))."""
+    content, imgs = b"", []
+    for it in items:
+        if it[0] == "text":
+            content += b"BT /F1 11 Tf %d %d Td (%s) Tj ET\n" % (it[1], it[2], it[3].encode())
+        else:
+            imgs.append(bytes(it[4][c] if (x + y) % 7 else (c * 40) % 256 for y in range(it[3]) for x in range(it[3]) for c in range(3)))
+            content += b"q %d 0 0 %d %d %d cm /Im%d Do Q\n" % (it[3], it[3], it[1], it[2], len(imgs))
+    objs = [b"<</Type/Catalog/Pages 2 0 R>>", b"<</Type/Pages/Kids[3 0 R]/Count 1>>",
+            b"<</Type/Page/Parent 2 0 R/MediaBox[0 0 %d %d]/Contents 4 0 R/Resources<</Font<</F1 5 0 R>>/XObject<<%s>>>>>>" % (size[0], size[1], b"".join(b"/Im%d %d 0 R" % (n + 1, 6 + n) for n in range(len(imgs)))),
+            b"<</Length %d>>stream\n" % len(content) + content + b"\nendstream", b"<</Type/Font/Subtype/Type1/BaseFont/Helvetica>>"]
+    for n, raw in enumerate(imgs):
+        w = int(len(raw) ** 0.5 / 3 ** 0.5)
+        objs.append(b"<</Type/XObject/Subtype/Image/Width %d/Height %d/ColorSpace/DeviceRGB/BitsPerComponent 8/Length %d>>stream\n" % (w, w, len(raw)) + raw + b"\nendstream")
+    return b"%PDF-1.4\n" + b"".join(b"%d 0 obj\n" % (i + 1) + o + b"\nendobj\n" for i, o in enumerate(objs)) + b"trailer<</Root 1 0 R/Size %d>>\n%%%%EOF" % (len(objs) + 1)
+
+
+def test_in_a_pdf_each_figure_is_marked_at_its_own_place_between_the_questions():
+    pdf = _pdf([("text", 20, 380, "Q1. Refer to the chart. What is the total?"), ("image", 20, 290, 70, (200, 30, 30)),
+                ("text", 20, 270, "(a) 10  (b) 20"), ("text", 20, 250, "Q2. Which figure comes next in the series?"),
+                ("image", 20, 160, 70, (30, 30, 200)), ("text", 20, 140, "(a) A  (b) B"), ("text", 20, 120, "Q3. A question with no figure at all?"),
+                ("text", 20, 100, "(a) yes  (b) no")])
+    out = read_paper("p.pdf", pdf)
+    t = out["text"]
+    assert [i["id"] for i in out["images"]] == ["IMAGE 1", "IMAGE 2"]
+    assert t.index("Q1.") < t.index("[[IMAGE 1]]") < t.index("(a) 10") < t.index("Q2.") < t.index("[[IMAGE 2]]") < t.index("(a) A") < t.index("Q3.")
+    assert [s["detail"] for s in out["scans"]] == ["low"]                                   # the layout page is shown small; only a scan is read closely
+    b = io.BytesIO()
+    Image.new("RGB", (600, 800), "white").save(b, "PDF")
+    assert read_paper("scan.pdf", b.getvalue())["scans"][0]["detail"] == "high"
+
+
+def test_loose_answers_from_the_ai_are_accepted_not_refused(client):
+    h = _creator(client)
+    t = _exam(client, h, "Technical", "Loose exam")
+    coding = {"type": "Coding", "title": "Sum", "statement": "Read two integers, print their sum.", "marks": "8 marks", "difficulty": "Easy",
+              "time_limit_ms": None, "memory_mb": "256 MB", "languages": "python", "reference": {"language": "python", "source": "a, b = map(int, input().split())\nprint(a + b)\n"},
+              "test_cases": [{"input": "2 3", "visibility": "open"}, {"input": "4 5", "visibility": "hidden"}]}
+    mcq = {"type": "Multiple Choice", "title": "Prime", "statement": "Which is prime?", "options": ["4", "7"], "correct": "(B)", "marks": "1"}
+    rep = client.post(f"{API}/tests/{t['id']}/import-questions", headers=h, json={"pack": {"sections": [{"title": "S", "questions": [mcq, coding]}]}, "dry_run": True, "detail": True}).json()
+    assert rep["ok"], rep["errors"]
+    q = rep["sections"][0]["questions"]
+    assert [x["type"] for x in q] == ["mcq_single", "coding"] and q[1]["marks"] == 8 and q[0]["options"][1]["correct"]
+    nonsense = dict(coding, time_limit_ms="fast")                                              # a real mistake is still said
+    assert "'time_limit_ms' must be a number" in client.post(f"{API}/tests/{t['id']}/import-questions", headers=h, json={"pack": {"sections": [{"questions": [nonsense]}]}}).json()["errors"][0]
+
+
+def test_headings_and_the_answer_key_are_read_off_the_paper_before_the_ai_sees_it(client, monkeypatch):
+    from app.api.exam_pack import _paper_facts
+    pad = "Instructions. " * 20
+    body = (pad + "\n**Section A: Quantitative Aptitude (9 marks)**\nQ1. What is shown? [[IMAGE 1]]\nSection Content Questions Marks\nSection B: English (7 marks)\nQ2. Solutions must be short.\n"
+            "Answer Key and Solutions\nFor the examiner only.\n[[IMAGE 2]] the green bars\nDetailed solutions: Sections A and B\n")
+    text, key, heads = _paper_facts(body)
+    assert heads == ["Section A: Quantitative Aptitude", "Section B: English"]              # the table header and the key's own headings are not sections
+    assert text.rstrip().endswith("Solutions must be short.") and key.startswith("Answer Key and Solutions")
+
+    h = _creator(client)
+    t = _exam(client, h, "Technical", "Key exam")
+    seen = _fake_ai(monkeypatch, lambda pics: {"sections": [{"title": "S", "questions": [{"type": "mcq_single", "title": "Q", "statement": "What is shown?", "options": ["a", "b"], "correct": ["a"]}]}]})
+    one, two = data_uri(png(100, 80, "blue")), data_uri(png(90, 90, "green"))
+    got = _understand(client, h, t["id"], body, images=[("IMAGE 1", one), ("IMAGE 2", two)]).json()
+    assert [x[0] for x in seen["pictures"]] == ["IMAGE 1"]                                    # the key's picture (it shows the answer) never goes to the AI as a question picture
+    assert "SECTION HEADINGS FOUND IN THE PAPER" in seen["msg"] and "- Section B: English" in seen["msg"]
+    assert 'THE ANSWER KEY STARTS AT THE HEADING "Answer Key and Solutions"' in seen["msg"] and "[[IMAGE 2]]" not in seen["msg"]
+    assert not any("IMAGE 2" in n for n in got["notes"])                                      # and it is not reported as a forgotten picture
+    assert any("IMAGE 1" in n for n in got["notes"])
+
+
+def test_a_question_the_ai_forgot_to_word_is_asked_for_once_more(client, monkeypatch):
+    h = _creator(client)
+    t = _exam(client, h, "Technical", "Retry exam")
+    q = {"type": "mcq_single", "title": "Prime", "statement": "Which is prime?", "options": ["4", "7"], "correct": ["b"]}
+    calls = []
+
+    def fake(system, msg, pictures):
+        import json
+        calls.append(msg)
+        return json.dumps({"sections": [{"title": "S", "questions": [q if len(calls) > 1 else {k: v for k, v in q.items() if k != "statement"}]}]}), "stop"
+    monkeypatch.setattr(exam_pack, "ask_ai_for_pack", fake)
+    got = _understand(client, h, t["id"]).json()
+    assert len(calls) == 2 and 'HAD NO "statement"' in calls[1] and "Prime" in calls[1]
+    assert got["pack"]["sections"][0]["questions"][0]["statement"] == "Which is prime?"
+    calls.clear()
+    monkeypatch.setattr(exam_pack, "ask_ai_for_pack", lambda s, m, p: (calls.append(m) or '{"sections": [{"questions": [{"type": "mcq_single", "title": "Still none"}]}]}', "stop"))
+    assert _understand(client, h, t["id"]).status_code == 200 and len(calls) == 2           # asks once, not forever; the review then shows the problem

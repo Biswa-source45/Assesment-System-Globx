@@ -95,7 +95,7 @@ class _Collector:
         self._seen[key] = iid
         return iid
 
-    def scan(self, img, page: int) -> Optional[str]:
+    def scan(self, img, page: int, detail: str = "high") -> Optional[str]:
         if len(self.scans) >= MAX_SCANS:
             self.note(f"Only the first {MAX_SCANS} pages that needed to be looked at as pictures were sent to the AI. Upload the rest separately.")
             return None
@@ -103,7 +103,7 @@ class _Collector:
         if not src:
             return None
         sid = f"PAGE {page}"
-        self.scans.append({"id": sid, "src": src})
+        self.scans.append({"id": sid, "src": src, "detail": detail})  # "low" is enough to see the layout; a scanned page has to be read, so "high"
         return sid
 
 
@@ -295,6 +295,15 @@ def _read_docx(data: bytes, pics: _Collector) -> Tuple[str, Optional[int]]:
 
 
 # ---- PDF
+def _char_below(tp, top: float) -> int:
+    """Index of the first character that lies below `top` (a figure's top edge), or -1 when all the text is above it: the figure belongs just before it."""
+    for i in range(tp.count_chars()):
+        left, bottom, right, top_ = tp.get_charbox(i)
+        if right > left and top_ > bottom and (bottom + top_) / 2 < top:
+            return i
+    return -1
+
+
 def _read_pdf(data: bytes, pics: _Collector) -> Tuple[str, Optional[int]]:
     import pypdfium2 as pdfium
     import pypdfium2.raw as pdfium_c
@@ -305,12 +314,14 @@ def _read_pdf(data: bytes, pics: _Collector) -> Tuple[str, Optional[int]]:
     n = len(pdf)
     if n > MAX_PAGES:
         raise PaperError(f"This PDF has {n} pages. Upload at most {MAX_PAGES} pages at a time.")
-    info: List[Tuple[str, List[str]]] = []
+    # per page: the text exactly as pdfium gives it, and each figure with where it sits (just before the first line below the figure's top edge)
+    info: List[Tuple[str, List[Tuple[int, Tuple[float, float], str]]]] = []
     seen_on: Dict[str, set] = {}
     for i in range(n):
         page = pdf[i]
-        txt = (page.get_textpage().get_text_range() or "").replace("\r\n", "\n").strip()
-        ids: List[str] = []
+        tp = page.get_textpage()
+        full = tp.get_text_range() or ""
+        found: List[Tuple[int, Tuple[float, float], str]] = []
         for obj in page.get_objects(filter=[pdfium_c.FPDF_PAGEOBJ_IMAGE], max_depth=3):
             try:
                 left, bottom, right, top = obj.get_bounds()
@@ -320,26 +331,31 @@ def _read_pdf(data: bytes, pics: _Collector) -> Tuple[str, Optional[int]]:
             except Exception:
                 continue
             iid = pics._add(img, i + 1) if img.width >= MIN_PX and img.height >= MIN_PX else None
-            if iid and iid not in ids:
-                ids.append(iid)
+            if iid and all(f[2] != iid for f in found):
+                at = _char_below(tp, top)
+                found.append((len(full) if at < 0 else len(tp.get_text_range(0, at)), (-top, left), iid))
                 seen_on.setdefault(iid, set()).add(i + 1)
-        info.append((txt, ids))
+        info.append((full, found))
     # the same picture on three or more pages is a letterhead or a watermark, not a figure
     decoration = {iid for iid, pg in seen_on.items() if len(pg) >= 3}
     pics.images = [im for im in pics.images if im["id"] not in decoration]
     texts: List[str] = []
-    for i, (txt, ids) in enumerate(info):
-        ids = [x for x in ids if x not in decoration]
+    for i, (full, found) in enumerate(info):
+        found = sorted(f for f in found if f[2] not in decoration)
+        out, prev = [], 0
+        for at, _, iid in found:  # the marker goes exactly where the figure sits in the page's text
+            out += [full[prev:at], f"\n[[{iid}]]\n"]
+            prev = at
+        txt = re.sub(r"\n{3,}", "\n\n", ("".join(out) + full[prev:]).replace("\r\n", "\n")).strip()
+        readable = len(re.sub(r"\[\[IMAGE \d+\]\]", "", txt).strip())
         head = f"--- Page {i + 1} ---\n"
         sid = None
-        if len(txt) < 25 or ids:  # a page without text is a scan; a page with figures is also shown to the AI as a picture, so it can see where the figures belong
-            sid = pics.scan(pdf[i].render(scale=1.6).to_pil(), i + 1)
-        if len(txt) < 25:
+        if readable < 25 or found:  # a page without text is a scan and has to be read; a page with figures is also shown (small) so the AI can see the layout
+            sid = pics.scan(pdf[i].render(scale=1.6).to_pil(), i + 1, "high" if readable < 25 else "low")
+        if readable < 25:
             texts.append(head + (f"[this page has no text; look at the picture {sid}]" if sid else "[this page has no readable text]"))
             continue
-        if ids:
-            txt += f"\n[pictures on this page: {', '.join(ids)}" + (f"; the whole page is also shown as {sid}" if sid else "") + "]"
-        texts.append(head + txt)
+        texts.append(head + txt + (f"\n[the whole page is also shown as the picture {sid}]" if sid and found else ""))
     return "\n\n".join(texts), n
 
 
