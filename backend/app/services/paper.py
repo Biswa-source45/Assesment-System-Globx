@@ -203,7 +203,7 @@ class _Docx:
         """The pictures in a drawing, and the words of its text boxes."""
         out = self._pictures(el)
         for box in el.iter(W + "txbxContent"):
-            out += " [" + " ".join(x for x in (self._par(p) for p in box.iter(W + "p")) if x) + "] "
+            out += " [" + " ".join(x for x in (self._par(p).strip() for p in box.iter(W + "p")) if x) + "] "
         return out
 
     def _run(self, r) -> str:
@@ -213,7 +213,7 @@ class _Docx:
             if t == "t":
                 text += c.text or ""
             elif t == "tab":
-                text += " "
+                text += "    "
             elif t in ("br", "cr"):
                 text += "\n"
             elif t in ("drawing", "pict", "object"):
@@ -251,7 +251,7 @@ class _Docx:
 
     def _par(self, p) -> str:
         s = self._walk(p)
-        return re.sub(r"(\*\*|==)(\s*)\1", r"\2", s).strip()  # runs that were split in the middle of a bold or marked piece are joined
+        return re.sub(r"(\*\*|==)(\s*)\1", r"\2", s).rstrip()  # runs split in the middle of a bold or marked piece are joined (leading spaces stay: code is indented)
 
     def _blocks(self, el):
         for c in el:
@@ -270,11 +270,11 @@ class _Docx:
             t = _local(c.tag)
             if t == "p":
                 s = self._par(c)
-                if s:
-                    lines.append(("- " if c.find("w:pPr/w:numPr", _NS) is not None else "") + s)
+                if s.strip():
+                    lines.append(("- " + s.lstrip()) if c.find("w:pPr/w:numPr", _NS) is not None else s)
             elif t == "tbl":
                 for tr in c.iter(W + "tr"):
-                    cells = [" ".join(x for x in (self._par(p) for p in tc.iter(W + "p")) if x) for tc in tr.findall("w:tc", _NS)]
+                    cells = [" ".join(x for x in (self._par(p).strip() for p in tc.iter(W + "p")) if x) for tc in tr.findall("w:tc", _NS)]
                     if any(cells):
                         lines.append("| " + " | ".join(cells) + " |")
         return "\n".join(lines)
@@ -295,13 +295,92 @@ def _read_docx(data: bytes, pics: _Collector) -> Tuple[str, Optional[int]]:
 
 
 # ---- PDF
-def _char_below(tp, top: float) -> int:
-    """Index of the first character that lies below `top` (a figure's top edge), or -1 when all the text is above it: the figure belongs just before it."""
-    for i in range(tp.count_chars()):
-        left, bottom, right, top_ = tp.get_charbox(i)
-        if right > left and top_ > bottom and (bottom + top_) / 2 < top:
-            return i
-    return -1
+# pdfium gives text in the order the PDF was written, not the order it is read: a page's footer is often the FIRST thing in the stream. So a page is
+# rebuilt from the position of every character: lines are found by their y, ordered top to bottom, and pictures are put between the lines by their y.
+Line = Tuple[float, float, str]  # (y of the line, x of its left edge, text)
+
+
+def _page_lines(tp) -> List[Line]:
+    """The page's text as lines in reading order (top to bottom), each with its y and left x. Code lines get their indentation back from x."""
+    full = tp.get_text_range() or ""
+    n = tp.count_chars()
+    if len(full) != n or n == 0:  # (a character outside the BMP shifts the indexes): fall back to the stream's own lines, top-down by their order
+        return [(-float(k), 0.0, ln) for k, ln in enumerate(full.replace("\r\n", "\n").split("\n")) if ln.strip()]
+    boxes = [tp.get_charbox(i, loose=True) for i in range(n)]
+    ok = [i for i in range(n) if boxes[i][2] > boxes[i][0] and boxes[i][3] > boxes[i][1]]
+    okset = set(ok)
+    if not ok:
+        return []
+    height = sorted(boxes[i][3] - boxes[i][1] for i in ok)[len(ok) // 2]
+    tol, centre = max(1.5, 0.5 * height), lambda i: (boxes[i][1] + boxes[i][3]) / 2
+    clusters: List[List[float]] = []  # [reference y, members...] built from the top of the page down
+    owner: Dict[int, int] = {}
+    for i in sorted(ok, key=lambda i: -centre(i)):
+        if clusters and abs(centre(i) - clusters[-1][0]) <= tol:
+            clusters[-1][0] = (clusters[-1][0] * (len(clusters[-1]) - 1) + centre(i)) / len(clusters[-1])
+            clusters[-1].append(i)
+        else:
+            clusters.append([centre(i), i])
+        owner[i] = len(clusters) - 1
+    last = None
+    for i in range(n):  # characters without a box (generated spaces, line breaks) stay with the line of the character before them
+        if i in owner:
+            last = owner[i]
+        elif last is not None and full[i] not in "\r\n":
+            owner[i] = last
+    rows: Dict[int, List[int]] = {}
+    for i, c in owner.items():
+        rows.setdefault(c, []).append(i)
+    # width of one character in a monospaced font (code): lines whose letters are all that wide are code
+    widths = {c: [boxes[i][2] - boxes[i][0] for i in m if i in okset and full[i] != " "] for c, m in rows.items()}
+    advance = sorted(sum(w) / len(w) for w in widths.values() if len(w) >= 8 and (max(w) - min(w)) < 0.06 * (sum(w) / len(w)))
+    adv = advance[len(advance) // 2] if advance else 0.0
+    out: List[Tuple[float, float, str, bool]] = []
+    for c, members in rows.items():
+        members.sort()
+        text, prev = "", None
+        for i in members:  # cells of a table sit on one line with a wide gap between them (or jump back): keep them apart with " | "
+            if i in okset and prev is not None and (boxes[i][0] - boxes[prev][2] > 3 * height or boxes[i][0] < boxes[prev][0] - height):
+                text = text.rstrip() + " | "
+            text += full[i]
+            if i in okset and full[i] != " ":
+                prev = i
+        text = text.rstrip()
+        if not text.strip():
+            continue
+        left = min((boxes[i][0] for i in members if i in okset and full[i] != " "), default=min(boxes[i][0] for i in members if i in okset))  # the first letter, not a (collapsed) space
+        w = widths[c]
+        mono = bool(adv) and len(w) >= 1 and all(abs(x - adv) < 0.08 * adv for x in w)
+        out.append((clusters[c][0], left, text.strip() if not mono else text.lstrip(), mono))
+    out.sort(key=lambda r: -r[0])
+    # a run of code lines: the leftmost starts at column 0, the others are indented by how far right they start
+    lines: List[Line] = []
+    run: List[int] = []
+
+    def close_run():
+        if run:
+            base = min(out[k][1] for k in run)
+            for k in run:
+                y, x, t, _ = out[k]
+                lines.append((y, x, " " * int(round((x - base) / adv)) + t))
+            run.clear()
+    for k, (y, x, t, mono) in enumerate(out):
+        if mono:
+            run.append(k)
+        else:
+            close_run()
+            lines.append((y, x, t))
+    close_run()
+    return sorted(lines, key=lambda r: -r[0])
+
+
+def _running_lines(pages: List[List[Line]], heights: List[float]) -> set:
+    """Header and footer lines: the same text (digits ignored) near the top or bottom edge of at least three pages."""
+    count: Dict[str, int] = {}
+    for lines, h in zip(pages, heights):
+        for key in {re.sub(r"\d+", "#", t.strip()) for y, _, t in lines if y > 0.9 * h or y < 0.1 * h}:
+            count[key] = count.get(key, 0) + 1
+    return {k for k, v in count.items() if v >= 3 and k}
 
 
 def _read_pdf(data: bytes, pics: _Collector) -> Tuple[str, Optional[int]]:
@@ -314,14 +393,13 @@ def _read_pdf(data: bytes, pics: _Collector) -> Tuple[str, Optional[int]]:
     n = len(pdf)
     if n > MAX_PAGES:
         raise PaperError(f"This PDF has {n} pages. Upload at most {MAX_PAGES} pages at a time.")
-    # per page: the text exactly as pdfium gives it, and each figure with where it sits (just before the first line below the figure's top edge)
-    info: List[Tuple[str, List[Tuple[int, Tuple[float, float], str]]]] = []
+    page_lines: List[List[Line]] = []
+    page_figs: List[List[Tuple[float, float, str]]] = []  # (top y, left x, id)
     seen_on: Dict[str, set] = {}
     for i in range(n):
         page = pdf[i]
-        tp = page.get_textpage()
-        full = tp.get_text_range() or ""
-        found: List[Tuple[int, Tuple[float, float], str]] = []
+        page_lines.append(_page_lines(page.get_textpage()))
+        found: List[Tuple[float, float, str]] = []
         for obj in page.get_objects(filter=[pdfium_c.FPDF_PAGEOBJ_IMAGE], max_depth=3):
             try:
                 left, bottom, right, top = obj.get_bounds()
@@ -332,21 +410,20 @@ def _read_pdf(data: bytes, pics: _Collector) -> Tuple[str, Optional[int]]:
                 continue
             iid = pics._add(img, i + 1) if img.width >= MIN_PX and img.height >= MIN_PX else None
             if iid and all(f[2] != iid for f in found):
-                at = _char_below(tp, top)
-                found.append((len(full) if at < 0 else len(tp.get_text_range(0, at)), (-top, left), iid))
+                found.append((top, left, iid))
                 seen_on.setdefault(iid, set()).add(i + 1)
-        info.append((full, found))
+        page_figs.append(found)
     # the same picture on three or more pages is a letterhead or a watermark, not a figure
     decoration = {iid for iid, pg in seen_on.items() if len(pg) >= 3}
     pics.images = [im for im in pics.images if im["id"] not in decoration]
+    running = _running_lines(page_lines, [pdf[i].get_height() for i in range(n)])
     texts: List[str] = []
-    for i, (full, found) in enumerate(info):
-        found = sorted(f for f in found if f[2] not in decoration)
-        out, prev = [], 0
-        for at, _, iid in found:  # the marker goes exactly where the figure sits in the page's text
-            out += [full[prev:at], f"\n[[{iid}]]\n"]
-            prev = at
-        txt = re.sub(r"\n{3,}", "\n\n", ("".join(out) + full[prev:]).replace("\r\n", "\n")).strip()
+    for i, (lines, found) in enumerate(zip(page_lines, page_figs)):
+        found = [f for f in found if f[2] not in decoration]
+        items = [(y, 0.0, t) for y, _, t in lines if re.sub(r"\d+", "#", t.strip()) not in running]
+        items += [(top - 0.01, left, f"[[{iid}]]") for top, left, iid in found]  # a picture goes after the lines above its top edge
+        items.sort(key=lambda r: (-r[0], r[1]))
+        txt = "\n".join(t for _, _, t in items).strip()
         readable = len(re.sub(r"\[\[IMAGE \d+\]\]", "", txt).strip())
         head = f"--- Page {i + 1} ---\n"
         sid = None

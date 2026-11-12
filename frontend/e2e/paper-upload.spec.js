@@ -329,3 +329,90 @@ test("RUN_AI: the downloaded Word format itself converts cleanly, pictures in pl
   expect(await srcs(4)).toEqual([pictures[5].src])                                           // the coding question's diagram
   expect(await srcs(5)).toEqual([pictures[6].src])                                           // the SQL question's tables
 })
+
+test("a paper the rules can read needs no AI: every question exact, its own picture, the key's answer, 'Read from the paper'", async ({ page }) => {
+  test.skip(!!process.env.RUN_AI, "uses the stand-in AI (which is never asked here)")
+  await loginStaff(page)
+  await createExam(page, "Technical", "E2E Paper Exact")
+  await openUpload(page)
+  const sent = page.waitForRequest((r) => r.url().includes("/understand-paper"))
+  await choose(page, "e2e/fixtures/figures-paper.pdf")
+  const pictures = (await (await sent).postDataJSON()).images
+  const review = dialog(page).getByTestId("paper-review")
+  await expect(review).toBeVisible({ timeout: 30_000 })
+  await expect(dialog(page).getByTestId("paper-notes")).toContainText("6 question(s) were read exactly from the paper")
+  const rows = review.getByTestId("paper-question")
+  expect(await rows.count()).toBe(6)
+  await expect(review.getByTestId("from-paper")).toHaveCount(6)
+  await expect(review.getByTestId("ai-answer")).toHaveCount(0)                      // no answer was guessed
+  const key = ["c", "b", "a", "c", "c", "d"]                                        // the paper's own key line
+  for (let i = 0; i < 6; i++) {
+    const srcs = await rows.nth(i).locator(".q-html img").evaluateAll((m) => m.map((x) => x.getAttribute("src")))
+    expect(srcs, `question ${i + 1} shows exactly its own picture`).toEqual([pictures[i].src])
+    await expect(rows.nth(i).locator("li").nth(key[i].charCodeAt(0) - 97).getByLabel("Correct answer")).toBeVisible()
+    await expect(rows.nth(i).getByLabel("Correct answer")).toHaveCount(1)
+  }
+  expect(await review.locator("img").count()).toBe(6)                                // nothing from the answer key
+  await shot(page, "paper-upload-exact")
+})
+
+const REAL_PDF = process.env.OAP_REAL_PDF || "C:/Users/ASUS/Downloads/GLOBX_Aptitude_Coding_SQL_Paper_50_Marks.pdf"
+test("RUN_AI: the user's real 15-page PDF (28 questions, 16 pictures, an answer key): all 28 read by rules (the AI only reads the test-case table and writes missing hidden data), every picture on its question", async ({ page }) => {
+  test.skip(!process.env.RUN_AI || !fs.existsSync(REAL_PDF), "calls the real OpenAI API (cents) and needs the user's PDF on this machine; run with RUN_AI=1")
+  test.setTimeout(600_000)
+  await loginStaff(page)
+  await createExam(page, "Technical", "E2E Paper Real PDF Full")
+  await openUpload(page)
+  const sent = page.waitForRequest((r) => r.url().includes("/understand-paper"))
+  await choose(page, { name: "paper.pdf", mimeType: "application/pdf", buffer: fs.readFileSync(REAL_PDF) })
+  const pictures = (await (await sent).postDataJSON()).images
+  const review = dialog(page).getByTestId("paper-review")
+  await expect(review).toBeVisible({ timeout: 500_000 })
+  fs.mkdirSync("test-results/screens", { recursive: true })
+  fs.writeFileSync("test-results/screens/real-full-review.txt", await review.innerText())
+  const rows = review.getByTestId("paper-question")
+  expect(await rows.count()).toBe(28)
+  expect(await review.locator("[data-ok=false]").count()).toBe(0)
+  await expect(review.getByTestId("from-paper")).toHaveCount(28)                         // all of them: the AI only wrote the missing hidden cases and data
+  await expect(review.getByTestId("ai-answer")).toHaveCount(0)
+  const expected = { 7: [0], 8: [0], 12: [1], 13: [2], 14: [3], 17: [4], 18: [5], 26: [6], 27: [7], 28: [8] }   // question number -> IMAGE index (0-based)
+  for (let n = 1; n <= 28; n++) {
+    const srcs = await rows.nth(n - 1).locator("img").evaluateAll((m) => m.map((x) => x.getAttribute("src")))
+    expect(srcs, `Q${n}`).toEqual((expected[n] ?? []).map((k) => pictures[k].src))
+  }
+  expect(await review.locator("img").count()).toBe(10)
+  await shot(page, "paper-upload-real-full")
+})
+
+test("the downloaded Word format is read entirely by rules: answers, the coding sample answer and cases, SQL, and every picture in place", async ({ page }) => {
+  test.skip(!!process.env.RUN_AI, "uses the stand-in AI for the small focused calls")
+  await loginStaff(page)
+  await createExam(page, "Technical", "E2E Paper Format Exact")
+  await openUpload(page)
+  const [word] = await Promise.all([page.waitForEvent("download"), dialog(page).getByTestId("paper-format-links").getByRole("button", { name: /Word/ }).click()])
+  const sent = page.waitForRequest((r) => r.url().includes("/understand-paper"))
+  await dialog(page).getByLabel("Question paper file").setInputFiles({ name: word.suggestedFilename(), mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document", buffer: fs.readFileSync(await word.path()) })
+  const pictures = (await (await sent).postDataJSON()).images
+  const review = dialog(page).getByTestId("paper-review")
+  await expect(review).toBeVisible({ timeout: 60_000 })
+  await expect(dialog(page).getByTestId("paper-notes")).toContainText("6 question(s) were read exactly from the paper")
+  const rows = review.getByTestId("paper-question")
+  expect(await rows.count()).toBe(6)
+  expect(await review.locator("[data-ok=false]").count()).toBe(0)                    // nothing refused
+  await expect(review.getByTestId("from-paper")).toHaveCount(6)
+  await expect(review.getByTestId("ai-answer")).toHaveCount(0)
+  const answers = [1, 2, 2, 1]                                                       // Q1 (b), Q2 (c), Q3 (c), Q4 (b): the "Answer:" lines under the questions
+  for (let i = 0; i < 4; i++) {
+    await expect(rows.nth(i).locator("li").nth(answers[i]).getByLabel("Correct answer")).toBeVisible()
+    await expect(rows.nth(i).getByLabel("Correct answer")).toHaveCount(1)
+  }
+  const srcs = (i) => rows.nth(i).locator("img").evaluateAll((m) => m.map((x) => x.getAttribute("src")))
+  expect(await srcs(0)).toEqual([])
+  expect(await srcs(1)).toEqual([pictures[0].src])                                   // the bar chart, under Q2
+  expect(await srcs(2)).toEqual(pictures.slice(1, 5).map((p) => p.src))              // Q3: four picture options in order
+  expect(await srcs(4)).toEqual([pictures[5].src])                                   // the coding diagram
+  expect(await srcs(5)).toEqual([pictures[6].src])                                   // the SQL tables
+  await expect(rows.nth(4)).toContainText("5 test cases")                            // the 5 cases written under "Test cases:" (the big one made by a program)
+  await expect(rows.nth(5)).toContainText("datasets")                                // the sample data and the hidden data the stand-in wrote
+  await shot(page, "paper-upload-format-exact")
+})

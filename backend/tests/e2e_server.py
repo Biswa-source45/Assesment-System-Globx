@@ -76,4 +76,11 @@ if not os.environ.get("RUN_AI"):
 
     exam_pack.ask_ai_for_pack = _fake_ai
 
+    # the small focused calls (hidden SQL data, a generator program for a described test case, the test-case table) get fixed answers too
+    from app.services import ai as _ai
+    _ai.ai_generate_sql_datasets = lambda *a, **k: [{"data": "INSERT INTO employees VALUES (1,'Zed',50000),(2,'Amy',50001);", "purpose": "a salary of exactly 50000"}]
+    _ai.ai_generator_program = lambda *a, **k: "print('(' * 3000 + ')' * 3000)"
+    _ai.ai_extract_test_cases = lambda *a, **k: []
+    _ai.ai_generate_inputs = lambda *a, **k: []
+
 uvicorn.run("app.main:app", port=8001, log_level="warning")

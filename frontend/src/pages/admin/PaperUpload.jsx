@@ -24,6 +24,7 @@ function Row({ q, on, toggle, n }) {
         <span className="font-medium">{n}. {v?.title ?? q.item?.title ?? "Question"}</span>
         <Badge variant="secondary">{TYPE_LABEL[v?.type ?? q.item?.type] ?? "Question"}</Badge>
         {v && <span className="text-xs text-muted-foreground">{v.marks} {v.marks === 1 ? "mark" : "marks"}</span>}
+        {v?.from_paper && <Badge variant="secondary" className="border-green-300 bg-green-50 text-green-800" data-testid="from-paper">Read from the paper</Badge>}
         {v?.answer_from_ai && <Badge className="border-amber-300 bg-amber-100 text-amber-900" data-testid="ai-answer">Answer chosen by AI, check it</Badge>}
       </div>
       {v ? <Html html={v.body} /> : <p className="whitespace-pre-wrap text-sm">{String(q.item?.statement ?? "")}</p>}

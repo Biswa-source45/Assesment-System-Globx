@@ -3,6 +3,7 @@ the ordinary check and import after it, and the picture rules every way of savin
 import base64
 import re
 import io
+import os
 import zipfile
 
 import pytest
@@ -592,14 +593,181 @@ def test_the_downloadable_paper_format_is_a_real_word_file_with_pictures_that_th
     assert len(out["images"]) == 7 and not out["notes"]
     assert re.search(r"Q2\..*\nImage:\s*\[\[IMAGE 1\]\]", t) and "(a) Image:" in t and t.index("(a) Image:") < t.index("[[IMAGE 2]]") < t.index("(b) Image:")   # the pictures sit where the format puts them
 
-    # through the upload with a stand-in AI that attaches nothing right: the server puts the pictures where the format says
+    # through the upload: the MCQs of the format are read by rules (the stand-in AI is only asked about the coding and SQL questions)
     t_ = _exam(client, h, "Technical", "Format exam")
-    qs = [{"type": "mcq_single", "title": "Speed", "statement": "A train 180 m long crosses a pole in 12 seconds. What is its speed?", "options": ["10 m/s", "15 m/s"], "correct": ["b"]},
-          {"type": "mcq_single", "title": "Sales", "statement": "Refer to the bar chart. By what percentage did sales rise from March to April?\nImage:", "options": ["25%", "45%"], "correct": ["a"]},
-          {"type": "mcq_single", "title": "Series", "statement": "Which figure completes the series: circle, square, ...?", "options": ["a", "b", "c", "d"], "correct": ["c"]}]
-    _fake_ai(monkeypatch, lambda p: {"sections": [{"title": "Section A", "questions": qs}]})
+    asked = []
+    _fake_ai(monkeypatch, lambda p: asked.append(1) or {"sections": []})
     pics = [(i["id"], i["src"]) for i in out["images"]]
     got = _understand(client, h, t_["id"], t, images=pics).json()
-    q1, q2, q3 = got["pack"]["sections"][0]["questions"]
-    assert "images" not in q1 and q2["images"] == [pics[0][1]] and "Image" not in q2["statement"]                      # the label word is not question text
-    assert [o.get("image") for o in q3["options"]] == [pics[1][1], pics[2][1], pics[3][1], pics[4][1]]                  # (a)-(d) Image: are the options' pictures, in order
+    secs = {s["title"]: s["questions"] for s in got["pack"]["sections"]}
+    a, b, c = secs["Section A: Quantitative Aptitude"], secs["Section B: Logical Reasoning"], secs["Section C: English"]
+    assert [q["correct"] for q in a + b + c] == [["b"], ["c"], ["c"], ["b"]] and all(q["read_from_paper"] for q in a + b + c)   # the answers are the key's
+    assert "images" not in a[0] and a[1]["images"] == [pics[0][1]] and "Image" not in a[1]["statement"]                              # the label word is not question text
+    assert [o.get("image") for o in b[0]["options"]] == [pics[1][1], pics[2][1], pics[3][1], pics[4][1]]                            # (a)-(d) Image: are the options' pictures, in order
+    assert a[0]["marks"] == 1 and any("6 question(s) were read exactly" in n for n in got["notes"]) and asked == []                  # all six: the AI was never asked
+    code, sql = secs["Section D: Coding"][0], secs["Section E: SQL"][0]
+    assert code["type"] == "coding" and code["marks"] == 8 and code["reference"]["language"] == "python" and "        print('NO')" in code["reference"]["source"]   # the sample answer, indentation kept
+    assert [(c["visibility"], c["input"]) for c in code["test_cases"]][:3] == [("open", "{[()]}"), ("open", "([)]"), ("hidden", "()[]{}")] and len(code["test_cases"]) == 5
+    assert code["images"] == [pics[5][1]] and sql["images"] == [pics[6][1]]                                                             # the diagrams under the coding and SQL questions
+    assert sql["type"] == "sql" and sql["marks"] == 9 and "CREATE TABLE employees" in sql["schema"] and sql["reference_sql"].startswith("SELECT name FROM employees")
+    assert "INSERT INTO employees" in sql["datasets"][0]["data"] and "CREATE" not in sql["statement"] and "Sample data" not in sql["statement"]
+
+
+# ---------------------------------------------------------------- PDFs written the way real ones are: the footer first in the stream, code in a monospaced font
+def _doc(pages):
+    """A multi-page PDF. A page is a list of operations in STREAM order: ("text", x, y, words, mono) or ("image", x, y, side)."""
+    objs, kids = [], []
+    imgs = []
+    for pn, ops in enumerate(pages):
+        content, names = b"", b""
+        for op in ops:
+            if op[0] == "text":
+                words = op[3].replace("(", "\\(").replace(")", "\\)").encode()
+                content += b"BT /%s 10 Tf %d %d Td (%s) Tj ET\n" % (b"F2" if op[4] else b"F1", op[1], op[2], words)
+            else:
+                imgs.append(bytes(((x * 7 + y * 3 + len(imgs) * 40) % 256, (x + len(imgs) * 60) % 256, (y * 5) % 256)[c] for y in range(op[3]) for x in range(op[3]) for c in range(3)))
+                names += b"/Im%d %d 0 R " % (len(imgs), 100 + len(imgs))
+                content += b"q %d 0 0 %d %d %d cm /Im%d Do Q\n" % (op[3], op[3], op[1], op[2], len(imgs))
+        pid, cid = 5 + pn * 2, 6 + pn * 2
+        kids.append(b"%d 0 R" % pid)
+        objs += [(pid, b"<</Type/Page/Parent 2 0 R/MediaBox[0 0 420 595]/Contents %d 0 R/Resources<</Font<</F1 3 0 R/F2 4 0 R>>/XObject<<%s>>>>>>" % (cid, names)),
+                 (cid, b"<</Length %d>>stream\n" % len(content) + content + b"\nendstream")]
+    objs += [(1, b"<</Type/Catalog/Pages 2 0 R>>"), (2, b"<</Type/Pages/Kids[%s]/Count %d>>" % (b" ".join(kids), len(pages))),
+             (3, b"<</Type/Font/Subtype/Type1/BaseFont/Helvetica/Encoding/WinAnsiEncoding>>"), (4, b"<</Type/Font/Subtype/Type1/BaseFont/Courier/Encoding/WinAnsiEncoding>>")]
+    for n, raw in enumerate(imgs, 1):
+        w = int((len(raw) // 3) ** 0.5)
+        objs.append((100 + n, b"<</Type/XObject/Subtype/Image/Width %d/Height %d/ColorSpace/DeviceRGB/BitsPerComponent 8/Length %d>>stream\n" % (w, w, len(raw)) + raw + b"\nendstream"))
+    return b"%PDF-1.4\n" + b"".join(b"%d 0 obj\n" % i + o + b"\nendobj\n" for i, o in sorted(objs)) + b"trailer<</Root 1 0 R/Size 200>>\n%%EOF"
+
+
+def test_a_pdf_whose_footer_comes_first_is_read_in_reading_order_with_pictures_between_question_and_options_and_code_indented():
+    foot = lambda n: ("text", 30, 20, f"Sample Paper - 50 marks - Page {n}", False)  # noqa: E731  (written FIRST, like a footer drawn by a page template)
+    head = ("text", 30, 575, "Sample Paper - confidential", False)
+    p1 = [foot(1), head, ("text", 30, 540, "Section A: Reasoning (2 marks)", False),
+          ("text", 30, 510, "Q1. Refer to the bar chart. What is the total? [1 mark]", False), ("image", 40, 370, 120),
+          ("text", 30, 350, "(a) 10", False), ("text", 30, 337, "(b) 20", False),
+          ("text", 30, 300, "Q2. Which figure comes next? [1 mark]", False), ("image", 40, 170, 110),
+          ("text", 30, 150, "(a) A", False), ("text", 30, 137, "(b) B", False)]
+    p2 = [foot(2), head, ("text", 30, 540, "Q3. Write the reference solution [8 marks]", False)]
+    for k, line in enumerate(["def f(s):", "    out = []", "    for ch in s:", "        if ch == 'a':", "            out.append(ch)", "    return out"]):
+        p2.append(("text", 30, 500 - k * 12, line, True))
+    p3 = [foot(3), head, ("text", 30, 540, "Answer Key and Solutions", False), ("text", 30, 525, "Q1 (b)   Q2 (a)", False)]
+    out = read_paper("real.pdf", _doc([p1, p2, p3]))
+    t = out["text"]
+    assert "Sample Paper - 50 marks" not in t and "confidential" not in t                          # the running header and footer are gone
+    assert t.index("Q1.") < t.index("[[IMAGE 1]]") < t.index("(a) 10") < t.index("Q2.") < t.index("[[IMAGE 2]]") < t.index("(a) A")     # pictures between question and options
+    assert "def f(s):\n    out = []\n    for ch in s:\n        if ch == 'a':\n            out.append(ch)\n    return out" in t   # indentation recovered from the positions
+    assert t.index("Section A") < t.index("Q1.")
+
+
+# ---------------------------------------------------------------- the rules that read a paper without the AI
+def _parse(text, key=""):
+    from app.api.exam_pack import _spans
+    from app.services.paper_parse import parse_paper
+    return parse_paper(text, key, _spans(text))
+
+
+def _qs(res):
+    return [it for s in res["sections"] for it in s["items"]]
+
+
+def test_a_clean_paper_is_read_exactly_answers_from_the_line_under_the_question_or_from_the_key():
+    paper = ("Intro line.\nSection A: Aptitude (3 marks)\n"
+             "Q1. What is 2 + 2? [1 mark]\n(a) 3\n(b) 4\n(c) 5\nAnswer: (b)\n"
+             "Q2. Tick the primes. [2 marks]\n(a) 2\n(b) 4\n(c) 7\nAnswer: (a), (c)\n"
+             "Q3. Capital of France?\nA) Paris\nB) Rome\nAnswer: Paris\n"
+             "Section B: More\nQ4. Pick one\n(a) x\n(b) y\n")
+    key = "Answer Key and Solutions\nQ4 (b)\nQ4. Answer: (b) y\n"
+    res = _parse(paper, key)
+    items = _qs(res)
+    assert res["exact"] == 4 and [s["title"] for s in res["sections"]] == ["Section A: Aptitude", "Section B: More"]
+    q1, q2, q3, q4 = (i["question"] for i in items)
+    assert q1["correct"] == ["b"] and q1["marks"] == 1 and q1["type"] == "mcq_single" and [o["text"] for o in q1["options"]] == ["3", "4", "5"] and "[1 mark]" not in q1["statement"]
+    assert q2["correct"] == ["a", "c"] and q2["type"] == "mcq_multi" and q2["marks"] == 2
+    assert q3["correct"] == ["a"]                                                              # "Answer: Paris" names the option by its words
+    assert q4["correct"] == ["b"]                                                              # no line under it: the key's Q4 answers
+    assert all(q["read_from_paper"] for q in (q1, q2, q3, q4))
+
+
+def test_what_the_rules_cannot_read_cleanly_goes_to_the_ai_untouched():
+    paper = ("Section A\nQ1. Fine question\n(a) one\n(b) two\nAnswer: (a)\n"
+             "Q2. No answer anywhere\n(a) one\n(b) two\n"
+             "Q3. Odd layout\n(a) one\nsome words between\n(b) two\nAnswer: (a)\n"
+             "Q4. Write a program that adds two numbers [8 marks]\nInput format\nTwo integers.\n"
+             "Q5. Explain TCP in two lines.\nAnswer: A reliable transport protocol.\n")
+    res = _parse(paper, "")
+    kinds = [(i["number"], i["kind"], i.get("why")) for i in _qs(res)]
+    assert res["exact"] == 1 and kinds == [(1, "mcq", None), (2, "block", "no answer in the paper"), (3, "block", "text between options"),
+                                          (4, "block", "no clean options"), (5, "block", "no clean options")]
+    assert "Answer: A reliable transport protocol." in _qs(res)[-1]["text"]                    # written answers stay in the block for the AI
+    assert _parse("just some text\nwithout numbers\n")["sections"] == [] and _parse("Q1. only one\n(a) x\n(b) y\nAnswer: a\n")["exact"] == 0   # not a structured paper: nothing claimed
+
+
+def test_pictures_passages_and_same_chart_follow_the_text():
+    from app.services.paper_parse import share_pictures
+    paper = ("Section A\nQ1. Refer to the bar chart. Total?\n[[IMAGE 1]]\n(a) 1\n(b) 2\nAnswer: (a)\n"
+             "Q2. Refer to the same bar chart. Average?\n(a) 1\n(b) 2\nAnswer: (b)\n"
+             "Q3. Which figure next?\nImage: [[IMAGE 2]]\n(a) Image: [[IMAGE 3]]\n(b) Image: [[IMAGE 4]]\nAnswer: (b)\n"
+             "Q4. Pick the right word.\n(a) x\n(b) y\nAnswer: (a)\n"
+             "Read the passage and answer the next two questions.\nThe quick brown fox jumps over the lazy dog many times in a row.\n"
+             "Q5. What did the fox do?\n(a) jump\n(b) sleep\nAnswer: (a)\nQ6. Where?\n(a) here\n(b) there\nAnswer: (b)\nQ7. Unrelated\n(a) p\n(b) q\nAnswer: (a)\n")
+    qs = [i["question"] for i in _qs(_parse(paper))]
+    share_pictures(qs)
+    assert qs[0]["images"] == ["IMAGE 1"] and qs[1]["images"] == ["IMAGE 1"]                    # "the same bar chart" shares the picture
+    assert qs[2]["images"] == ["IMAGE 2"] and [o.get("image") for o in qs[2]["options"]] == ["IMAGE 3", "IMAGE 4"] and "images" not in qs[3]
+    assert "<blockquote>" in qs[4]["statement"] and "quick brown fox" in qs[4]["statement"] and "quick brown fox" in qs[5]["statement"]   # the passage goes with the next two questions
+    assert "quick brown fox" not in qs[6]["statement"] and "quick brown fox" not in qs[3]["statement"]
+
+
+def test_the_writer_notes_block_is_ignored_wherever_it_sits(client, monkeypatch):
+    h = _creator(client)
+    t = _exam(client, h, "Technical", "Notes exam")
+    paper = ("My exam title\n=== NOTES FOR THE WRITER (ignored) ===\n1. Number questions Q1.\nFor the examiner only. Answer Key and Solutions.\n=== END OF NOTES ===\n"
+             "Section A: Test (2 marks)\nQ1. What is 1 + 1? [1 mark]\n(a) 1\n(b) 2\nAnswer: (b)\nQ2. What is 2 + 2? [1 mark]\n(a) 4\n(b) 5\nAnswer: (a)\n")
+    calls = []
+    monkeypatch.setattr(exam_pack, "ask_ai_for_pack", lambda *a: calls.append(1) or ("{}", "stop"))
+    got = _understand(client, h, t["id"], paper).json()
+    assert calls == [] and len(got["pack"]["sections"][0]["questions"]) == 2                    # nothing left for the AI: no AI call at all
+    assert [q["correct"] for q in got["pack"]["sections"][0]["questions"]] == [["b"], ["a"]]
+
+
+def test_a_paper_that_is_all_rule_readable_needs_no_ai_even_when_the_ai_is_off(client):
+    h = _creator(client)
+    t = _exam(client, h, "Technical", "No AI exam")
+    paper = "Section A: T\nQ1. First question here?\n(a) 1\n(b) 2\nAnswer: (a)\nQ2. Second question here?\n(a) 1\n(b) 2\nAnswer: (b)\n"
+    got = _understand(client, h, t["id"], paper)
+    assert got.status_code == 200 and any("2 question(s) were read exactly" in n for n in got.json()["notes"])        # the test server has the AI switched off
+    rep = client.post(f"{API}/tests/{t['id']}/import-questions", headers=h, json={"pack": got.json()["pack"], "dry_run": True, "detail": True}).json()
+    assert rep["ok"] and all(q["from_paper"] and not q["answer_from_ai"] for q in rep["sections"][0]["questions"])
+    # a paper with a coding question and the AI off: the rule-read questions stay, the coding one is reported, nothing fails
+    mixed = paper + "Section B: Code\nQ3. Write a program [8 marks]\nInput format\nOne integer.\n"
+    out = _understand(client, h, t["id"], mixed)
+    assert out.status_code == 200 and len(out.json()["pack"]["sections"]) == 1 and any("could not be read by the AI" in n for n in out.json()["notes"])
+
+
+REAL_PDF = os.environ.get("OAP_REAL_PDF", r"C:\Users\ASUS\Downloads\GLOBX_Aptitude_Coding_SQL_Paper_50_Marks.pdf")
+
+
+@pytest.mark.skipif(not os.path.exists(REAL_PDF), reason="the user's real paper is not on this machine")
+def test_the_users_real_pdf_every_picture_on_its_question_every_answer_from_the_key_code_indented():
+    from app.api.exam_pack import _drop_writer_notes, _paper_facts, _spans
+    from app.services.paper_parse import parse_paper, share_pictures
+    out = read_paper(os.path.basename(REAL_PDF), open(REAL_PDF, "rb").read())
+    body, key, _ = _paper_facts(_drop_writer_notes(out["text"]))
+    key_ids = set(re.findall(r"\[\[(IMAGE \d+)\]\]", key))
+    assert key_ids == {f"IMAGE {n}" for n in range(10, 17)}                                       # the key's pictures (they show the answers) are never question pictures
+    res = parse_paper(body, key, _spans(body))
+    mcq = {i["number"]: i["question"] for s in res["sections"] for i in s["items"] if i["kind"] == "mcq"}
+    assert res["exact"] == 28 and sorted(mcq) == list(range(1, 26))
+    assert [mcq[n]["correct"][0] for n in range(1, 26)] == "c a a d b b c b d b a b a c b a c d b c d b b d a".split()   # the key's own table
+    share_pictures([mcq[n] for n in sorted(mcq)])
+    assert {n: q["images"] for n, q in mcq.items() if q.get("images")} == {7: ["IMAGE 1"], 8: ["IMAGE 1"], 12: ["IMAGE 2"], 13: ["IMAGE 3"], 14: ["IMAGE 4"], 17: ["IMAGE 5"], 18: ["IMAGE 6"]}
+    assert all("passage" in mcq[n]["statement"].lower() and "Copenhagen" in mcq[n]["statement"] for n in (23, 24, 25)) and "Copenhagen" not in mcq[22]["statement"]
+    code = {i["number"]: i["question"] for s in res["sections"] for i in s["items"] if i["kind"] == "code"}
+    assert sorted(code) == [26, 27, 28] and [code[n]["type"] for n in (26, 27, 28)] == ["coding", "coding", "sql"] and [code[n]["marks"] for n in (26, 27, 28)] == [8, 8, 9]
+    assert [code[n]["images"] for n in (26, 27, 28)] == [["IMAGE 7"], ["IMAGE 8"], ["IMAGE 9"]]                                    # the coding and SQL figures stay with their question
+    assert code[26]["reference"]["source"].startswith("def is_balanced(s):\n    pairs = ") and "\nprint(\"YES\" if is_balanced(s) else \"NO\")" in code[26]["reference"]["source"]
+    assert "            continue" in code[27]["reference"]["source"] and code[26]["_cases_key"] and "(generated) maximum size" in code[27]["_cases_key"]
+    sql = code[28]
+    assert "CREATE TABLE departments" in sql["schema"] and "CREATE TABLE employees" in sql["schema"] and sql["reference_sql"].startswith("SELECT d.dept_name") and "INSERT INTO employees" in sql["datasets"][0]["data"]
+    assert "def is_balanced(s):\n    pairs = " in out["text"] and "            continue" in out["text"]                                    # the key's code has its indentation
