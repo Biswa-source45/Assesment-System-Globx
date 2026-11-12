@@ -116,6 +116,7 @@
 .q-html pre { background: var(--muted); border-radius: 0.5rem; padding: 0.75rem; overflow: auto; font-size: 0.8rem; margin: 0 0 0.6rem; }
 .q-html code { font-family: ui-monospace, Menlo, Consolas, monospace; }
 .q-html ul, .q-html ol { margin: 0 0 0.6rem 1.25rem; list-style: revert; }
+.q-html img { max-width: 100%; height: auto; max-height: 28rem; border-radius: 0.375rem; background: #fff; }
 
 /* printing the logins sheet: only the .print-area card is printed */
 @media print {

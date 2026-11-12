@@ -78,7 +78,7 @@ test("a link with ?topic= opens that topic; the bank and the Build with AI dialo
   await page.goto(`/admin/exams/${exam.id}`)
   await page.getByRole("tab", { name: "Questions" }).click()
   await page.getByRole("button", { name: "Build with AI" }).click()
-  const link = page.getByRole("dialog").getByRole("link", { name: "Format help and samples" })
+  const link = page.getByRole("dialog").locator("a", { hasText: "Format help and samples" })  // inside the closed copy-and-paste section
   await expect(link).toHaveAttribute("href", /\/admin\/help\?topic=json-route/)
   await expect(link).toHaveAttribute("target", "_blank")  // a new tab, so the pasted file is not lost
 })

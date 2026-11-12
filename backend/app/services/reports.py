@@ -95,7 +95,7 @@ def attempt_report(db: Session, at: Attempt, staff_view: bool = True) -> Dict:
                 by_id = {o["id"]: o for o in c.get("options", [])}
                 chosen = set(resp.get("selected", []))
                 order = [i for i in aq.option_order if i in by_id] + [i for i in by_id if i not in aq.option_order]
-                item["options"] = [{"text": by_id[i]["text"], "correct": bool(by_id[i].get("correct")), "chosen": i in chosen} for i in order]
+                item["options"] = [{"text": by_id[i]["text"], **({"image": by_id[i]["image"]} if by_id[i].get("image") else {}), "correct": bool(by_id[i].get("correct")), "chosen": i in chosen} for i in order]
             elif q.type in ("short", "long"):
                 item["model_answer"], item["keywords"] = c.get("model_answer", ""), c.get("keywords", [])
                 item["answer_html"] = _text_of(resp)  # the candidate's box saves {"text"}; older and API answers hold {"html"}: both are shown

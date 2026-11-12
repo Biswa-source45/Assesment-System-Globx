@@ -94,11 +94,43 @@ export const TOPICS = [
         <>For coding and SQL press <b>Check reference solution</b> first: it runs your own solution on your cases, so the expected outputs come from real output, never typed by hand.</>,
         <>Press <b>Save</b>. The question can now be added to any exam of that department.</>,
       ]} />
-      <Tip>Many questions? Use the AI route (next topic). Typing 50 questions by hand is slow.</Tip>
+      <p><b>Pictures:</b> under the question text press <b>Add picture</b> (or paste a screenshot into the text box). Each answer option of a choice question has its own small picture button, for questions like "which figure comes next?". A picture is PNG, JPEG, GIF or WEBP, up to 4 under the text, and is made smaller automatically. This works for every type, also coding and SQL.</p>
+      <Tip>Many questions? Upload the paper you already have (next topic). Typing 50 questions by hand is slow.</Tip>
+    </div>) },
+  { id: "paper-upload", group: "questions", title: "Upload your question paper (PDF, Word, Excel, Notepad, photo)", body: (
+    <div className="grid gap-3">
+      <p>The quickest way to bring a whole paper in. You upload the file you already have; the platform reads it, the AI finds the questions, answers, marks and pictures, and you check the result before anything is added.</p>
+      <Steps items={[
+        ["Create the exam", "Its department decides which question types can come in"], ["Build with AI", "On the exam's Questions tab"],
+        ["Choose the file", "PDF, Word, Excel, Notepad or a photo"], ["Wait", "Three steps show what is happening"],
+        ["Review", "Every question, its answer and its pictures"], ["Import", "The ticked questions go into the Question bank and the exam"],
+      ]} />
+      <p className="font-medium">What can be uploaded</p>
+      <List items={[
+        <><b>PDF</b> (up to 50 pages). Typed PDFs are best. A scanned page is read as a picture, which is slower and less exact.</>,
+        <><b>Word (.docx)</b>. Bold and highlighted options are noticed as the right answer, and pictures stay where they were. An old .doc file: open it and use Save as .docx.</>,
+        <><b>Excel (.xlsx)</b> with one question per row, <b>Notepad (.txt)</b>, or a <b>photo</b> (.jpg, .png) of a page.</>,
+        "Up to 20 MB and about 40 questions at a time. A longer paper: upload it in parts.",
+      ]} />
+      <p className="font-medium">Pictures and graphs</p>
+      <List items={[
+        "A picture in the paper (a graph, a figure, a diagram) is attached to its question. If answer options are pictures, each option gets its own picture.",
+        "Maths is written as plain text, for example x^2, (a)/(b), sqrt(x).",
+        "A chart drawn inside Word, a drawing on a PDF page, or a figure inside a scanned page cannot be cut out. The review says so: after importing, open the question with the pencil and use Add picture (a screenshot can be pasted).",
+      ]} />
+      <p className="font-medium">What to check in the review</p>
+      <List items={[
+        <>The amber note at the top lists what the AI could not do. Read it first.</>,
+        <>A question marked <b>Answer chosen by AI, check it</b> had no answer in the paper. The AI guessed; confirm it.</>,
+        "A red question has a problem (the message says what). It cannot be added; leave it out, or fix the paper and upload again. The others can still be imported.",
+        "Untick any question you do not want. Nothing is saved until you press Import, and then all ticked questions are added together.",
+      ]} />
+      <Warn>The AI can misread a paper. Always read the questions and the answers before you publish the exam. Wording can be fixed afterwards with the pencil on each question.</Warn>
+      <Tip>If the AI is not switched on for the server, the dialog says so. The copy-and-paste route (next topic) still works.</Tip>
     </div>) },
   { id: "json-route", group: "questions", title: "Upload many questions: the AI route (any type)", body: (
     <div className="grid gap-3">
-      <p>This is the way to bring a whole paper in. The platform writes the instructions for the AI; the AI turns your questions into a file in the exact format; the platform checks every question and imports them.</p>
+      <p>This is the copy-and-paste way, for when you prefer to use your own ChatGPT or Claude chat (to let the platform do it all, upload the paper instead: see the topic before this one). The platform writes the instructions for the AI; the AI turns your questions into a file in the exact format; the platform checks every question and imports them.</p>
       <Steps items={[
         ["Create the exam", "Fill in its Details first: the prompt carries them"], ["Build with AI", "On the exam's Questions tab: say how many of each type"],
         ["Copy the prompt", "Paste it into ChatGPT or Claude together with your own questions"], ["Get the JSON", "A file, or text you copy"],

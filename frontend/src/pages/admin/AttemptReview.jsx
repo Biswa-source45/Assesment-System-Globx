@@ -42,7 +42,7 @@ function Options({ options, answered }) {
         return (
           <div key={i} data-state={state} className={"flex items-center gap-2 rounded-md border p-2 text-sm " + TONE[tone] + (state === "missed-right" ? " border-dashed" : "")}>
             {Icon ? <Icon className="size-4 shrink-0" /> : <span className="size-4 shrink-0" />}
-            <span className="grow">{o.text}</span>
+            <span className="grid grow gap-1">{o.text && <span>{o.text}</span>}{o.image && <img src={o.image} alt="Answer picture" className="max-h-28 w-auto max-w-full rounded border bg-white object-contain" />}</span>
             <span className="text-xs font-medium">{note}</span>
           </div>
         )

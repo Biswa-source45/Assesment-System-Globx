@@ -124,7 +124,7 @@ def candidate_question(aq: AttemptQuestion, db: Session) -> Dict:
         out["group"] = {"id": g.id, "title": g.title, "stimulus": g.stimulus} if g else None
     if q.type.startswith("mcq"):
         by_id = {o["id"]: o for o in c.get("options", [])}
-        out["options"] = [{"id": oid, "text": by_id[oid]["text"]} for oid in aq.option_order if oid in by_id]
+        out["options"] = [{"id": oid, "text": by_id[oid]["text"], "image": by_id[oid].get("image", "")} for oid in aq.option_order if oid in by_id]
         out["multi"] = q.type == "mcq_multi"
         out["partial"] = bool(c.get("partial", True))
     elif q.type in SUBJECTIVE:

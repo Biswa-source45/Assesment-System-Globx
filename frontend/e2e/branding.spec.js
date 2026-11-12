@@ -34,7 +34,7 @@ async function expectLogin(page) {
 test("sign-in page: logo, tagline, tab title and favicon", async ({ page, request }) => {
   await page.goto("/login")
   await expectLogin(page)
-  await expect(page).toHaveTitle(/KAUTILYA.*Online Exam Platform/)
+  await expect(page).toHaveTitle(/^KAUTILYA - (Online Exam|Assessment) Platform$/)
   for (const rel of ["icon", "apple-touch-icon"]) {
     const res = await request.get(await page.locator(`link[rel=${rel}]`).getAttribute("href"))
     expect(res.status()).toBe(200)

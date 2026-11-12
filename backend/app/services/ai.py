@@ -56,22 +56,32 @@ class OpenAIProvider:
         self.azure_endpoint = azure_endpoint.rstrip("/") if azure_endpoint else ""
         self.azure_deployment = azure_deployment
 
-    def complete(self, system: str, user: str, max_tokens: int = 1024, json_mode: bool = False) -> str:
+    def _chat(self, msgs: list, max_tokens: int, json_mode: bool, timeout: int = 120) -> dict:
         import httpx
-        msgs = [{"role": "system", "content": system}, {"role": "user", "content": user}]
         body = {"messages": msgs, "max_tokens": max_tokens, "temperature": 0}
         if json_mode:
             body["response_format"] = {"type": "json_object"}  # the reply is guaranteed to be valid JSON
         if self.azure_endpoint:
             url = f"{self.azure_endpoint}/openai/deployments/{self.azure_deployment}/chat/completions"
-            r = httpx.post(url, params={"api-version": "2024-02-01"}, headers={"api-key": self.api_key},
-                           json=body, timeout=120)
+            r = httpx.post(url, params={"api-version": "2024-02-01"}, headers={"api-key": self.api_key}, json=body, timeout=timeout)
         else:
-            r = httpx.post("https://api.openai.com/v1/chat/completions",
-                           headers={"Authorization": f"Bearer {self.api_key}"},
-                           json={"model": self.model, **body}, timeout=120)
+            r = httpx.post("https://api.openai.com/v1/chat/completions", headers={"Authorization": f"Bearer {self.api_key}"},
+                           json={"model": self.model, **body}, timeout=timeout)
         r.raise_for_status()
-        return r.json()["choices"][0]["message"]["content"] or ""
+        return r.json()["choices"][0]
+
+    def complete(self, system: str, user: str, max_tokens: int = 1024, json_mode: bool = False) -> str:
+        msgs = [{"role": "system", "content": system}, {"role": "user", "content": user}]
+        return self._chat(msgs, max_tokens, json_mode)["message"]["content"] or ""
+
+    def look_and_complete(self, system: str, user: str, pictures: list, max_tokens: int = 16000) -> tuple:
+        """Like json_complete, but the model also sees pictures: [(label, data URI, "low" | "high")]. Returns (reply text, finish_reason);
+        finish_reason "length" means the reply was cut off."""
+        parts: list = [{"type": "text", "text": user}]
+        for label, src, detail in pictures:
+            parts += [{"type": "text", "text": label + ":"}, {"type": "image_url", "image_url": {"url": src, "detail": detail}}]
+        choice = self._chat([{"role": "system", "content": system}, {"role": "user", "content": parts}], max_tokens, True, timeout=300)
+        return choice["message"]["content"] or "", choice.get("finish_reason", "")
 
     def json_complete(self, system: str, user: str, max_tokens: int = 2048) -> dict:
         return _parse_json_loose(self.complete(system, user + "\n\nRespond ONLY with JSON.", max_tokens, json_mode=True))

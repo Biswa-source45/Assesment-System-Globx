@@ -7,7 +7,9 @@ import { TYPE_LABEL } from "@/pages/admin/Questions"
 import { Verdict } from "@/pages/candidate/CodeView"
 import SqlBuilder from "@/pages/admin/SqlBuilder"
 import { buildInserts, buildSchema, checkTables } from "@/lib/sqlbuild"
-import { fromHtml, toHtml } from "@/lib/html"
+import { fromHtml, joinImages, splitImages, toHtml } from "@/lib/html"
+import { fileToDataUrl, pastedImage } from "@/lib/image"
+import { OptionPicture, QuestionPictures } from "@/components/PicturePicker"
 import { useDepartments } from "@/lib/useDepartments"
 import { Alert } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
@@ -23,11 +25,11 @@ const TYPES = ["mcq_single", "mcq_multi", "short", "long", "coding", "sql"]
 const DEFAULT_MARKS = { mcq_single: 1, mcq_multi: 1, short: 2, long: 5, coding: 10, sql: 10 }
 const LANGS = [["python", "Python"], ["java", "Java"], ["javascript", "JavaScript"], ["cpp", "C++"], ["c", "C"]]
 const rid = () => Math.random().toString(36).slice(2, 8)
-const blankOptions = () => Array.from({ length: 4 }, () => ({ id: rid(), text: "", correct: false }))
+const blankOptions = () => Array.from({ length: 4 }, () => ({ id: rid(), text: "", image: "", correct: false }))
 
 
 const blank = () => ({
-  department_id: "", group_id: null, type: "mcq_single", title: "", body: "", difficulty: "medium", marks: 1, negative_marks: 0, skills: "",
+  department_id: "", group_id: null, type: "mcq_single", title: "", body: "", images: [], difficulty: "medium", marks: 1, negative_marks: 0, skills: "",
   options: blankOptions(), model_answer: "", keywords: "", max_words: 150,
   languages: ["python"], time_limit_ms: 2000, memory_mb: 256, constraints: "", ref_lang: "python", ref_source: "", starter: {}, cases: [],
   tables: [], datasets: [], reference_sql: "", ordered: false, preview: null,  // SQL questions
@@ -35,10 +37,11 @@ const blank = () => ({
 
 function fromQuestion(q) {
   const c = q.config ?? {}
+  const { text, images } = splitImages(q.body)  // the pictures sit under the text box, not inside it
   return {
-    ...blank(), department_id: q.department_id ?? "", group_id: q.group_id ?? null, type: q.type, title: q.title, body: fromHtml(q.body), difficulty: q.difficulty, marks: q.marks, negative_marks: q.negative_marks,
+    ...blank(), department_id: q.department_id ?? "", group_id: q.group_id ?? null, type: q.type, title: q.title, body: fromHtml(text), images, difficulty: q.difficulty, marks: q.marks, negative_marks: q.negative_marks,
     skills: (q.skills ?? []).join(", "),
-    options: q.type.startsWith("mcq") ? (c.options ?? []).map((o) => ({ id: o.id, text: o.text, correct: !!o.correct })) : blankOptions(),
+    options: q.type.startsWith("mcq") ? (c.options ?? []).map((o) => ({ id: o.id, text: o.text, image: o.image ?? "", correct: !!o.correct })) : blankOptions(),
     model_answer: c.model_answer ?? "", keywords: (c.keywords ?? []).join(", "), max_words: c.max_words ?? (q.type === "short" ? 150 : 800),
     languages: c.languages ?? ["python"], time_limit_ms: c.time_limit_ms ?? 2000, memory_mb: c.memory_mb ?? 256, constraints: c.constraints ?? "",
     ref_lang: c.reference?.language ?? "python", ref_source: c.reference?.source ?? "", starter: c.starter ?? {},
@@ -96,6 +99,15 @@ export default function QuestionEditor({ id, onSaved, embedded = false }) {
       : { ...x, department_id: did, type: offered[0], marks: DEFAULT_MARKS[offered[0]], max_words: offered[0] === "short" ? 150 : 800 }))
   }
 
+  // a screenshot pasted into the question text becomes one of its pictures
+  async function pastePicture(e) {
+    const file = pastedImage(e)
+    if (!file) return
+    e.preventDefault()
+    if (f.images.length >= 4) return toast.error("A question can have up to 4 pictures.")
+    try { const src = await fileToDataUrl(file); setF((x) => ({ ...x, images: [...x.images, src] })) } catch (err) { toast.error(err.message) }
+  }
+
   const setOption = (i, patch) => set("options", f.options.map((o, j) => (j === i ? { ...o, ...patch } : o)))
   const setCase = (i, patch) => { setCheck(null); set("cases", f.cases.map((c, j) => (j === i ? { ...c, ...patch } : c))) }
 
@@ -103,7 +115,7 @@ export default function QuestionEditor({ id, onSaved, embedded = false }) {
     const bad = checkTables(f.tables)
     if (bad) throw new Error(bad)
     return {
-      department_id: f.department_id, group_id: f.group_id, type: "sql", title: f.title, body: toHtml(f.body), difficulty: f.difficulty, marks: Number(f.marks), negative_marks: 0,
+      department_id: f.department_id, group_id: f.group_id, type: "sql", title: f.title, body: joinImages(toHtml(f.body), f.images), difficulty: f.difficulty, marks: Number(f.marks), negative_marks: 0,
       skills: f.skills.split(",").map((s) => s.trim()).filter(Boolean), status: "approved",
       config: { schema: buildSchema(f.tables), seed: "", engines: ["sqlite"], ordered: f.ordered, reference_sql: f.reference_sql },
       cases: f.datasets.map((d, i) => ({ ordinal: i + 1, visibility: d.visibility, input: buildInserts(f.tables, d.rows), expected: "", weight: Number(d.weight) || 1, purpose: d.purpose })),
@@ -113,7 +125,7 @@ export default function QuestionEditor({ id, onSaved, embedded = false }) {
   function payload() {
     if (f.type === "sql") return sqlPayload()
     const config = {}
-    if (isMcq) { config.options = f.options.filter((o) => o.text.trim()).map((o) => ({ id: o.id, text: o.text.trim(), correct: !!o.correct })); config.partial = true }
+    if (isMcq) { config.options = f.options.filter((o) => o.text.trim() || o.image).map((o) => ({ id: o.id, text: o.text.trim(), correct: !!o.correct, ...(o.image ? { image: o.image } : {}) })); config.partial = true }
     if (isText) {
       config.model_answer = f.model_answer
       config.max_words = Number(f.max_words) || 150
@@ -125,7 +137,7 @@ export default function QuestionEditor({ id, onSaved, embedded = false }) {
       if (f.ref_source.trim()) config.reference = { language: f.ref_lang, source: f.ref_source }
     }
     return {
-      department_id: f.department_id, group_id: f.group_id, type: f.type, title: f.title, body: toHtml(f.body), difficulty: f.difficulty, marks: Number(f.marks), negative_marks: Number(f.negative_marks),
+      department_id: f.department_id, group_id: f.group_id, type: f.type, title: f.title, body: joinImages(toHtml(f.body), f.images), difficulty: f.difficulty, marks: Number(f.marks), negative_marks: Number(f.negative_marks),
       skills: f.skills.split(",").map((s) => s.trim()).filter(Boolean), status: "approved", config,
       cases: f.type === "coding" ? f.cases.map((c, i) => ({ ordinal: i + 1, visibility: c.visibility, input: c.input, expected: c.expected, weight: Number(c.weight) || 1, purpose: c.purpose })) : undefined,
     }
@@ -222,7 +234,8 @@ export default function QuestionEditor({ id, onSaved, embedded = false }) {
           </div>
           <div className="grid gap-2">
             <Label htmlFor="body">Question text</Label>
-            <Textarea id="body" className="min-h-28" value={f.body} onChange={(e) => set("body", e.target.value)} />
+            <Textarea id="body" className="min-h-28" value={f.body} onChange={(e) => set("body", e.target.value)} onPaste={pastePicture} />
+            <QuestionPictures images={f.images} onChange={(v) => set("images", v)} />
           </div>
           <div className="grid gap-4 md:grid-cols-3">
             <div className="grid gap-2"><Label htmlFor="marks">Marks</Label><Input id="marks" type="number" step="0.25" min="0.25" value={f.marks} onChange={(e) => set("marks", e.target.value)} /></div>
@@ -243,11 +256,12 @@ export default function QuestionEditor({ id, onSaved, embedded = false }) {
                     ? <RadioGroupItem value={o.id} aria-label={`Option ${i + 1} is correct`} />
                     : <Checkbox checked={o.correct} onCheckedChange={(v) => setOption(i, { correct: v === true })} aria-label={`Option ${i + 1} is correct`} />}
                   <Input aria-label={`Option ${i + 1}`} value={o.text} onChange={(e) => setOption(i, { text: e.target.value })} />
+                  <OptionPicture n={i + 1} value={o.image} onChange={(src) => setOption(i, { image: src })} />
                   <Button variant="ghost" size="icon" aria-label={`Remove option ${i + 1}`} disabled={f.options.length <= 2} onClick={() => set("options", f.options.filter((_, j) => j !== i))}><Trash2 /></Button>
                 </div>
               ))}
             </RadioGroup>
-            <div><Button variant="outline" size="sm" disabled={f.options.length >= 8} onClick={() => set("options", [...f.options, { id: rid(), text: "", correct: false }])}><Plus /> Add option</Button></div>
+            <div><Button variant="outline" size="sm" disabled={f.options.length >= 8} onClick={() => set("options", [...f.options, { id: rid(), text: "", image: "", correct: false }])}><Plus /> Add option</Button></div>
           </CardContent>
         </Card>
       )}

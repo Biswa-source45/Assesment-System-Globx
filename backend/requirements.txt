@@ -9,6 +9,8 @@ pydantic-settings==2.7.0
 python-multipart==0.0.20
 psutil>=6.0
 openpyxl==3.1.5
+pillow==13.0.0   # question papers: re-encode and shrink uploaded pictures
+pypdfium2==5.15.2   # question papers: read PDFs
 httpx==0.28.1
 psycopg[binary]==3.2.3
 alembic==1.20.1

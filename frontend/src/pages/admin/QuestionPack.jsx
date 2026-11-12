@@ -11,6 +11,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
+import PaperUpload from "@/pages/admin/PaperUpload"
 
 const MAX_BYTES = 2_000_000
 
@@ -138,9 +139,15 @@ export default function QuestionPack({ test, onClose, onImported }) {
       <DialogContent className="sm:max-w-3xl">
         <DialogHeader>
           <DialogTitle>Build "{test.title}" with AI</DialogTitle>
-          <DialogDescription>Get a prompt, give it to ChatGPT or Claude with your question set, then upload the JSON file it gives you. <a className="underline" href="/admin/help?topic=json-route" target="_blank" rel="noreferrer">Format help and samples</a></DialogDescription>
+          <DialogDescription>Upload the question paper you already have and the AI turns it into questions. <a className="underline" href="/admin/help?topic=paper-upload" target="_blank" rel="noreferrer">How it works</a></DialogDescription>
         </DialogHeader>
 
+        <PaperUpload test={test} onImported={onImported} onClose={onClose} />
+
+        <details className="rounded-lg border p-3" data-testid="json-route">
+          <summary className="cursor-pointer font-medium">Or make the question file yourself with ChatGPT or Claude</summary>
+          <p className="mt-2 text-sm text-muted-foreground">Get a prompt, give it to ChatGPT or Claude with your question set, then upload the JSON file it gives you. <a className="underline" href="/admin/help?topic=json-route" target="_blank" rel="noreferrer">Format help and samples</a></p>
+        <div className="mt-3 grid gap-4">
         <section className="grid gap-3">
           <h3 className="font-medium">1. Get the prompt</h3>
           <p className="text-sm text-muted-foreground">It already contains this exam's department, title, description, instructions, time and rules. Say how many questions of each type you need.</p>
@@ -172,6 +179,8 @@ export default function QuestionPack({ test, onClose, onImported }) {
           {fileError && <Alert variant="destructive" className="p-3" data-testid="pack-file-error">{fileError}</Alert>}
           <PackReport report={report} />
         </section>
+        </div>
+        </details>
 
         <DialogFooter>
           <Button variant="outline" onClick={onClose}>Cancel</Button>

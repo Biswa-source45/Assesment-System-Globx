@@ -18,7 +18,7 @@ from app.sandbox import remote
 from app.sandbox.sql import describe_tables
 from app.services import ai
 from app.services.attempts import sync_live_attempts
-from app.services.sanitize import sanitize_html
+from app.services.sanitize import image_problem, picture_problems, sanitize_html
 
 router = APIRouter(tags=["library"])
 
@@ -91,6 +91,12 @@ def validate_question(body: QuestionIn, strict: bool) -> List[str]:
             errs.append("Mark at least one correct option")
         if len({o.get("id") for o in opts}) != len(opts):
             errs.append("Option ids must be unique")
+        for n, o in enumerate(opts, 1):
+            if not (str(o.get("text") or "").strip() or o.get("image")):
+                errs.append(f"Option {n} needs a text or a picture")
+            if o.get("image") and image_problem(o["image"]):
+                errs.append(f"Option {n}: {image_problem(o['image'])}")
+    errs += picture_problems(body.body)
     if body.type == "long" and strict:
         rub = c.get("rubric") or []
         if rub and abs(sum(float(r.get("max", 0)) for r in rub) - body.marks) > 1e-6:

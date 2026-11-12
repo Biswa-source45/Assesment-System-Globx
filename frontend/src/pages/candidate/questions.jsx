@@ -6,6 +6,14 @@ import { Textarea } from "@/components/ui/textarea"
 // Question bodies are sanitised on the server before they are stored.
 export const Html = ({ html }) => <div className="q-html" dangerouslySetInnerHTML={{ __html: html || "" }} />
 
+// An answer option: its words, and its picture when it has one (a figure to choose).
+const Option = ({ o }) => (
+  <span className="grid gap-1">
+    {o.text && <span>{o.text}</span>}
+    {o.image && <img src={o.image} alt={o.text ? `Picture for ${o.text}` : "Answer picture"} className="max-h-40 w-auto max-w-full rounded border bg-white object-contain" />}
+  </span>
+)
+
 export function McqView({ q, r, onChange, closed }) {
   const selected = r.selected ?? []
   if (!q.multi) {
@@ -13,7 +21,7 @@ export function McqView({ q, r, onChange, closed }) {
       <RadioGroup value={selected[0] ?? ""} onValueChange={(v) => onChange({ selected: [v] }, true)} disabled={closed} className="gap-2">
         {q.options.map((o) => (
           <Label key={o.id} className="flex cursor-pointer items-center gap-3 rounded-lg border p-3 font-normal has-[[data-state=checked]]:border-primary has-[[data-state=checked]]:bg-secondary">
-            <RadioGroupItem value={o.id} /> {o.text}
+            <RadioGroupItem value={o.id} /> <Option o={o} />
           </Label>
         ))}
       </RadioGroup>
@@ -24,7 +32,7 @@ export function McqView({ q, r, onChange, closed }) {
     <div className="grid gap-2">
       {q.options.map((o) => (
         <Label key={o.id} className="flex cursor-pointer items-center gap-3 rounded-lg border p-3 font-normal has-[[data-state=checked]]:border-primary has-[[data-state=checked]]:bg-secondary">
-          <Checkbox checked={selected.includes(o.id)} disabled={closed} onCheckedChange={() => toggle(o.id)} /> {o.text}
+          <Checkbox checked={selected.includes(o.id)} disabled={closed} onCheckedChange={() => toggle(o.id)} /> <Option o={o} />
         </Label>
       ))}
       <p className="text-xs text-muted-foreground">More than one answer can be correct. Each wrong option you tick takes away 0.25 marks. Ticking every option scores 0.</p>

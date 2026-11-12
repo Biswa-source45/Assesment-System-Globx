@@ -1,0 +1,5 @@
+SLOW
+1. What is 2 + 2?
+A) 3
+B) 4
+Answer: B

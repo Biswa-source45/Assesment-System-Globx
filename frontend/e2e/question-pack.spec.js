@@ -3,6 +3,12 @@ import { loginStaff, shot } from "./helpers"
 
 const dialog = (page) => page.getByRole("dialog")
 
+// the dialog opens on the paper upload; the copy-and-paste way (prompt, JSON file) is inside a closed section
+async function openAi(page) {
+  await page.getByRole("button", { name: "Build with AI" }).click()
+  await dialog(page).getByText("Or make the question file yourself with ChatGPT or Claude").click()
+}
+
 async function createExam(page, department, title) {
   await page.goto("/admin/exams/new")
   await page.getByLabel("Department", { exact: true }).click()
@@ -30,7 +36,7 @@ test("build an exam with AI: prompt with the exam's details, upload, review, imp
   await context.grantPermissions(["clipboard-read", "clipboard-write"])
   await loginStaff(page)
   await createExam(page, "Technical", "E2E Pack Exam")
-  await page.getByRole("button", { name: "Build with AI" }).click()
+  await openAi(page)
   expect((await dialog(page).boundingBox()).width).toBeGreaterThan(700)  // the dialog is as wide as asked (a plain max-w class lost to the base dialog's sm:max-w-sm)
 
   // step 1: the prompt carries the exam's details and exactly the counts asked for
@@ -80,7 +86,7 @@ test("build an exam with AI: prompt with the exam's details, upload, review, imp
 test("a file with mistakes lists every one, and adds nothing, not even the good questions", async ({ page }) => {
   await loginStaff(page)
   await createExam(page, "Technical", "E2E Pack Mistakes")
-  await page.getByRole("button", { name: "Build with AI" }).click()
+  await openAi(page)
   const bad = { sections: [{ title: "Mixed", questions: [
     mcq(1, { title: "E2E pack fine one" }), mcq(2, { title: "E2E pack wrong letter", correct: ["f"] }),
     { ...coding, title: "E2E pack broken solution", reference: { language: "python", source: "print(1 / 0)" } },
@@ -106,7 +112,7 @@ test("a file with mistakes lists every one, and adds nothing, not even the good 
 test("files that are not JSON are explained in plain words", async ({ page }) => {
   await loginStaff(page)
   await createExam(page, "General", "E2E Pack Not JSON")
-  await page.getByRole("button", { name: "Build with AI" }).click()
+  await openAi(page)
   await dialog(page).getByLabel("Questions JSON file").setInputFiles(file("Sorry, I cannot help with that.", "reply.txt"))
   await expect(dialog(page).getByTestId("pack-file-error")).toContainText("does not contain a JSON document")
   await dialog(page).getByLabel("Questions JSON file").setInputFiles(file('{"sections": [ {"title": "A", "questions": [], } ]}'))  // the trailing comma is the kind of slip an AI makes
@@ -118,7 +124,7 @@ test("files that are not JSON are explained in plain words", async ({ page }) =>
 test("the prompt and the file follow the exam's department: HR has no coding", async ({ page }) => {
   await loginStaff(page)
   await createExam(page, "HR", "E2E Pack HR Exam")
-  await page.getByRole("button", { name: "Build with AI" }).click()
+  await openAi(page)
   await expect(dialog(page).getByLabel("MCQ (one answer)", { exact: true })).toBeVisible()
   await expect(dialog(page).getByLabel("Coding", { exact: true })).toHaveCount(0)
   await expect(dialog(page).getByLabel("SQL", { exact: true })).toHaveCount(0)
@@ -133,7 +139,7 @@ test("the prompt and the file follow the exam's department: HR has no coding", a
 test("the AI's answer can be pasted as text instead of uploaded: checked, previewed and imported the same way", async ({ page }) => {
   await loginStaff(page)
   await createExam(page, "General", "E2E Pack Paste Exam")
-  await page.getByRole("button", { name: "Build with AI" }).click()
+  await openAi(page)
   const paste = dialog(page).getByLabel("Pasted JSON")
   const check = dialog(page).getByRole("button", { name: "Check pasted JSON" })
   await expect(check).toBeDisabled()  // nothing pasted yet
