@@ -1,6 +1,7 @@
 """Uploading a question paper: reading Word / PDF / Excel / text / photo files with their pictures, the AI step (replaced here by a fixed answer),
 the ordinary check and import after it, and the picture rules every way of saving a question shares."""
 import base64
+import re
 import io
 import zipfile
 
@@ -573,3 +574,32 @@ def test_a_question_that_cannot_be_found_in_the_paper_keeps_what_the_ai_said_and
     assert "CREATE" not in out and "INSERT" not in out and "Sample data" not in out and "<b>Output format</b>" in out and out.endswith("<p><b>Note:</b> departments with no employees must not appear.</p>")
     assert _structure("<p>Already <b>html</b></p>", "mcq_single") == "<p>Already <b>html</b></p>"
     assert "<pre>SELECT 1;</pre>" in _structure("Try this:\nSELECT 1;", "sql")
+
+
+def test_the_downloadable_paper_format_is_a_real_word_file_with_pictures_that_the_upload_reads_correctly(client, monkeypatch):
+    from app.services import paper_format
+    h = _creator(client)
+    docx_r = client.get(f"{API}/help/paper-format.docx", headers=h)
+    txt_r = client.get(f"{API}/help/paper-format.txt", headers=h)
+    assert docx_r.status_code == 200 and docx_r.content[:2] == b"PK" and "wordprocessingml" in docx_r.headers["content-type"] and "attachment" in docx_r.headers["content-disposition"]
+    assert txt_r.status_code == 200 and "Image: [the picture goes here]" in txt_r.text and txt_r.text.count("[the picture goes here]") == paper_format.format_text().count("[the picture goes here]") == 7
+    assert client.get(f"{API}/help/paper-format.docx").status_code in (401, 403)                      # staff only, like the rest of Help
+    with zipfile.ZipFile(io.BytesIO(docx_r.content)) as z:
+        assert {n for n in z.namelist() if n.startswith("word/media/")} and "word/document.xml" in z.namelist()
+
+    out = read_paper("format.docx", docx_r.content)
+    t = out["text"]
+    assert len(out["images"]) == 7 and not out["notes"]
+    assert re.search(r"Q2\..*\nImage:\s*\[\[IMAGE 1\]\]", t) and "(a) Image:" in t and t.index("(a) Image:") < t.index("[[IMAGE 2]]") < t.index("(b) Image:")   # the pictures sit where the format puts them
+
+    # through the upload with a stand-in AI that attaches nothing right: the server puts the pictures where the format says
+    t_ = _exam(client, h, "Technical", "Format exam")
+    qs = [{"type": "mcq_single", "title": "Speed", "statement": "A train 180 m long crosses a pole in 12 seconds. What is its speed?", "options": ["10 m/s", "15 m/s"], "correct": ["b"]},
+          {"type": "mcq_single", "title": "Sales", "statement": "Refer to the bar chart. By what percentage did sales rise from March to April?\nImage:", "options": ["25%", "45%"], "correct": ["a"]},
+          {"type": "mcq_single", "title": "Series", "statement": "Which figure completes the series: circle, square, ...?", "options": ["a", "b", "c", "d"], "correct": ["c"]}]
+    _fake_ai(monkeypatch, lambda p: {"sections": [{"title": "Section A", "questions": qs}]})
+    pics = [(i["id"], i["src"]) for i in out["images"]]
+    got = _understand(client, h, t_["id"], t, images=pics).json()
+    q1, q2, q3 = got["pack"]["sections"][0]["questions"]
+    assert "images" not in q1 and q2["images"] == [pics[0][1]] and "Image" not in q2["statement"]                      # the label word is not question text
+    assert [o.get("image") for o in q3["options"]] == [pics[1][1], pics[2][1], pics[3][1], pics[4][1]]                  # (a)-(d) Image: are the options' pictures, in order

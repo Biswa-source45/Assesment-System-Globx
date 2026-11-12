@@ -285,33 +285,47 @@ test("RUN_AI: six questions with a figure each and an answer key repeating the f
   await review.screenshot({ path: "test-results/screens/real-figures-review.png" })
 })
 
-test("the paper format file can be downloaded from the upload box and from Help", async ({ page, request }) => {
+test("the paper format can be downloaded as Word (with pictures) and as text, from the upload box and from Help", async ({ page }) => {
   await loginStaff(page)
   await createExam(page, "Technical", "E2E Paper Format")
   await openUpload(page)
-  const link = dialog(page).getByRole("link", { name: "this format" })
-  await expect(link).toHaveAttribute("href", "/question-paper-template.txt")
-  await expect(link).toHaveAttribute("download", "")
-  const file = await request.get("/question-paper-template.txt")
-  expect(file.ok()).toBe(true)
-  const text = await file.text()
-  for (const part of ["Section A:", "Q1.", "[1 mark]", "Answer Key and Solutions", "For the examiner only."]) expect(text).toContain(part)
+  const links = dialog(page).getByTestId("paper-format-links")
+  const [word] = await Promise.all([page.waitForEvent("download"), links.getByRole("button", { name: /Word/ }).click()])
+  expect(word.suggestedFilename()).toBe("KAUTILYA-question-paper-format.docx")
+  const path = await word.path()
+  const bytes = fs.readFileSync(path)
+  expect(bytes.subarray(0, 2).toString()).toBe("PK")                    // a real Word (zip) file
+  expect(bytes.includes(Buffer.from("word/media/"))).toBe(true)          // with the example pictures inside
+  const [txt] = await Promise.all([page.waitForEvent("download"), links.getByRole("button", { name: /text/ }).click()])
+  expect(txt.suggestedFilename()).toBe("KAUTILYA-question-paper-format.txt")
+  const text = fs.readFileSync(await txt.path(), "utf8")
+  for (const part of ["Section A:", "Q1.", "[1 mark]", "(a) Image:", "Answer Key and Solutions", "For the examiner only."]) expect(text).toContain(part)
   await page.goto("/admin/help?topic=paper-upload")
-  await expect(page.getByRole("link", { name: "this format file" })).toBeVisible()
+  await expect(page.getByTestId("paper-format-links")).toBeVisible()
 })
 
-test("RUN_AI: the downloadable paper format itself converts cleanly", async ({ page }) => {
+test("RUN_AI: the downloaded Word format itself converts cleanly, pictures in place", async ({ page }) => {
   test.skip(!process.env.RUN_AI, "calls the real OpenAI API (cents); run with RUN_AI=1")
   test.setTimeout(400_000)
   await loginStaff(page)
   await createExam(page, "Technical", "E2E Paper Template")
   await openUpload(page)
-  await choose(page, "public/question-paper-template.txt")
+  const [word] = await Promise.all([page.waitForEvent("download"), dialog(page).getByTestId("paper-format-links").getByRole("button", { name: /Word/ }).click()])
+  const sent = page.waitForRequest((r) => r.url().includes("/understand-paper"))
+  await dialog(page).getByLabel("Question paper file").setInputFiles({ name: word.suggestedFilename(), mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document", buffer: fs.readFileSync(await word.path()) })
+  const pictures = (await (await sent).postDataJSON()).images
   const review = dialog(page).getByTestId("paper-review")
   await expect(review).toBeVisible({ timeout: 350_000 })
   fs.mkdirSync("test-results/screens", { recursive: true })
   fs.writeFileSync("test-results/screens/real-template-review.txt", await review.innerText())
+  await review.screenshot({ path: "test-results/screens/real-template-review.png" })
   expect(await review.locator("[data-ok=false]").count()).toBe(0)
-  expect(await review.getByTestId("paper-question").count()).toBe(5)
-  for (const title of ["Quantitative Aptitude", "English", "Coding", "SQL"]) expect(await review.innerText()).toContain(title)
+  const rows = review.getByTestId("paper-question")
+  expect(await rows.count()).toBe(6)
+  const srcs = (i) => rows.nth(i).locator("img").evaluateAll((m) => m.map((x) => x.getAttribute("src")))
+  expect(await srcs(0)).toEqual([])                                                          // Q1 has no picture
+  expect(await srcs(1)).toEqual([pictures[0].src])                                           // Q2: the bar chart
+  expect(await srcs(2)).toEqual(pictures.slice(1, 5).map((p) => p.src))                      // Q3: four picture options, in order
+  expect(await srcs(4)).toEqual([pictures[5].src])                                           // the coding question's diagram
+  expect(await srcs(5)).toEqual([pictures[6].src])                                           // the SQL question's tables
 })

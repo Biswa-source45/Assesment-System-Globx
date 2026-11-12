@@ -29,7 +29,7 @@ from app.models import QTYPES, Department, Question, Section, SectionItem, Test,
 from app.sandbox.judge import run_reference, sql_expected_for
 from app.sandbox.languages import STARTER_SUM
 from app.sandbox import remote
-from app.services import ai
+from app.services import ai, paper_format
 from app.services.ai import _parse_json_loose, salvage_json
 from app.services.attempts import proctoring_config
 from app.services.paper import MAX_IMAGES, MAX_SCANS, MAX_TEXT, PaperError, read_paper, split_paper
@@ -474,6 +474,8 @@ Question types this department offers (use only these):
 
 WHAT TO DO
 - First count the questions in the paper (or in the part of it you are given), from the first to the last, in every section (a question with several options is ONE question; a written question after the options-questions is a question too). Your document must hold exactly that many questions.
+- In the paper a line that starts with "Image:" (or "Figure:") only labels a picture that follows or sits on that line: keep the marker, leave the label word out. Option labels such as (a) or A) before a picture marker belong to that option.
+- Text in the paper that explains how to write a paper (for example "NOTES FOR THE WRITER", "delete this part") is not a question: ignore it.
 - Every question needs a short descriptive "title" of at least two words (for example "Sales increase from March to April"), never only its number.
 - Every question needs a "statement": the full question text as the paper words it. For a coding or SQL question that is the task itself (what to write, the input and output format, the constraints). Never leave it out.
 - Convert EVERY question in the paper, faithfully: keep the wording, the options, the answers and the marks. Do not invent questions and do not skip any. Fix only obvious typing mistakes.
@@ -593,7 +595,7 @@ def _where(text: str, ids: List[str]) -> str:
     return "\n".join(out)
 
 
-_MARK = re.compile(r"\s*\[\[(IMAGE \d+)\]\]\s*")
+_MARK = re.compile(r"\s*(?:\b(?:image|picture|figure|diagram)\s*:\s*)?\[\[(IMAGE \d+)\]\]\s*", re.I)  # "Image: [[IMAGE 3]]": the label word goes with the marker
 
 
 def _pull_markers(text: Any) -> Tuple[Any, List[str]]:
@@ -885,7 +887,7 @@ def _place_pictures(pack: Dict[str, Any], body_text: str) -> None:
         opts = [{"text": o, "image": ""} if isinstance(o, str) else {**o, "image": ""} for o in (q.get("options") if isinstance(q.get("options"), list) else []) if isinstance(o, (str, dict))]
         on_question = []
         for pos, iid in own.get(i, []):
-            label = re.search(r"(?:^|\n)[ \t]*\(?([A-Ha-h1-8])[).:][ \t]*$", body_text[max(0, pos - 14):pos])
+            label = re.search(r"(?:^|\n)[ \t]*\(?([A-Ha-h1-8])[).:][ \t]*(?:image|picture|figure|diagram)?[ \t]*:?[ \t]*$", body_text[max(0, pos - 30):pos], re.I)
             idx = (ord(label.group(1).lower()) - 97 if label.group(1).isalpha() else int(label.group(1)) - 1) if label else None
             if idx is not None and 0 <= idx < len(opts):
                 opts[idx]["image"] = iid
@@ -945,6 +947,7 @@ def _polish(pack: Dict[str, Any]) -> None:
             if not isinstance(q, dict):
                 continue
             if isinstance(q.get("statement"), str):
+                q["statement"] = re.sub(r"(?im)^\s*(?:image|picture|figure|diagram)\s*:?\s*$|<p>\s*(?:image|picture|figure|diagram)\s*:?\s*</p>", "", q["statement"])
                 q["statement"] = _structure(q["statement"], str(q.get("type") or ""))
             t = str(q.get("title") or "").strip()
             if not t or re.fullmatch(r"(?i)(?:q(?:uestion)?\.?\s*)?\d+\s*[.):]?", t):
@@ -1009,6 +1012,20 @@ def understand_paper(tid: str, body: UnderstandIn, user: User = Depends(AUTHOR),
     hidden_hint = " ".join(re.findall(r"[^.]*hidden[^.]*[.]", key, re.I))[:1500]  # what the paper says about its hidden data
     _finish_cases(pack, notes, hidden_hint)
     return {"pack": pack, "notes": notes}
+
+
+# ---- The paper format people can download (made on request, never stored)
+@router.get("/help/paper-format.docx")
+def paper_format_docx(user: User = Depends(VIEW)):
+    from fastapi.responses import Response
+    return Response(paper_format.format_docx(), media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                    headers={"Content-Disposition": 'attachment; filename="KAUTILYA-question-paper-format.docx"'})
+
+
+@router.get("/help/paper-format.txt")
+def paper_format_txt(user: User = Depends(VIEW)):
+    from fastapi.responses import Response
+    return Response(paper_format.format_text(), media_type="text/plain; charset=utf-8", headers={"Content-Disposition": 'attachment; filename="KAUTILYA-question-paper-format.txt"'})
 
 
 # ---- Help screen: stateless tools for its playgrounds. They save nothing.
