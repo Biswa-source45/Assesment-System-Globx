@@ -423,3 +423,40 @@ def read_paper(filename: str, data: bytes) -> Dict[str, Any]:
     if len(text) > MAX_TEXT:
         raise PaperError("This paper is too long to read in one go (about " + f"{len(text) // 1000}" + " thousand characters). Upload it in parts of about 40 questions.")
     return {"kind": KINDS[ext], "pages": pages, "text": text, "images": pics.images, "scans": pics.scans, "notes": pics.notes}
+
+
+# ---- long papers are converted a few questions at a time: one call for a whole paper is slow and the model loses the structure
+_STRONG = re.compile(r"(?m)^[\s*#]*(?:Q|Question)\.?\s*\d{1,3}\b")
+_WEAK = re.compile(r"(?m)^[\s*#]*\d{1,3}\s*[.)]\s+\S")
+
+
+def _pieces(text: str) -> List[str]:
+    """A section's text cut into whole questions (at "Q12" or "12." starts), or into paragraphs when it has no numbering."""
+    for rx in (_STRONG, _WEAK):
+        cuts = [m.start() for m in rx.finditer(text)]
+        if len(cuts) >= 2:
+            cuts = [0] + [c for c in cuts if c > 0]
+            return [text[a:b] for a, b in zip(cuts, cuts[1:] + [len(text)])]
+    return [p + "\n\n" for p in re.split(r"\n{2,}", text) if p.strip()]
+
+
+def split_paper(body: str, spans: List[Tuple[int, str]], limit: int = 6000, max_q: int = 8) -> Tuple[str, List[Dict[str, str]]]:
+    """(the introduction before the first section heading, the parts to convert). A part is a few whole questions of one section
+    ({title, text}); `spans` are (offset, title) of the section headings. A paper that fits `limit` is one part."""
+    if len(body) <= limit:
+        return "", [{"title": "", "text": body}]
+    spans = sorted(spans)
+    intro = body[:spans[0][0]] if spans else ""
+    sections = [(t, body[s:(spans[i + 1][0] if i + 1 < len(spans) else len(body))]) for i, (s, t) in enumerate(spans)] if spans else [("", body)]
+    parts: List[Dict[str, str]] = []
+    for title, text in sections:
+        cur, n = "", 0
+        for piece in _pieces(text):
+            if cur and (len(cur) + len(piece) > limit or n >= max_q):
+                parts.append({"title": title, "text": cur})
+                cur, n = "", 0
+            cur += piece
+            n += 1 if (_STRONG.match(piece) or _WEAK.match(piece)) else 0
+        if cur.strip():
+            parts.append({"title": title, "text": cur})
+    return intro, parts

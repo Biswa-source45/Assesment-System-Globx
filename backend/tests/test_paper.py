@@ -403,3 +403,122 @@ def test_a_question_the_ai_forgot_to_word_is_asked_for_once_more(client, monkeyp
     calls.clear()
     monkeypatch.setattr(exam_pack, "ask_ai_for_pack", lambda s, m, p: (calls.append(m) or '{"sections": [{"questions": [{"type": "mcq_single", "title": "Still none"}]}]}', "stop"))
     assert _understand(client, h, t["id"]).status_code == 200 and len(calls) == 2           # asks once, not forever; the review then shows the problem
+
+
+BRACKETS = ("s = input().strip()\npairs = {')': '(', ']': '[', '}': '{'}\nst = []\nfor ch in s:\n    if ch in '([{':\n        st.append(ch)\n"
+            "    elif not st or st.pop() != pairs[ch]:\n        print('NO')\n        break\nelse:\n    print('YES' if not st else 'NO')\n")
+
+
+def _coding(cases, **extra):
+    return {"type": "coding", "title": "Balanced Brackets", "statement": "Tell whether the brackets in s are balanced. Print YES or NO.", "marks": 8,
+            "reference": {"language": "python", "source": BRACKETS}, "test_cases": cases, **extra}
+
+
+def test_a_big_case_is_made_by_a_program_and_a_described_case_is_left_out_with_a_note(client, monkeypatch):
+    h = _creator(client)
+    t = _exam(client, h, "Technical", "Generator exam")
+    cases = [{"input": "{[()]}", "visibility": "open", "purpose": "sample"}, {"input": "([)]", "visibility": "open"},
+             {"generator": {"language": "python", "source": "print('(' * 3000 + ')' * 3000)"}, "visibility": "hidden", "purpose": "maximum size, deeply nested"},
+             {"input": "(generated) maximum size, deeply nested", "visibility": "hidden", "purpose": "a description, not an input"}]
+    _fake_ai(monkeypatch, lambda pics: {"sections": [{"title": "Coding", "questions": [_coding(cases)]}]})
+    got = _understand(client, h, t["id"]).json()
+    kept = got["pack"]["sections"][0]["questions"][0]["test_cases"]
+    assert [c["visibility"] for c in kept] == ["open", "open", "hidden"] and len(kept[2]["input"]) >= 6000 and kept[2]["input"].startswith("(((")
+    assert any("test case 4 was left out" in n and "could not run on it" in n for n in got["notes"])           # (no AI in this test: nothing can make it)
+
+    from app.services import ai                                                              # with an AI, the described case gets one try at a generator program
+    monkeypatch.setattr(ai, "ai_generator_program", lambda *a, **k: "print('[' * 2000 + ']' * 2000)")
+    again = _understand(client, h, t["id"]).json()
+    kept = again["pack"]["sections"][0]["questions"][0]["test_cases"]
+    assert [c["visibility"] for c in kept] == ["open", "open", "hidden", "hidden"] and kept[3]["input"].startswith("[[[")
+    assert any("test case 4 was only a description" in n for n in again["notes"])
+    rep = client.post(f"{API}/tests/{t['id']}/import-questions", headers=h, json={"pack": got["pack"], "dry_run": True, "detail": True}).json()
+    assert rep["ok"], rep["errors"]                                                          # what is left passes the ordinary check, expected outputs from the reference
+
+    # a generator that prints nothing, and a reference that cannot run at all, are not hidden: the first is left out, the second is the ordinary check's to explain
+    broken = [{"input": "()", "visibility": "open"}, {"generator": {"language": "python", "source": "raise SystemExit(3)"}, "visibility": "hidden"}]
+    _fake_ai(monkeypatch, lambda pics: {"sections": [{"questions": [_coding(broken)]}]})
+    assert any("generator program did not produce an input" in n for n in _understand(client, h, t["id"]).json()["notes"])
+
+
+def test_hidden_data_the_paper_only_describes_is_written_and_checked_against_the_reference(client, monkeypatch):
+    from app.services import ai
+    h = _creator(client)
+    t = _exam(client, h, "Technical", "Missing hidden exam")
+    sql = {"type": "sql", "title": "Well paid", "statement": "Names of employees earning over 50000, alphabetically.", "marks": 9, "schema": "CREATE TABLE employees (id INTEGER PRIMARY KEY, name TEXT, salary INTEGER);",
+           "reference_sql": "SELECT name FROM employees WHERE salary > 50000 ORDER BY name",
+           "datasets": [{"data": "INSERT INTO employees VALUES (1,'Asha',60000),(2,'Ben',40000);", "visibility": "open"}]}
+    coding = _coding([{"input": "{[()]}", "visibility": "open"}, {"input": "([)]", "visibility": "open"}])
+    _fake_ai(monkeypatch, lambda pics: {"sections": [{"title": "Both", "questions": [coding, sql]}]})
+    monkeypatch.setattr(ai, "ai_generate_inputs", lambda *a, **k: [{"input": "((()))", "purpose": "nested"}, {"input": "(x", "purpose": "crashes the reference"}])
+    monkeypatch.setattr(ai, "ai_generate_sql_datasets", lambda *a, **k: [{"data": "INSERT INTO employees VALUES (1,'Zed',50000),(2,'Amy',50001);", "purpose": "a tie at the limit"},
+                                                                          {"data": "INSERT INTO nothing VALUES (1);", "purpose": "broken"}])
+    got = _understand(client, h, t["id"]).json()
+    c, s = got["pack"]["sections"][0]["questions"]
+    assert [x["visibility"] for x in c["test_cases"]] == ["open", "open", "hidden"] and c["test_cases"][2]["input"] == "((()))"   # the input the reference cannot run on is not kept
+    assert [d["visibility"] for d in s["datasets"]] == ["open", "hidden"] and "Zed" in s["datasets"][1]["data"]                    # the dataset that does not fit the schema is not kept
+    assert any("no hidden test cases, so 1 were written" in n for n in got["notes"]) and any("no hidden data, so 1 dataset(s)" in n for n in got["notes"])
+    rep = client.post(f"{API}/tests/{t['id']}/import-questions", headers=h, json={"pack": got["pack"], "dry_run": True, "detail": True}).json()
+    assert rep["ok"], rep["errors"]
+
+    # no AI available for the repair: nothing is invented, the ordinary check says what is missing
+    monkeypatch.setattr(ai, "ai_generate_sql_datasets", lambda *a, **k: (_ for _ in ()).throw(RuntimeError("no AI")))
+    monkeypatch.setattr(ai, "ai_generate_inputs", lambda *a, **k: (_ for _ in ()).throw(RuntimeError("no AI")))
+    got = _understand(client, h, t["id"]).json()
+    rep = client.post(f"{API}/tests/{t['id']}/import-questions", headers=h, json={"pack": got["pack"], "dry_run": True}).json()
+    assert not rep["ok"] and sum("at least 1 sample" in e for e in rep["errors"]) == 2
+
+
+def test_a_long_paper_is_converted_part_by_part_and_joined_again(client, monkeypatch):
+    h = _creator(client)
+    t = _exam(client, h, "Technical", "Long paper exam")
+    sec = lambda c: f"Section {c}: Part {c}\n" + "".join(f"Q{c}{i}. Question number {i} " + "word " * 140 + "\n(a) one\n(b) two\n" for i in range(1, 8))  # noqa: E731
+    paper = "Instructions for everyone. " * 5 + "\n" + sec("A") + sec("B") + sec("C") + "Answer Key and Solutions\nFor the examiner only.\nQA1 (a)\n"
+    msgs = []
+
+    def fake(system, msg, pictures):
+        import json
+        msgs.append(msg)
+        part = int(msg.split("PART ")[1].split(" ")[0])
+        title = msg.split('SECTION "')[1].split('"')[0]
+        qs = [{"type": "mcq_single", "title": f"{title} q{i}", "statement": f"Question {i}", "options": ["a", "b"], "correct": ["a"]} for i in range(2)]
+        return json.dumps({"sections": [{"title": "whatever", "questions": qs}], "paper_question_count": 7, "notes": [f"part {part} done"]}), "stop"
+    monkeypatch.setattr(exam_pack, "ask_ai_for_pack", fake)
+    got = _understand(client, h, t["id"], paper).json()
+    assert len(msgs) == 3 and all("OF 3 OF THE PAPER" in m and "QA1 (a)" in m and "Instructions for everyone" in m for m in msgs)   # each part gets the key and the introduction
+    assert [s["title"] for s in got["pack"]["sections"]] == ["Section A: Part A", "Section B: Part B", "Section C: Part C"]            # the paper's headings, whatever the AI called them
+    assert [len(s["questions"]) for s in got["pack"]["sections"]] == [2, 2, 2]
+    assert sorted(n for n in got["notes"] if n.startswith("part")) == ["part 1 done", "part 2 done", "part 3 done"]
+    assert any("counted 21 questions in the paper but returned 6" in n for n in got["notes"])
+
+
+GARBLED = ('{"format": "x", "sections": [{"title": "Coding", "questions": [{"type": "mcq_single", "title": "Q", "statement": "What \\"is\\" {this}?", "options": ["a", "b"], "correct": ["a"]}]}],'
+           ' "notes�: []}  ```  ```  ```  ```  ```  ```')
+
+
+def test_a_reply_that_garbles_its_end_and_loops_is_salvaged_not_thrown_away(client, monkeypatch):
+    from app.services.ai import OpenAIProvider, salvage_json
+    assert salvage_json(GARBLED)["sections"][0]["questions"][0]["statement"] == 'What "is" {this}?'           # braces and quotes inside strings do not fool it
+    assert salvage_json("no json here") is None and salvage_json('{"sections": [{"title": "S", "questions": [{"type": "sho') is None   # nothing complete yet
+    assert salvage_json('{"a": [1, 2, {"b": 3}') == {"a": [1, 2, {"b": 3}]}
+
+    h = _creator(client)
+    t = _exam(client, h, "Technical", "Garbled exam")
+    monkeypatch.setattr(exam_pack, "ask_ai_for_pack", lambda s, m, p: (GARBLED, "stop"))
+    got = _understand(client, h, t["id"]).json()
+    assert len(got["pack"]["sections"][0]["questions"]) == 1 and any("garbled near its end" in n for n in got["notes"])
+    monkeypatch.setattr(exam_pack, "ask_ai_for_pack", lambda s, m, p: (GARBLED, "length"))                  # cut off by the limit: what is complete is kept, and the examiner is told
+    got = _understand(client, h, t["id"]).json()
+    assert len(got["pack"]["sections"][0]["questions"]) == 1 and any("cut off" in n for n in got["notes"])
+    monkeypatch.setattr(exam_pack, "ask_ai_for_pack", lambda s, m, p: ("```  ```  ```", "length"))           # nothing usable at all: the old plain refusal
+    assert _understand(client, h, t["id"]).status_code == 422
+
+    sent = {}
+
+    class R:
+        def raise_for_status(self): pass
+        def json(self): return {"choices": [{"message": {"content": "{}"}, "finish_reason": "stop"}]}
+    import httpx
+    monkeypatch.setattr(httpx, "post", lambda url, **kw: sent.update(kw["json"]) or R())
+    OpenAIProvider("k", "m").look_and_complete("s", "u", [("IMAGE 1", "data:image/png;base64,AA==", "low")])
+    assert sent["stop"] == ["```"] and sent["response_format"] == {"type": "json_object"}                     # the loop is cut at the first code fence

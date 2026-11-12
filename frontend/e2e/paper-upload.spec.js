@@ -242,3 +242,23 @@ test("RUN_AI: a paper shaped like a real one (sections, marks in brackets, a cha
   await expect(rows.nth(0).locator(".q-html img")).toHaveCount(1)
   expect(await review.locator("img").count()).toBe(1)
 })
+
+test("RUN_AI: the coding and SQL part of a real paper (sample tables, '(generated) maximum size' cases, hidden data only described)", async ({ page }) => {
+  test.skip(!process.env.RUN_AI, "calls the real OpenAI API (cents); run with RUN_AI=1")
+  test.setTimeout(400_000)
+  await loginStaff(page)
+  await createExam(page, "Technical", "E2E Paper Real Coding")
+  await openUpload(page)
+  await choose(page, "e2e/fixtures/coding-sql-paper.txt")
+  const review = dialog(page).getByTestId("paper-review")
+  await expect(review).toBeVisible({ timeout: 350_000 })
+  fs.mkdirSync("test-results/screens", { recursive: true })
+  const text = await review.innerText()
+  fs.writeFileSync("test-results/screens/real-coding-review.txt", text)
+  await review.screenshot({ path: "test-results/screens/real-coding-review.png" })
+  expect(await review.locator("[data-ok=false]").count()).toBe(0)           // no question refused
+  expect(await review.getByTestId("paper-question").count()).toBe(3)
+  expect(text).toContain("Balanced Brackets")
+  expect(text).toContain("Minimum Cost Path")
+  expect(text).toMatch(/Above-average earners/i)
+})

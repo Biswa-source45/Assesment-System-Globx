@@ -1,0 +1,125 @@
+GLOBX Full-Stack Screening (Sample) - Coding and SQL part
+
+Section D: Coding (16 marks)
+Q26. Balanced Brackets [8 marks]
+A string made only of the characters ( ) [ ] { } is balanced if every opening bracket is closed by the same type of bracket, and brackets are closed in the correct order (the most recently opened bracket must be closed first). Write a program that tells whether the given string is balanced.
+Input format
+One line containing the string s.
+Output format
+Print YES if the string is balanced, otherwise print NO (upper case, one line).
+Constraints
+1 <= |s| <= 100000. s contains only the characters ( ) [ ] { }.
+Sample
+Input Output
+{[()]} YES
+([)] NO
+
+Q27. Minimum Cost Path [8 marks]
+You are given a grid of N rows and M columns. Each cell holds a non-negative cost. You start at the top-left cell and must reach the bottom-right cell. From any cell you may move only right or down. The cost of a path is the sum of the numbers in all cells visited (including the first and last cell). Find the minimum possible cost.
+Input format
+Line 1: two integers N M.
+Next N lines: M integers each, the costs of that row, separated by spaces.
+Output format
+One integer: the minimum path cost.
+Constraints
+1 <= N, M <= 500. 0 <= cost <= 1000.
+Sample
+Input Output
+3 3
+1 3 1
+1 5 1
+4 2 1 7
+2 3
+5 1 2
+4 8 1 9
+
+Section E: SQL (9 marks)
+Q28. Above-average earners per department [9 marks]
+The database has the two tables shown below. Write one SQLite query that returns, for every department, the number of employees whose salary is strictly higher than the average salary of their own department.
+Output format
+Two columns: dept_name and above_avg_count. Show only departments where the count is at least 1. Sort by above_avg_count from highest to lowest, and break ties by dept_name in alphabetical order.
+Sample data (schema and data are provided on the platform)
+CREATE TABLE departments (
+ dept_id INTEGER PRIMARY KEY,
+ dept_name TEXT
+);
+CREATE TABLE employees (
+ emp_id INTEGER PRIMARY KEY,
+ emp_name TEXT,
+ dept_id INTEGER REFERENCES departments(dept_id),
+ salary INTEGER,
+ join_date TEXT
+);
+INSERT INTO departments VALUES (1,'Engineering'),(2,'Sales'),(3,'HR'),(4,'Finance');
+INSERT INTO employees VALUES
+ (1,'Asha',1,60000,'2024-01-10'),
+ (2,'Ben',1,70000,'2023-06-01'),
+ (3,'Chen',1,90000,'2022-03-15'),
+ (4,'Divya',1,100000,'2021-09-20'),
+ (5,'Esha',2,40000,'2024-02-01'),
+ (6,'Farid',2,45000,'2023-11-11'),
+ (7,'Gita',2,50000,'2022-07-07'),
+ (8,'Hari',2,80000,'2020-05-05'),
+ (9,'Ila',3,30000,'2023-01-01'),
+ (10,'Jai',3,30000,'2024-04-04');
+Note: departments with no employees, and departments where nobody earns above the average, must not appear in the result.
+
+Answer Key and Solutions
+For the examiner only. Do not share with candidates.
+
+Q26. Balanced Brackets - Approach: use a stack. Push every opening bracket. For a closing bracket, the stack must be non-empty and its top must be the matching opening bracket; pop it. At the end the stack must be empty. Time O(n), space O(n).
+Reference solution (Python)
+def is_balanced(s):
+ pairs = {')': '(', ']': '[', '}': '{'}
+ stack = []
+ for ch in s:
+ if ch in '([{':
+ stack.append(ch)
+ else:
+ if not stack or stack.pop() != pairs[ch]:
+ return False
+ return not stack
+s = input().strip()
+print("YES" if is_balanced(s) else "NO")
+# Type Purpose Input Expected output Mark
+1 open sample {[()]} YES 1
+2 open wrong closing order ([)] NO 1
+3 hidden all three bracket types ()[]{} YES 2
+4 hidden unmatched opening brackets ((( NO 2
+5 hidden maximum size, deeply nested (generated) maximum size, deeply nested YES 2
+
+Q27. Minimum Cost Path - Approach: dynamic programming. The best cost to reach cell (i, j) is its own cost plus the smaller of the best cost to reach the cell above and the cell on its left. Time O(N x M).
+Reference solution (Python)
+n, m = map(int, input().split())
+grid = [list(map(int, input().split())) for _ in range(n)]
+for i in range(n):
+ for j in range(m):
+ if i == 0 and j == 0:
+ continue
+ best = float('inf')
+ if i > 0:
+ best = min(best, grid[i-1][j])
+ if j > 0:
+ best = min(best, grid[i][j-1])
+ grid[i][j] += best
+print(grid[n-1][m-1])
+# Type Purpose Input Expected output Mark
+1 open sample 3 3 / 1 3 1 / 1 5 1 / 4 2 1 -> 7 1
+2 open 2 x 3 grid 2 3 / 5 1 2 / 4 8 1 -> 9 1
+3 hidden single cell 1 1 / 7 -> 7 2
+4 hidden 4 x 4 grid, a large cell must be avoided 4 4 / 1 2 3 4 / 2 100 1 5 / 3 1 1 1 / 9 9 9 1 -> 10 2
+5 hidden maximum size 500 x 500 (generated) maximum size 500 x 500 -> 999000 2
+
+Detailed solution: Section E (SQL)
+Reference query
+SELECT d.dept_name,
+ COUNT(*) AS above_avg_count
+FROM employees e
+JOIN departments d ON d.dept_id = e.dept_id
+WHERE e.salary > (SELECT AVG(salary)
+ FROM employees
+ WHERE dept_id = e.dept_id)
+GROUP BY d.dept_id, d.dept_name
+ORDER BY above_avg_count DESC, d.dept_name ASC;
+Expected output on the sample data: Engineering 2, Sales 1.
+Marking: 3 marks for the correct result on the sample data and 6 marks for the hidden data. The hidden data should include a tie at the average, a department with no employees, a department where all salaries are equal and departments with the same count (to test the alphabetical tie-break).

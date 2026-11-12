@@ -118,6 +118,13 @@ export const TOPICS = [
         "Maths is written as plain text, for example x^2, (a)/(b), sqrt(x).",
         "A chart drawn inside Word, a drawing on a PDF page, or a figure inside a scanned page cannot be cut out. The review says so: after importing, open the question with the pencil and use Add picture (a screenshot can be pasted).",
       ]} />
+      <p className="font-medium">Coding and SQL questions</p>
+      <List items={[
+        "The paper's reference solution (or reference query) is run for real. The expected outputs come from it, never from the AI, and a solution that does not compile or fails on a case is reported.",
+        "A test case the paper only describes (\"maximum size\", \"generated\") is made by a small program, so nothing huge is typed. If a case cannot be made it is left out and the note at the top says which.",
+        "If the paper gives no hidden test cases (or no hidden SQL data), the AI writes some and the reference solution is run on them. The note at the top says so: look at them before publishing.",
+        "Marks, the sample cases and the input and output formats are taken from the paper. Code copied from a PDF loses its indentation, so the AI restores it and the platform runs it to check.",
+      ]} />
       <p className="font-medium">What to check in the review</p>
       <List items={[
         <>The amber note at the top lists what the AI could not do. Read it first.</>,
