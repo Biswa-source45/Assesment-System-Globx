@@ -19,7 +19,10 @@ _LABEL = re.compile(r"(?i)\b(?:image|picture|figure|diagram)\s*:\s*")
 _MARKS = re.compile(r"(?i)[\[(]\s*(\d+(?:\.\d+)?)\s*marks?\s*[\])]")
 _ANSWER = re.compile(r"(?i)^[ \t*]*(?:correct\s+)?(?:answer|ans)\.?[ \t]*[:\-][ \t]*(.*)$")
 _NUMBER_WORDS = {"two": 2, "three": 3, "four": 4, "five": 5, "six": 6, "seven": 7, "2": 2, "3": 3, "4": 4, "5": 5, "6": 6, "7": 7}
-_SAME = re.compile(r"(?i)\b(?:same|above|previous|given|earlier)\s+(?:bar\s*chart|chart|graph|figure|diagram|table|image|picture|map)\b")
+_SAME = re.compile(r"(?i)\b(?:same|above|previous|given|earlier|preceding)\s+(?:\w+\s+){0,2}(?:chart|graph|figure|diagram|table|image|picture|map|tree|illustration)\b"
+                   r"|\b(?:chart|graph|figure|diagram|table|image|picture|map|tree)\s+(?:above|given above|shown above)\b")
+_EXPLAIN = re.compile(r"(?i)^[ \t*]*(?:explanation|solution|reason|rationale)[ \t]*[:\-][ \t]*")
+_PASSAGE_INTRO = re.compile(r"(?i)^[ \t*]*(?:read the (?:following )?(?:passage|paragraph|text|extract)|directions?\b|passage\s*[:\-]|comprehension\b)")
 
 
 def _letters(text: str, count: int) -> List[str]:
@@ -108,17 +111,30 @@ def _read_block(number: int, text: str, key: Dict[int, List[str]]) -> Tuple[Opti
             tail = tail_seg
         elif tail_seg:  # words between two options: not a layout we trust
             return None, "text between options"
-    answers = None
-    plain_tail = []
+    answers, explanation, passage, mode = None, [], [], None
     for ln in tail:
+        text = ln.strip()
+        if not text:
+            continue
         a = _ANSWER.match(ln)
         if a and answers is None:
             answers = _letters(a.group(1), len(options))
             if not answers:  # "Answer: Paris" names the option by its words
                 words = a.group(1).strip().lower()
                 answers = [chr(97 + i) for i, o in enumerate(options) if o["text"].lower() == words]
-        elif ln.strip():
-            plain_tail.append(ln)
+            mode = "answer"
+        elif _EXPLAIN.match(text):  # "Explanation: ..." up to the end of its sentence (it may wrap over lines)
+            explanation.append(_EXPLAIN.sub("", text))
+            mode = None if _TERM.search(text) else "explanation"
+        elif _PASSAGE_INTRO.match(text):  # "Read the passage ..." and what follows belongs to the questions after this one
+            passage.append(text)
+            mode = "passage"
+        elif mode == "passage":
+            passage.append(text)
+        elif mode == "explanation":
+            explanation.append(text)
+            mode = None if _TERM.search(text) else mode
+        # anything else (the rest of a wrapped answer, stray text) is not part of this question
     if answers is None:
         for ln in stem_lines:
             a = _ANSWER.match(ln)
@@ -129,13 +145,20 @@ def _read_block(number: int, text: str, key: Dict[int, List[str]]) -> Tuple[Opti
         answers = [x for x in (answers or []) if ord(x) - 97 < len(options)]
     if not answers:
         return None, "no answer in the paper"
-    q: Dict[str, Any] = {"type": "mcq_multi" if len(answers) > 1 else "mcq_single", "title": "", "statement": _html(join_wrapped(stem)), "options": options,
+    q: Dict[str, Any] = {"type": "mcq_multi" if len(answers) > 1 else "mcq_single", "title": "", "statement": question_html(join_wrapped(stem)), "options": options,
                          "correct": answers, "read_from_paper": True}
     if marks:
         q["marks"] = marks
     if images:
         q["images"] = list(dict.fromkeys(images))
-    q["_tail"] = "\n".join(t for t in _plain_lines(plain_tail))
+    q["_tail"] = "\n".join(_plain_lines(passage))
+    q["_solution_images"] = list(dict.fromkeys(_MARKER.findall("\n".join(tail))))  # a picture under the answer shows the solution: never a picture of the question
+    if explanation:
+        q["explanation"] = " ".join(explanation).strip()
+    _, asked = split_question(join_wrapped(stem))
+    if asked:
+        words = asked.split()
+        q["title"] = " ".join(words[:10]) + ("..." if len(words) > 10 else "")
     return q, ""
 
 
@@ -165,7 +188,7 @@ def parse_paper(body: str, key: str, spans: List[Tuple[int, str]]) -> Dict[str, 
             if it["kind"] != "mcq":
                 continue
             tail = it["question"].pop("_tail", "")
-            if not tail or not (re.search(r"(?i)passage|paragraph|read the following|extract", tail) or len(tail) > 150):
+            if not tail:
                 continue
             n = re.search(r"(?i)next\s+(\w+)\s+questions?", tail)
             count = _NUMBER_WORDS.get(n.group(1).lower()) if n else None
@@ -180,12 +203,14 @@ def parse_paper(body: str, key: str, spans: List[Tuple[int, str]]) -> Dict[str, 
                 gone += 1
                 if count is not None and gone >= count:
                     break
+    solution: List[str] = []
     for sec in sections:
         for it in sec["items"]:
             if it["kind"] == "mcq":
                 it["question"].pop("_tail", None)
+                solution += it["question"].pop("_solution_images", [])
     sections = [s for s in sections if s["items"]]
-    return {"sections": sections, "exact": sum(1 for s in sections for it in s["items"] if it["kind"] in ("mcq", "code"))}
+    return {"sections": sections, "solution_images": solution, "exact": sum(1 for s in sections for it in s["items"] if it["kind"] in ("mcq", "code"))}
 
 
 def share_pictures(questions: List[Dict[str, Any]]) -> None:
@@ -285,7 +310,10 @@ def read_code_block(number: int, text: str, key_snippet: str) -> Optional[Dict[s
                 q_lines.append(ln)
             sel = "\n".join(q_lines).strip().rstrip(";") if q_lines else None
         if not sel:
-            m = re.search(r"(?is)\bSELECT\b.*?;", clean_key) or re.search(r"(?is)\bSELECT\b.*?;", _NOISE.sub("", text[text.lower().find("reference query"):]) if "reference query" in text.lower() else "")
+            inserts = list(re.finditer(r"(?is)\bINSERT\s+INTO\b.*?;", text))
+            after_data = _NOISE.sub("", text[inserts[-1].end():]) if inserts else ""  # a solution printed right under the question's data
+            m = (re.search(r"(?is)\bSELECT\b.*?;", clean_key) or re.search(r"(?is)\bSELECT\b.*?;", _NOISE.sub("", text[text.lower().find("reference query"):]) if "reference query" in text.lower() else "")
+                 or re.search(r"(?is)\bSELECT\b.*?;", after_data))
             sel = m.group(0).rstrip(";") if m else None
         if not sel or not data:
             return None
@@ -341,3 +369,25 @@ def join_wrapped(lines: List[str]) -> List[str]:
         else:
             out.append(s)
     return out
+
+
+# ---- how a choice question reads: what is given in normal text, the question itself in bold
+_LABEL_PARA = re.compile(r"(?i)^(?:statements?|conclusions?|assertion|reason|passage|directions?|read the|given|input|output|note)\b")
+_ABBR = re.compile(r"\b(?:Mr|Mrs|Ms|Dr|Prof|Rs|St|vs|No|e\.g|i\.e|etc)\.")
+
+
+def split_question(paragraphs: List[str]) -> Tuple[List[str], str]:
+    """(the paragraphs before the question, the question): the last sentence of the last paragraph ("What is his rank from the bottom?"). A last
+    paragraph that is itself a label line (Statements: ... Conclusions: ...) has no separate question."""
+    paras = [p for p in paragraphs if p.strip()]
+    if not paras or _LABEL_PARA.match(paras[-1]):
+        return paras, ""
+    protected = _ABBR.sub(lambda m: m.group(0).replace(".", "\x00"), paras[-1])
+    parts = [x.replace("\x00", ".") for x in re.split(r"(?<=[.?!])\s+(?=[A-Z(\"'])", protected)]
+    return paras[:-1] + ([" ".join(parts[:-1])] if len(parts) > 1 else []), parts[-1]
+
+
+def question_html(paragraphs: List[str]) -> str:
+    """The statement as HTML: the description as normal paragraphs, the question itself bold."""
+    head, asked = split_question(paragraphs)
+    return _html(head) + (f"<p><b>{html.escape(asked, quote=False)}</b></p>" if asked else "")

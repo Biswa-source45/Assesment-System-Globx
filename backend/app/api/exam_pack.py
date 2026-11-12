@@ -33,7 +33,7 @@ from app.services import ai, paper_format
 from app.services.ai import _parse_json_loose, salvage_json
 from app.services.attempts import proctoring_config
 from app.services.paper import MAX_IMAGES, MAX_SCANS, MAX_TEXT, PaperError, read_paper, split_paper
-from app.services.paper_parse import clean_pages, key_for as _key_for, parse_paper, share_pictures, table_cases
+from app.services.paper_parse import clean_pages, join_wrapped, key_for as _key_for, parse_paper, question_html, share_pictures, table_cases
 from app.services.sanitize import MAX_PICTURES, image_problem
 
 router = APIRouter(tags=["exam-pack"])
@@ -271,7 +271,8 @@ def _body(item: Any, dept_id: str, errs: List[str]) -> Optional[QuestionIn]:
         if not right:
             errs.append("'correct' must list the letters of the right options, for example [\"b\"]")
         errs += [f"correct answer '{c}' is not one of the options ({', '.join(letters)})" for c in right if c not in letters]
-        cfg = {"options": [{"id": l, "text": o, "correct": l in right, **({"image": img} if img else {})} for l, (o, img) in zip(letters, opts)], "partial": True}
+        cfg = {"options": [{"id": l, "text": o, "correct": l in right, **({"image": img} if img else {})} for l, (o, img) in zip(letters, opts)], "partial": True,
+               **({"explanation": item["explanation"].strip()[:2000]} if isinstance(item.get("explanation"), str) and item["explanation"].strip() else {})}
     elif t in ("short", "long"):
         answer = item.get("model_answer")
         if not (isinstance(answer, str) and answer.strip()):
@@ -942,6 +943,8 @@ def _structure(text: str, qtype: str) -> str:
     if re.search(r"<(p|ul|ol|pre|table)\b", text, re.I):
         return text
     lines = [ln.rstrip() for ln in text.splitlines()]
+    if qtype.startswith("mcq"):  # the question itself in bold, what comes before it as normal text
+        return question_html(join_wrapped(lines)) or text
     if qtype == "sql":  # the schema and the sample rows are shown as tables next to the question; the paper's own copy of them is dropped, a closing note is kept
         cut = next((i for i, ln in enumerate(lines) if re.match(r"(?i)\s*(sample data|create\s+table|insert\s+into)", ln)), None)
         if cut is not None:
@@ -1119,7 +1122,7 @@ def understand_paper(tid: str, body: UnderstandIn, user: User = Depends(AUTHOR),
     _place_pictures(pack, body_text)
     share_pictures([q for sec in pack["sections"] for q in sec.get("questions") or [] if isinstance(q, dict)])
     used = _attach_pictures(pack, {p.id: p.src for p in body.images}, notes)
-    loose = [p.id for p in body.images if p.id not in used and p.id not in key_ids]
+    loose = [p.id for p in body.images if p.id not in used and p.id not in key_ids and p.id not in parsed.get("solution_images", [])]  # (solution pictures under the answers are meant to stay out)
     if loose:
         notes.append(f"{len(loose)} {'picture' if len(loose) == 1 else 'pictures'} of the paper ({', '.join(loose)}) {'was' if len(loose) == 1 else 'were'} not attached to any question. "
                      "If a picture belongs to a question, open that question with the pencil after importing and add it with Add picture (a screenshot can be pasted).")

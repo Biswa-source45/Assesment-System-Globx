@@ -13,7 +13,7 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { CodeView, SqlSamples } from "@/pages/candidate/CodeView"
-import { Html, McqView, TextView } from "@/pages/candidate/questions"
+import { Html, McqView, TextView, echoes } from "@/pages/candidate/questions"
 
 const isCode = (q) => q.type === "coding" || q.type === "sql"
 const isAnswered = (q, r) => {
@@ -291,8 +291,8 @@ export default function Exam() {
             <Card>
               <CardContent className="grid gap-3 pt-6">
                 <div className="flex flex-wrap items-start justify-between gap-2">
-                  <h2 className="text-xl font-semibold">{q.title}</h2>
-                  <div className="flex gap-1.5">
+                  {(isCode(q) || !echoes(q.title, q.body)) && <h2 className="text-xl font-semibold">{q.title}</h2>}
+                  <div className="ml-auto flex gap-1.5">
                     <Badge>+{q.marks} marks</Badge>
                     {q.negative > 0 && <Badge variant="destructive">-{q.negative} wrong</Badge>}
                     <Badge variant="secondary">{q.difficulty}</Badge>

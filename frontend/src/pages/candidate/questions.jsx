@@ -3,6 +3,10 @@ import { Label } from "@/components/ui/label"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { Textarea } from "@/components/ui/textarea"
 
+// A title that only repeats the start of the question text (a paper's questions have no names) is not shown a second time.
+const plain = (s) => (s || "").replace(/<[^>]+>/g, " ").replace(/&[a-z#0-9]+;/gi, " ").toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim()
+export const echoes = (title, html) => { const t = plain((title || "").replace(/\.\.\.$/, "")); return t.length > 0 && plain(html).includes(t) }
+
 // Question bodies are sanitised on the server before they are stored.
 export const Html = ({ html }) => <div className="q-html" dangerouslySetInnerHTML={{ __html: html || "" }} />
 

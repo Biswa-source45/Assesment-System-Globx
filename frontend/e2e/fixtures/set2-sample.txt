@@ -1,0 +1,35 @@
+GLOBX Set 2 (sample)
+
+Section A: Reasoning and English (4 marks)
+Q1. Ravi ranks 12th from the top in a class of 40 students. What is his rank from the bottom? [1 mark]
+(a) 27
+(b) 28
+(c) 29
+(d) 30
+Answer: (c) 29
+Explanation: Rank from the bottom = 40 - 12 + 1 = 29.
+Q2. Fill in the blank: The manager is responsible ______ the delay in delivery. [1 mark]
+(a) of
+(b) to
+(c) with
+(d) for
+Answer: (d) for
+Explanation: The correct collocation is 'responsible for'.
+Read the passage and answer the next two questions.
+Sleep is often treated as a luxury, but research increasingly shows it is a necessity. Experts therefore recommend a
+steady bedtime routine over occasional catch-up sleep.
+Q3. What is the main idea of the passage? [1 mark]
+(a) Weekend lie-ins are the best cure for tiredness.
+(b) Regular sleep is essential and catch-up cannot fully replace it.
+(c) Adults should sleep exactly eight hours.
+(d) Memories form only during sleep.
+Answer: (b) Regular sleep is essential and catch-up cannot fully replace it.
+Explanation: The passage argues sleep is a necessity and that a steady routine is better than
+occasional catch-up sleep.
+Q4. In the passage, the word steady is closest in meaning to: [1 mark]
+(a) Unstable
+(b) Early
+(c) Quick
+(d) Regular
+Answer: (d) Regular
+Explanation: A steady bedtime routine is one that is regular and consistent.

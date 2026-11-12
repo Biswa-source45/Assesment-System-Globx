@@ -313,7 +313,7 @@ def test_markers_the_ai_copies_into_the_text_become_pictures(client, monkeypatch
     _fake_ai(monkeypatch, lambda pics: pack)
     got = _understand(client, h, t["id"], "text", images=[("IMAGE 1", one), ("IMAGE 2", two)]).json()
     q1, q2 = got["pack"]["sections"][0]["questions"]
-    assert q1["statement"] == "<p>What does the graph show? Be exact.</p>" and q1["images"] == [one]          # said twice, attached once
+    assert q1["statement"] == "<p>What does the graph show?</p><p><b>Be exact.</b></p>" and q1["images"] == [one]          # said twice, attached once
     assert q2["options"][0] == {"text": "A", "image": two} and q2["options"][1] == {"text": "", "image": two} and q2["options"][2] == "no picture"
     assert not any("not attached" in n for n in got["notes"])                                         # both pictures were used
     rep = client.post(f"{API}/tests/{t['id']}/import-questions", headers=h, json={"pack": got["pack"], "dry_run": True, "detail": True}).json()
@@ -402,7 +402,7 @@ def test_a_question_the_ai_forgot_to_word_is_asked_for_once_more(client, monkeyp
     monkeypatch.setattr(exam_pack, "ask_ai_for_pack", fake)
     got = _understand(client, h, t["id"]).json()
     assert len(calls) == 2 and 'HAD NO "statement"' in calls[1] and "Prime" in calls[1]
-    assert got["pack"]["sections"][0]["questions"][0]["statement"] == "<p>Which is prime?</p>"
+    assert got["pack"]["sections"][0]["questions"][0]["statement"] == "<p><b>Which is prime?</b></p>"
     calls.clear()
     monkeypatch.setattr(exam_pack, "ask_ai_for_pack", lambda s, m, p: (calls.append(m) or '{"sections": [{"questions": [{"type": "mcq_single", "title": "Still none"}]}]}', "stop"))
     assert _understand(client, h, t["id"]).status_code == 200 and len(calls) == 2           # asks once, not forever; the review then shows the problem
@@ -563,7 +563,7 @@ def test_a_question_that_cannot_be_found_in_the_paper_keeps_what_the_ai_said_and
     _fake_ai(monkeypatch, lambda p: pack)
     got = _understand(client, h, t["id"], "1. A completely different text\n[[IMAGE 1]]", images=[("IMAGE 1", one)]).json()
     q = got["pack"]["sections"][0]["questions"][0]
-    assert q["images"] == [one] and q["statement"] == "<p>Something the paper never said.</p><p>Second line</p>"
+    assert q["images"] == [one] and q["statement"] == "<p>Something the paper never said.</p><p><b>Second line</b></p>"
 
     coding = ("A string made only of brackets is balanced if each is closed.\nInput format\nOne line containing the string s.\nOutput format: Print YES or NO.\n"
               "Constraints\n1 <= |s| <= 100000.\nSample\n  {[()]}  \n")
@@ -771,3 +771,76 @@ def test_the_users_real_pdf_every_picture_on_its_question_every_answer_from_the_
     sql = code[28]
     assert "CREATE TABLE departments" in sql["schema"] and "CREATE TABLE employees" in sql["schema"] and sql["reference_sql"].startswith("SELECT d.dept_name") and "INSERT INTO employees" in sql["datasets"][0]["data"]
     assert "def is_balanced(s):\n    pairs = " in out["text"] and "            continue" in out["text"]                                    # the key's code has its indentation
+
+
+def test_the_question_is_bold_the_description_normal_and_explanations_stay_out_of_the_question():
+    paper = ("Section A: Mixed (4 marks)\n"
+             "Q1. Ravi ranks 12th from the top in a class of 40 students. What is his rank from the bottom? [1 mark]\n(a) 27\n(b) 28\n(c) 29\nAnswer: (c)\nExplanation: 40 - 12 + 1 = 29.\n"
+             "Q2. Choose the word closest in meaning to EPHEMERAL. [1 mark]\n(a) Eternal\n(b) Short-lived\nAnswer: (b)\n"
+             "Explanation: Ephemeral means lasting a very short time, so a\nlong explanation that wraps over two lines.\n"
+             "Read the passage and answer the next two questions.\nSleep is often treated as a luxury, but research shows it is a necessity.\n"
+             "Q3. What is the main idea of the passage? [1 mark]\n(a) Sleep matters\n(b) Sleep is a luxury\nAnswer: (a) Sleep matters\nExplanation: The passage argues sleep is a necessity.\n"
+             "Q4. In the passage, the word luxury is closest in meaning to: [1 mark]\n(a) Comfort\n(b) Need\nAnswer: (a)\nExplanation: Luxury means comfort.\n"
+             "Q5. Statements: All pens are books. Some books are bags.\nConclusions: I. Some pens are bags. II. Some bags are books. [1 mark]\n(a) Only I\n(b) Only II\nAnswer: (b)\n")
+    qs = {i["number"]: i["question"] for i in _qs(_parse(paper))}
+    assert qs[1]["statement"] == "<p>Ravi ranks 12th from the top in a class of 40 students.</p><p><b>What is his rank from the bottom?</b></p>"      # the description normal, the asking part bold
+    assert qs[1]["title"] == "What is his rank from the bottom?" and qs[1]["explanation"] == "40 - 12 + 1 = 29."                                   # the title is the question; the explanation is kept apart
+    assert qs[2]["statement"] == "<p><b>Choose the word closest in meaning to EPHEMERAL.</b></p>"
+    assert qs[2]["explanation"] == "Ephemeral means lasting a very short time, so a long explanation that wraps over two lines."                 # a wrapped explanation ends where its sentence ends
+    for n in (3, 4):
+        st = qs[n]["statement"]
+        assert st.startswith("<blockquote><p>Read the passage and answer the next two questions.</p><p>Sleep is often treated") and "Explanation" not in st and "Ephemeral" not in st
+    assert qs[3]["statement"].endswith("<p><b>What is the main idea of the passage?</b></p>") and qs[3]["correct"] == ["a"]
+    assert "blockquote" not in qs[1]["statement"] and "blockquote" not in qs[5]["statement"]                                                       # the passage is only for the two questions after it
+    assert qs[5]["statement"] == "<p>Statements: All pens are books. Some books are bags.</p><p>Conclusions: I. Some pens are bags. II. Some bags are books.</p>"   # label lines stay as they are
+
+
+def test_a_question_that_refers_to_the_same_pie_chart_gets_its_picture():
+    from app.services.paper_parse import share_pictures
+    paper = ("Section A\nQ1. Refer to the pie chart. How much is spent on food? [1 mark]\n[[IMAGE 1]]\n(a) 1\n(b) 2\nAnswer: (a)\n"
+             "Q2. Refer to the same pie chart. By how much does saving exceed transport? [1 mark]\n(a) 1\n(b) 2\nAnswer: (b)\n"
+             "Q3. An unrelated question about rates?\n(a) 1\n(b) 2\nAnswer: (a)\n"
+             "Q4. Using the table above, find the total.\n(a) 1\n(b) 2\nAnswer: (a)\n")
+    qs = [i["question"] for i in _qs(_parse(paper))]
+    share_pictures(qs)
+    assert qs[0]["images"] == ["IMAGE 1"] and qs[1]["images"] == ["IMAGE 1"] and "images" not in qs[2]
+    assert qs[3]["images"] == ["IMAGE 1"]                                                       # "the table above" also looks back for the nearest picture
+
+
+def test_explanations_are_kept_for_staff_and_never_sent_to_the_candidate(client):
+    from types import SimpleNamespace
+    from app.services.attempts import candidate_question
+    h = _creator(client)
+    t = _exam(client, h, "Technical", "Explain exam")
+    paper = "Section A: T\nQ1. What is 2 + 2?\n(a) 3\n(b) 4\nAnswer: (b)\nExplanation: Two plus two is four.\nQ2. What is 3 + 3?\n(a) 6\n(b) 7\nAnswer: (a)\n"
+    pack = _understand(client, h, t["id"], paper).json()["pack"]
+    assert _import(client, h, t["id"], pack, dry_run=False).status_code == 200
+    qid = client.get(f"{API}/questions", headers=h, params={"q": "What is 2 + 2?"}).json()[0]["id"]
+    full = client.get(f"{API}/questions/{qid}", headers=h).json()
+    assert full["config"]["explanation"] == "Two plus two is four."
+    row = SimpleNamespace(question=SimpleNamespace(id=qid, type="mcq_single", title="t", body=full["body"], difficulty="easy", skills=[], group_id=None, config=full["config"]),
+                          marks=1, negative=0, section_id="s", order=0, option_order=["a", "b"])
+    assert "explanation" not in str(candidate_question(row, None)) and "Two plus two" not in str(candidate_question(row, None))
+
+
+REAL_PDF_2 = os.environ.get("OAP_REAL_PDF_2", r"C:\Users\ASUS\Downloads\GLOBX_Set2_Questions_with_Answers_50_Marks.pdf")
+
+
+@pytest.mark.skipif(not os.path.exists(REAL_PDF_2), reason="the user's second real paper is not on this machine")
+def test_the_users_second_real_pdf_answers_inline_explanations_apart_passage_clean_same_chart_shared():
+    from app.api.exam_pack import _drop_writer_notes, _paper_facts, _spans
+    from app.services.paper_parse import clean_pages, parse_paper, share_pictures
+    out = read_paper(os.path.basename(REAL_PDF_2), open(REAL_PDF_2, "rb").read())
+    body, key, _ = _paper_facts(_drop_writer_notes(out["text"]))
+    res = parse_paper(clean_pages(body), clean_pages(key), _spans(clean_pages(body)))
+    mcq = {i["number"]: i["question"] for s in res["sections"] for i in s["items"] if i["kind"] == "mcq"}
+    assert sorted(mcq) == list(range(1, 26)) and res["exact"] == 28 and res["solution_images"] == ["IMAGE 2", "IMAGE 4", "IMAGE 6", "IMAGE 8", "IMAGE 10"]   # all read by rules; the pictures under the answers are solutions, kept out
+    share_pictures([mcq[n] for n in sorted(mcq)])
+    plain = lambda n: re.sub(r"<[^>]+>", " ", mcq[n]["statement"])  # noqa: E731
+    assert not any("Explanation" in plain(n) for n in mcq) and all(q.get("explanation") for q in mcq.values())                     # explanations never end up in a question, each is kept apart
+    assert mcq[8]["images"] == mcq[7]["images"] and "pie chart" in plain(8)                                                         # "Refer to the same pie chart" has the chart
+    for n in (23, 24, 25):
+        assert mcq[n]["statement"].startswith("<blockquote><p>Read the passage and answer the next three questions.</p>") and "Sleep is often treated" in mcq[n]["statement"]
+        assert "collocation" not in plain(n) and mcq[n]["statement"].count("<b>") == 1                                              # one bold part: the question
+    assert mcq[25]["title"].startswith("In the passage, the word steady") and mcq[23]["title"] == "What is the main idea of the passage?"
+    assert "<blockquote>" not in mcq[22]["statement"]

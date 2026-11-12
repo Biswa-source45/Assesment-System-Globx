@@ -416,3 +416,90 @@ test("the downloaded Word format is read entirely by rules: answers, the coding 
   await expect(rows.nth(5)).toContainText("datasets")                                // the sample data and the hidden data the stand-in wrote
   await shot(page, "paper-upload-format-exact")
 })
+
+test("a paper with answers and explanations under each question: the question is bold, explanations stay out, the passage goes only with its questions", async ({ page }) => {
+  test.skip(!!process.env.RUN_AI, "uses the stand-in AI (never asked here)")
+  await loginStaff(page)
+  await createExam(page, "Technical", "E2E Paper Explanations")
+  await openUpload(page)
+  await choose(page, "e2e/fixtures/set2-sample.txt")
+  const review = dialog(page).getByTestId("paper-review")
+  await expect(review).toBeVisible({ timeout: 30_000 })
+  await expect(review).toContainText("4 of 4 questions are ready")
+  const rows = review.getByTestId("paper-question")
+  await expect(review.getByTestId("from-paper")).toHaveCount(4)
+  await expect(review.getByTestId("ai-answer")).toHaveCount(0)
+  await expect(review.locator(".q-html", { hasText: "Explanation" })).toHaveCount(0)             // no explanation inside any question
+  await expect(review).not.toContainText("collocation")                                          // (the explanations are kept apart, not shown here)
+  // Q1: the description is normal text, only the question is bold
+  await expect(rows.nth(0).locator(".q-html p").nth(0)).toHaveText("Ravi ranks 12th from the top in a class of 40 students.")
+  await expect(rows.nth(0).locator(".q-html b")).toHaveText("What is his rank from the bottom?")
+  await expect(rows.nth(0).locator(".q-html p").nth(0).locator("b")).toHaveCount(0)
+  // Q3 and Q4: the passage in a quote block (normal text) and the question bold; Q1 and Q2 have no passage
+  for (const i of [2, 3]) {
+    await expect(rows.nth(i).locator(".q-html blockquote")).toContainText("Sleep is often treated as a luxury")
+    await expect(rows.nth(i).locator(".q-html blockquote b")).toHaveCount(0)
+    await expect(rows.nth(i).locator(".q-html > p > b")).toHaveCount(1)
+  }
+  await expect(rows.nth(3).locator(".q-html > p > b")).toHaveText("In the passage, the word steady is closest in meaning to:")
+  await expect(rows.nth(0).locator("blockquote")).toHaveCount(0)
+  await expect(rows.nth(1).locator("blockquote")).toHaveCount(0)
+  await shot(page, "paper-upload-explanations")
+})
+
+test("a candidate does not see a title that only repeats the question; a real title stays", async ({ page, request }) => {
+  const api = await staffRequest(request)
+  const dept = (await api.get("/departments")).find((d) => d.name === "General").id
+  const exam = await api.post("/tests", { department_id: dept, title: "E2E Echo Title", duration_min: 30, shuffle_questions: false, shuffle_options: false, settings: { proctoring: { enabled: false }, min_question_seconds: 0 } })
+  const section = (await api.post(`/tests/${exam.id}/sections`, { title: "Part A" })).sections[0]
+  const opts = [{ id: "a", text: "yes", correct: true }, { id: "b", text: "no", correct: false }]
+  for (const [title, body] of [["What is the capital of France?", "<p>Some context first.</p><p><b>What is the capital of France?</b></p>"], ["Capital check", "<p>Name the capital of France.</p>"]]) {
+    const q = await api.post("/questions", { department_id: dept, type: "mcq_single", title, body, marks: 1, config: { options: opts } })
+    await api.post(`/sections/${section.id}/items`, { kind: "question", question_id: q.id })
+  }
+  await api.post(`/tests/${exam.id}/publish`)
+  const p = (await api.post(`/tests/${exam.id}/participants`, { names: ["Echo Person"] })).participants[0]
+  await page.goto("/login")
+  await page.getByLabel("Username or email").fill(p.username)
+  await page.getByLabel("Password", { exact: true }).fill(p.password)
+  await page.getByRole("button", { name: "Sign in" }).click()
+  await page.locator("div[data-slot=card]").filter({ hasText: "E2E Echo Title" }).getByRole("link", { name: /Start|Resume/ }).click()
+  await page.getByRole("button", { name: "Start exam" }).click()
+  await expect(page).toHaveURL(/\/exam\/attempt\//)
+  await expect(page.locator(".q-html").first()).toContainText("Some context first.")
+  await expect(page.getByRole("heading", { name: "What is the capital of France?" })).toHaveCount(0)   // the question is not written twice
+  await expect(page.locator(".q-html b").first()).toHaveText("What is the capital of France?")
+  await page.getByRole("radio").first().click()
+  await page.getByRole("button", { name: /^Save and next/ }).click()
+  await expect(page.getByRole("heading", { name: "Capital check" })).toBeVisible()                  // a real title stays
+  await shot(page, "candidate-echo-title")
+})
+
+const REAL_PDF_2 = process.env.OAP_REAL_PDF_2 || "C:/Users/ASUS/Downloads/GLOBX_Set2_Questions_with_Answers_50_Marks.pdf"
+test("RUN_AI: the user's second real PDF (answers and explanations under each question, a passage, the same pie chart)", async ({ page }) => {
+  test.skip(!process.env.RUN_AI || !fs.existsSync(REAL_PDF_2), "calls the real OpenAI API (cents) and needs the user's PDF on this machine; run with RUN_AI=1")
+  test.setTimeout(600_000)
+  await loginStaff(page)
+  await createExam(page, "Technical", "E2E Paper Real PDF Set2")
+  await openUpload(page)
+  const sent = page.waitForRequest((r) => r.url().includes("/understand-paper"))
+  await choose(page, { name: "set2.pdf", mimeType: "application/pdf", buffer: fs.readFileSync(REAL_PDF_2) })
+  const pictures = (await (await sent).postDataJSON()).images
+  const review = dialog(page).getByTestId("paper-review")
+  await expect(review).toBeVisible({ timeout: 500_000 })
+  fs.mkdirSync("test-results/screens", { recursive: true })
+  fs.writeFileSync("test-results/screens/real-set2-review.txt", await review.innerText())
+  const rows = review.getByTestId("paper-question")
+  expect(await rows.count()).toBe(28)
+  expect(await review.locator("[data-ok=false]").count()).toBe(0)
+  await expect(review.locator(".q-html", { hasText: "Explanation" })).toHaveCount(0)
+  const srcs = (n) => rows.nth(n - 1).locator(".q-html img").evaluateAll((m) => m.map((x) => x.getAttribute("src")))
+  expect(await srcs(8)).toEqual(await srcs(7))                                                       // "Refer to the same pie chart" shows the chart
+  expect((await srcs(7)).length).toBe(1)
+  for (const n of [23, 24, 25]) {
+    await expect(rows.nth(n - 1).locator(".q-html blockquote")).toContainText("Sleep is often treated as a luxury")
+    await expect(rows.nth(n - 1).locator(".q-html > p > b")).toHaveCount(1)
+  }
+  await shot(page, "paper-upload-real-set2")
+  expect(pictures.length).toBeGreaterThan(10)
+})

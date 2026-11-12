@@ -341,7 +341,7 @@ def _page_lines(tp) -> List[Line]:
         text, prev = "", None
         for i in members:  # cells of a table sit on one line with a wide gap between them (or jump back): keep them apart with " | "
             if i in okset and prev is not None and (boxes[i][0] - boxes[prev][2] > 3 * height or boxes[i][0] < boxes[prev][0] - height):
-                text = text.rstrip() + " | "
+                text = text.rstrip() + "\x01"  # (a cell gap: " | " in a table, a plain space inside code)
             text += full[i]
             if i in okset and full[i] != " ":
                 prev = i
@@ -351,6 +351,7 @@ def _page_lines(tp) -> List[Line]:
         left = min((boxes[i][0] for i in members if i in okset and full[i] != " "), default=min(boxes[i][0] for i in members if i in okset))  # the first letter, not a (collapsed) space
         w = widths[c]
         mono = bool(adv) and len(w) >= 1 and all(abs(x - adv) < 0.08 * adv for x in w)
+        text = text.replace("\x01", " " if mono else " | ")
         out.append((clusters[c][0], left, text.strip() if not mono else text.lstrip(), mono))
     out.sort(key=lambda r: -r[0])
     # a run of code lines: the leftmost starts at column 0, the others are indented by how far right they start
