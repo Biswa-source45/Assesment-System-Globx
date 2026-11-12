@@ -1,0 +1,97 @@
+KAUTILYA by GLOBX - QUESTION PAPER FORMAT
+==========================================
+Copy this into Word, Google Docs or Notepad, write your questions in the same shape, and upload the file
+(save a Word file as .docx, or print it to PDF). The platform reads this shape best. Delete these notes.
+
+THE RULES (they make the upload accurate)
+- One heading per section, on its own line:  Section A: Quantitative Aptitude (9 marks)
+- One question after the other. Start each with its number:  Q1.  Q2.  Q3. ...
+- Marks go at the end of the question line:  [1 mark]   or   [8 marks]
+- A picture (graph, figure, diagram, table drawn as a picture) goes RIGHT UNDER the question text, BEFORE the options.
+- Options go one per line:  (a)  (b)  (c)  (d)  . If an option is a picture, put the picture right after its label.
+- Answers do NOT go next to the questions. Put them all in ONE part at the very end that starts with the heading
+  "Answer Key and Solutions", followed by the line "For the examiner only." Everything after that heading is for you:
+  the right answers, solutions, reference code and test cases. Pictures in that part are never shown to candidates.
+- Do not number options 1, 2, 3 if the questions are numbered too. Use letters for options.
+
+-----------------------------------------------------------------------------------------------------------------
+
+Section A: Quantitative Aptitude (2 marks)
+
+Q1. A train 180 m long crosses a pole in 12 seconds. What is its speed? [1 mark]
+(a) 10 m/s
+(b) 15 m/s
+(c) 20 m/s
+(d) 25 m/s
+
+Q2. Refer to the bar chart. By what percentage did sales rise from March to April? [1 mark]
+(the bar chart picture goes here, under the question)
+(a) 25%
+(b) 45%
+(c) 55.6%
+(d) 62.5%
+
+Section B: English (1 mark)
+
+Q3. Choose the word closest in meaning to EPHEMERAL. [1 mark]
+(a) Eternal
+(b) Short-lived
+(c) Fragile
+(d) Obvious
+
+Section C: Coding (8 marks)
+
+Q4. Balanced Brackets [8 marks]
+A string made only of ( ) [ ] { } is balanced if every opening bracket is closed by the same type of bracket,
+in the correct order. Write a program that tells whether the given string is balanced.
+Input format
+One line containing the string s.
+Output format
+Print YES if the string is balanced, otherwise print NO.
+Constraints
+1 <= |s| <= 100000.
+Sample
+Input: {[()]}   Output: YES
+Input: ([)]     Output: NO
+
+Section D: SQL (9 marks)
+
+Q5. Employees earning more than 50000 [9 marks]
+Write one SQLite query that returns the names of employees who earn more than 50000, in alphabetical order.
+Output format
+One column: name.
+(The tables and sample rows are written in the answer key below.)
+
+-----------------------------------------------------------------------------------------------------------------
+
+Answer Key and Solutions
+For the examiner only. Do not share with candidates.
+
+Answers: Q1 (b)   Q2 (c)   Q3 (b)
+
+Q4 reference solution (Python). Keep the indentation:
+s = input().strip()
+pairs = {')': '(', ']': '[', '}': '{'}
+stack = []
+for ch in s:
+    if ch in '([{':
+        stack.append(ch)
+    elif not stack or stack.pop() != pairs[ch]:
+        print('NO')
+        break
+else:
+    print('YES' if not stack else 'NO')
+
+Q4 test cases (write each input out, or say how to make it; the platform runs the reference solution to get the outputs):
+1 open    {[()]}
+2 open    ([)]
+3 hidden  ()[]{}
+4 hidden  (((
+5 hidden  a very long string of 50000 opening and 50000 closing round brackets
+
+Q5 tables and sample data:
+CREATE TABLE employees (id INTEGER PRIMARY KEY, name TEXT, salary INTEGER);
+INSERT INTO employees VALUES (1,'Asha',60000),(2,'Ben',40000),(3,'Chen',55000);
+Q5 reference query:
+SELECT name FROM employees WHERE salary > 50000 ORDER BY name
+Q5 hidden data (describe it or write it): a salary of exactly 50000 (must not appear); two names that sort differently by case.

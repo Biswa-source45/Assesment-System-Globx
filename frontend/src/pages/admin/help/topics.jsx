@@ -105,6 +105,7 @@ export const TOPICS = [
         ["Choose the file", "PDF, Word, Excel, Notepad or a photo"], ["Wait", "Three steps show what is happening"],
         ["Review", "Every question, its answer and its pictures"], ["Import", "The ticked questions go into the Question bank and the exam"],
       ]} />
+      <Tip>The AI reads any layout, but a paper written the way <a className="underline" href="/question-paper-template.txt" download>this format file</a> shows is read most accurately: numbered questions, marks at the end of the line, the picture right under its question, options as (a) (b) (c) (d), and every answer, solution and test case together at the end under "Answer Key and Solutions".</Tip>
       <p className="font-medium">What can be uploaded</p>
       <List items={[
         <><b>PDF</b> (up to 50 pages). Typed PDFs are best. A scanned page is read as a picture, which is slower and less exact.</>,

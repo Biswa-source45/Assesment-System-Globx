@@ -290,7 +290,8 @@ def test_the_ai_is_told_where_each_picture_sits_and_the_examiner_is_told_about_l
     got = _understand(client, h, t["id"], text, images=[("IMAGE 1", one), ("IMAGE 2", two)]).json()
     assert 'IMAGE 1 comes right after: "1. What is shown? /"' in seen["msg"] and "WHERE THE PICTURES ARE" in seen["msg"]
     assert got["pack"]["sections"][0]["title"] == "Multiple choice"                      # never a code as a title
-    assert any("2 pictures of the paper (IMAGE 1, IMAGE 2) were not attached to any question" in n for n in got["notes"])
+    q = got["pack"]["sections"][0]["questions"][0]                                       # both pictures follow the question in the paper, so both belong to it (not left loose)
+    assert len(q["images"]) == 2 and not any("not attached" in n for n in got["notes"])
     assert "WHERE THE PICTURES ARE" not in _fake_and_msg(client, h, t, monkeypatch)       # a paper without pictures has no such block
 
 
@@ -310,7 +311,7 @@ def test_markers_the_ai_copies_into_the_text_become_pictures(client, monkeypatch
     _fake_ai(monkeypatch, lambda pics: pack)
     got = _understand(client, h, t["id"], "text", images=[("IMAGE 1", one), ("IMAGE 2", two)]).json()
     q1, q2 = got["pack"]["sections"][0]["questions"]
-    assert q1["statement"] == "What does the graph show? Be exact." and q1["images"] == [one]          # said twice, attached once
+    assert q1["statement"] == "<p>What does the graph show? Be exact.</p>" and q1["images"] == [one]          # said twice, attached once
     assert q2["options"][0] == {"text": "A", "image": two} and q2["options"][1] == {"text": "", "image": two} and q2["options"][2] == "no picture"
     assert not any("not attached" in n for n in got["notes"])                                         # both pictures were used
     rep = client.post(f"{API}/tests/{t['id']}/import-questions", headers=h, json={"pack": got["pack"], "dry_run": True, "detail": True}).json()
@@ -383,7 +384,7 @@ def test_headings_and_the_answer_key_are_read_off_the_paper_before_the_ai_sees_i
     assert "SECTION HEADINGS FOUND IN THE PAPER" in seen["msg"] and "- Section B: English" in seen["msg"]
     assert 'THE ANSWER KEY STARTS AT THE HEADING "Answer Key and Solutions"' in seen["msg"] and "[[IMAGE 2]]" not in seen["msg"]
     assert not any("IMAGE 2" in n for n in got["notes"])                                      # and it is not reported as a forgotten picture
-    assert any("IMAGE 1" in n for n in got["notes"])
+    assert not any("IMAGE 1" in n for n in got["notes"]) and got["pack"]["sections"][0]["questions"][0]["images"] == [one]   # IMAGE 1 follows its question
 
 
 def test_a_question_the_ai_forgot_to_word_is_asked_for_once_more(client, monkeypatch):
@@ -399,7 +400,7 @@ def test_a_question_the_ai_forgot_to_word_is_asked_for_once_more(client, monkeyp
     monkeypatch.setattr(exam_pack, "ask_ai_for_pack", fake)
     got = _understand(client, h, t["id"]).json()
     assert len(calls) == 2 and 'HAD NO "statement"' in calls[1] and "Prime" in calls[1]
-    assert got["pack"]["sections"][0]["questions"][0]["statement"] == "Which is prime?"
+    assert got["pack"]["sections"][0]["questions"][0]["statement"] == "<p>Which is prime?</p>"
     calls.clear()
     monkeypatch.setattr(exam_pack, "ask_ai_for_pack", lambda s, m, p: (calls.append(m) or '{"sections": [{"questions": [{"type": "mcq_single", "title": "Still none"}]}]}', "stop"))
     assert _understand(client, h, t["id"]).status_code == 200 and len(calls) == 2           # asks once, not forever; the review then shows the problem
@@ -522,3 +523,53 @@ def test_a_reply_that_garbles_its_end_and_loops_is_salvaged_not_thrown_away(clie
     monkeypatch.setattr(httpx, "post", lambda url, **kw: sent.update(kw["json"]) or R())
     OpenAIProvider("k", "m").look_and_complete("s", "u", [("IMAGE 1", "data:image/png;base64,AA==", "low")])
     assert sent["stop"] == ["```"] and sent["response_format"] == {"type": "json_object"}                     # the loop is cut at the first code fence
+
+
+def test_pictures_go_to_the_question_they_follow_even_when_the_ai_attaches_them_wrongly(client, monkeypatch):
+    h = _creator(client)
+    t = _exam(client, h, "Technical", "Placement exam")
+    pics = {f"IMAGE {n}": data_uri(png(60 + n, 60, c)) for n, c in enumerate(["red", "green", "blue", "orange", "purple", "gray"], 1)}
+    paper = ("Instructions. " * 20 + "\nSection A: Reasoning\n"
+             "Q1. Refer to the bar chart. What is the total sales in March?\n[[IMAGE 1]]\n(a) 10\n(b) 20\n"
+             "Q2. Which figure completes the series of shapes?\nA) [[IMAGE 2]]\nB) [[IMAGE 3]]\nC) [[IMAGE 4]]\n"
+             "Q3. Choose the word closest in meaning to EPHEMERAL.\n(a) short\n(b) long\n"
+             "Q4. Refer to the family tree. How is Arun related to Gita?\n[[IMAGE 5]]\n(a) father\n(b) uncle\n"
+             "Answer Key and Solutions\nFor the examiner only.\n[[IMAGE 6]] the green bars\n")
+    q = lambda title, st, **kw: {"type": "mcq_single", "title": title, "statement": st, "options": kw.pop("options", ["a", "b"]), "correct": ["a"], **kw}  # noqa: E731
+    wrong = [q("Q1", "Refer to the bar chart. What is the total sales in March?", images=["IMAGE 5"]),                                  # a picture that belongs to Q4
+             q("Q2", "Which figure completes the series of shapes?", images=["IMAGE 1"], options=["A", "B", "C"]),                   # option pictures forgotten, question picture invented
+             q("Q3", "Choose the word closest in meaning to EPHEMERAL.", images=["IMAGE 2", "IMAGE 3"]),                            # pictures on a question without any
+             q("Q4", "Refer to the family tree. How is Arun related to Gita?")]                                                      # picture forgotten
+    _fake_ai(monkeypatch, lambda p: {"sections": [{"title": "Section A: Reasoning", "questions": wrong}]})
+    got = _understand(client, h, t["id"], paper, images=[(i, s) for i, s in pics.items()]).json()
+    q1, q2, q3, q4 = got["pack"]["sections"][0]["questions"]
+    assert q1["images"] == [pics["IMAGE 1"]] and "images" not in q3 and q4["images"] == [pics["IMAGE 5"]] and "images" not in q2
+    assert [o.get("image") for o in q2["options"]] == [pics["IMAGE 2"], pics["IMAGE 3"], pics["IMAGE 4"]]                       # A) B) C) are the options' pictures, in order
+    assert all("image" not in o for o in q3["options"])
+    assert not any("IMAGE 6" in n for n in got["notes"])                                                                         # the key's picture is never offered
+    assert [x["title"] for x in got["pack"]["sections"][0]["questions"]][:2] == ["Refer to the bar chart. What is the total...", "Which figure completes the series of shapes?"]  # "Q1" is not a title
+    rep = client.post(f"{API}/tests/{t['id']}/import-questions", headers=h, json={"pack": got["pack"], "dry_run": True, "detail": True}).json()
+    assert rep["ok"], rep["errors"]
+
+
+def test_a_question_that_cannot_be_found_in_the_paper_keeps_what_the_ai_said_and_the_text_gets_a_shape(client, monkeypatch):
+    from app.api.exam_pack import _structure
+    h = _creator(client)
+    t = _exam(client, h, "Technical", "Shape exam")
+    one = data_uri(png(100, 80, "blue"))
+    pack = {"sections": [{"title": "S", "questions": [{"type": "mcq_single", "title": "Reworded", "statement": "Something the paper never said.<br>Second line", "images": ["IMAGE 1"], "options": ["a", "b"], "correct": ["a"]}]}]}
+    _fake_ai(monkeypatch, lambda p: pack)
+    got = _understand(client, h, t["id"], "1. A completely different text\n[[IMAGE 1]]", images=[("IMAGE 1", one)]).json()
+    q = got["pack"]["sections"][0]["questions"][0]
+    assert q["images"] == [one] and q["statement"] == "<p>Something the paper never said.</p><p>Second line</p>"
+
+    coding = ("A string made only of brackets is balanced if each is closed.\nInput format\nOne line containing the string s.\nOutput format: Print YES or NO.\n"
+              "Constraints\n1 <= |s| <= 100000.\nSample\n  {[()]}  \n")
+    assert _structure(coding, "coding") == ("<p>A string made only of brackets is balanced if each is closed.</p><p><b>Input format</b></p><p>One line containing the string s.</p>"
+                                           "<p><b>Output format:</b> Print YES or NO.</p><p><b>Constraints</b></p><p>1 &lt;= |s| &lt;= 100000.</p><p><b>Sample</b></p><p>{[()]}</p>")
+    sql = ("Write one query for every department.\nOutput format\nTwo columns.\nSample data (schema and data are provided on the platform)\nCREATE TABLE d (\n id INTEGER\n);\n"
+           "INSERT INTO d VALUES (1);\nNote: departments with no employees must not appear.")
+    out = _structure(sql, "sql")
+    assert "CREATE" not in out and "INSERT" not in out and "Sample data" not in out and "<b>Output format</b>" in out and out.endswith("<p><b>Note:</b> departments with no employees must not appear.</p>")
+    assert _structure("<p>Already <b>html</b></p>", "mcq_single") == "<p>Already <b>html</b></p>"
+    assert "<pre>SELECT 1;</pre>" in _structure("Try this:\nSELECT 1;", "sql")

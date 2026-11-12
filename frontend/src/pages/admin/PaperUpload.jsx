@@ -122,7 +122,7 @@ export default function PaperUpload({ test, onImported, onClose }) {
   return (
     <section className="grid gap-3" data-testid="paper-upload">
       <h3 className="font-medium">Upload your question paper</h3>
-      <p className="text-sm text-muted-foreground">A PDF, Word (.docx), Excel (.xlsx), Notepad (.txt) file or a photo. The questions, answers, marks and pictures are found for you, and nothing is added until you press Import.</p>
+      <p className="text-sm text-muted-foreground">A PDF, Word (.docx), Excel (.xlsx), Notepad (.txt) file or a photo. The questions, answers, marks and pictures are found for you, and nothing is added until you press Import. For the most accurate result write the paper in <a className="underline" href="/question-paper-template.txt" download>this format</a>.</p>
 
       {!running && phase !== "done" && (
         <div className="flex flex-wrap items-center gap-3">
