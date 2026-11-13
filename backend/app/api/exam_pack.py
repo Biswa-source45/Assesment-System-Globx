@@ -95,18 +95,25 @@ def _example_pack(types: List[str]) -> Dict[str, Any]:
                                            for i, t in enumerate(types)]}
 
 
-def _format_rules() -> str:
-    """What a question file looks like, told to the AI (one description for the copy-paste prompt and the paper upload)."""
+_STARTER_RULE = """  Every coding question also needs "starter": an object with one entry for EACH language in "languages" (all five when "languages" is left out). A starter is the code the candidate's editor opens with: a short beginner-friendly program that reads the input exactly as the statement describes (python: input() or sys.stdin; java: "public class Main" with main and Scanner or BufferedReader; cpp: cin; c: scanf; javascript: require('fs').readFileSync(0)), puts the input into well-named variables, and has a "TODO" comment where the solution goes. It must print no answer and must not solve the problem, but it must compile and must read the sample input without crashing. The platform compiles and runs every starter and rejects the file if one fails or already solves the problem.
+"""
+
+
+_TOP_RULE = f"""- Top level: {{"format": "{FORMAT}", "sections": [{{"title": "...", "timer_min": null, "questions": [ ... ]}}]}}. timer_min is a number of minutes or null.
+"""
+
+
+def _format_rules(starter: bool = True, top: bool = True) -> str:
+    """What a question file looks like, told to the AI (one description for the copy-paste prompt, the paper upload and the question editor's AI).
+    `top=False` leaves out the file's outer structure: the question editor asks for one question only."""
     return f"""FORMAT
-- Top level: {{"format": "{FORMAT}", "sections": [{{"title": "...", "timer_min": null, "questions": [ ... ]}}]}}. timer_min is a number of minutes or null.
-- Every question has: "type", "title" (short), "statement" (the question text; plain text, or simple HTML using only p, pre, code, b, i, ul, li, br), and optionally "marks", "difficulty" ("easy", "medium" or "hard"), "skills" (list of short tags).
+{_TOP_RULE if top else ''}- Every question has: "type", "title" (short), "statement" (the question text; plain text, or simple HTML using only p, pre, code, b, i, ul, li, br), and optionally "marks", "difficulty" ("easy", "medium" or "hard"), "skills" (list of short tags).
 - mcq_single and mcq_multi: "options" (2 to 8 texts, without letters) and "correct" (list of letters, "a" for the first option; exactly one letter for mcq_single). Optional "negative_marks".
 - short: "model_answer", optional "keywords" (list; use | between alternatives, for example "retry|retries") and "max_words".
 - long: "model_answer" and "rubric": a list of {{"name", "max", "descriptor"}} whose "max" values add up to the question's marks.
 - coding: "reference" ({{"language", "source"}}: a correct solution that reads standard input and prints the answer), "test_cases" (list of {{"input", "visibility": "open" or "hidden", "purpose"}}; at least one open sample and one hidden case; give inputs only, never expected outputs: the platform runs your reference solution to get them), optional "languages" (python, java, cpp, c, javascript; default all five), "time_limit_ms", "memory_mb".
   The coding "statement" must have these parts: the problem, "Input format" (exactly what each line holds and in what order), "Output format" (exactly what to print: spacing, upper or lower case, one result per line) and "Constraints". Do not write sample outputs by hand: the platform shows the open test cases, with the real output, to the candidate.
-  Every coding question also needs "starter": an object with one entry for EACH language in "languages" (all five when "languages" is left out). A starter is the code the candidate's editor opens with: a short beginner-friendly program that reads the input exactly as the statement describes (python: input() or sys.stdin; java: "public class Main" with main and Scanner or BufferedReader; cpp: cin; c: scanf; javascript: require('fs').readFileSync(0)), puts the input into well-named variables, and has a "TODO" comment where the solution goes. It must print no answer and must not solve the problem, but it must compile and must read the sample input without crashing. The platform compiles and runs every starter and rejects the file if one fails or already solves the problem.
-- sql (SQLite syntax): "schema" (CREATE TABLE statements), "reference_sql" (the correct query), "datasets" (list of {{"data": "INSERT statements", "visibility": "open" or "hidden"}}; at least one of each), optional "ordered" (true when row order matters). Never give expected results: the platform runs your query.
+{_STARTER_RULE if starter else ''}- sql (SQLite syntax): "schema" (CREATE TABLE statements), "reference_sql" (the correct query), "datasets" (list of {{"data": "INSERT statements", "visibility": "open" or "hidden"}}; at least one of each), optional "ordered" (true when row order matters). Never give expected results: the platform runs your query.
 - Default marks if you leave them out: {", ".join(f"{TYPE_NAME[x]} {DEFAULT_MARKS[x]}" for x in QTYPES)}.
 """
 

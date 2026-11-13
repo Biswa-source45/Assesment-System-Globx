@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react"
 import { Link } from "react-router-dom"
 import { toast } from "sonner"
-import { Archive, CircleHelp, Pencil, Plus } from "lucide-react"
+import { Archive, CircleHelp, Pencil, Plus, Sparkles } from "lucide-react"
 import { del, get } from "@/lib/api"
 import { useAuth } from "@/lib/auth"
 import { useDepartments } from "@/lib/useDepartments"
@@ -47,6 +47,7 @@ export default function Questions() {
         <h1 className="text-2xl font-semibold">Question bank</h1>
         <div className="flex items-center gap-2">
           <Button asChild variant="outline"><Link to="/admin/help?topic=question-types"><CircleHelp /> Question help</Link></Button>
+          {author && <Button asChild variant="outline"><Link to="/admin/questions/new?ai=1"><Sparkles /> Create with AI</Link></Button>}
           {author && <Button asChild><Link to="/admin/questions/new"><Plus /> New question</Link></Button>}
         </div>
       </div>

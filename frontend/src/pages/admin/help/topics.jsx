@@ -96,7 +96,26 @@ export const TOPICS = [
         <>Press <b>Save</b>. The question can now be added to any exam of that department.</>,
       ]} />
       <p><b>Pictures:</b> under the question text press <b>Add picture</b> (or paste a screenshot into the text box). Each answer option of a choice question has its own small picture button, for questions like "which figure comes next?". A picture is PNG, JPEG, GIF or WEBP, up to 4 under the text, and is made smaller automatically. This works for every type, also coding and SQL.</p>
-      <Tip>Many questions? Upload the paper you already have (next topic). Typing 50 questions by hand is slow.</Tip>
+      <Tip>Many questions? Upload the paper you already have (the topic after next). Typing 50 questions by hand is slow. One question? Let the AI write it (next topic).</Tip>
+    </div>) },
+  { id: "ai-question", group: "questions", title: "Write or change one question with AI", body: (
+    <div className="grid gap-3">
+      <p>In the <b>Question bank</b> press <b>Create with AI</b> (or, inside any question, <b>Write or change this question with AI</b>). The AI fills the form for you; <b>nothing is saved until you press Save question</b>, so you can read it, fix it by hand, or ask again.</p>
+      <Num items={[
+        "Choose the department and, if you like, the type (or leave it on Let the AI choose).",
+        "Say what you want in plain words, for example \"an easy question on percentages for a finance clerk, four options\". Or add a picture of a question (a photo, a screenshot, a page), or both: with a picture and words, the AI reads the picture and then applies your words to it.",
+        <>Press <b>Write question</b>. The form fills in. The box tells you <b>what the AI did</b> and shows an amber warning when it is unsure.</>,
+        <>Not right? Type the next instruction in the same box, for example "make it harder", "add a fifth option", "the answer is C", "use this picture". The box now says <b>Change question</b>, the AI changes only what you ask, and <b>Undo the last AI change</b> brings the question back as it was.</>,
+        "Read the question and the answer, then press Save question.",
+      ]} />
+      <List items={[
+        "A picture is kept inside the question only when the question needs it (a graph, a figure, picture options). A photo that just shows typed text is read, not kept. You can add or remove pictures afterwards as usual.",
+        "A coding or SQL question is checked for real: the expected outputs come from running the solution, never from the AI. If the question does not pass the platform's checks, the AI is asked once more with the reasons; if it still fails you are told why and the form is left alone.",
+        "As a second opinion the platform asks the AI to answer the question on its own. If its answer differs from the key you get an amber warning: read the question again before you save.",
+        "The type of an existing question cannot be changed by the AI. Many questions at once: use the paper upload.",
+      ]} />
+      <Warn>The AI can be wrong, also about facts and answers. The second opinion is another guess from the same kind of AI, not proof. Always read the question and its answer before you save.</Warn>
+      <Tip>If the AI is not switched on for the server, the box says so; you can still write questions by hand.</Tip>
     </div>) },
   { id: "paper-upload", group: "questions", title: "Upload your question paper (PDF, Word, Excel, Notepad, photo)", body: (
     <div className="grid gap-3">

@@ -17,24 +17,26 @@ function useChoose(onPicture) {
 }
 
 // Pictures under a question's text: thumbnails with Remove, and a button to add one (a screenshot can also be pasted into the text box).
-export function QuestionPictures({ images, onChange, max = 4 }) {
+// `name` and `hint` let the AI box reuse it for the pictures it is to look at.
+export function QuestionPictures({ images, onChange, max = 4, name = "question", hint }) {
   const [ref, choose] = useChoose((src) => onChange([...images, src]))
+  const of = name === "question" ? "" : ` of the ${name}`
   return (
-    <div className="grid gap-2" data-testid="question-pictures">
+    <div className="grid gap-2" data-testid={`${name}-pictures`}>
       {images.length > 0 && (
         <div className="flex flex-wrap gap-3">
           {images.map((src, i) => (
             <div key={i} className="relative rounded-md border bg-card p-1">
-              <img src={src} alt={`Picture ${i + 1} of the question`} className="h-24 w-auto max-w-48 object-contain" />
-              <Button type="button" variant="danger" size="icon" className="absolute -right-2 -top-2 size-6" aria-label={`Remove picture ${i + 1}`} onClick={() => onChange(images.filter((_, j) => j !== i))}><X /></Button>
+              <img src={src} alt={`Picture ${i + 1} of the ${name}`} className="h-24 w-auto max-w-48 object-contain" />
+              <Button type="button" variant="danger" size="icon" className="absolute -right-2 -top-2 size-6" aria-label={`Remove picture ${i + 1}${of}`} onClick={() => onChange(images.filter((_, j) => j !== i))}><X /></Button>
             </div>
           ))}
         </div>
       )}
       <div className="flex items-center gap-2">
-        <input ref={ref} type="file" accept="image/png,image/jpeg,image/gif,image/webp" className="hidden" aria-label="Choose a picture for the question" onChange={choose} />
+        <input ref={ref} type="file" accept="image/png,image/jpeg,image/gif,image/webp" className="hidden" aria-label={`Choose a picture for the ${name}`} onChange={choose} />
         <Button type="button" variant="outline" size="sm" disabled={images.length >= max} onClick={() => ref.current.click()}><ImagePlus /> Add picture</Button>
-        <span className="text-xs text-muted-foreground">Shown under the question text. You can also paste a screenshot into the text box. Up to {max}.</span>
+        <span className="text-xs text-muted-foreground">{hint ?? `Shown under the question text. You can also paste a screenshot into the text box. Up to ${max}.`}</span>
       </div>
     </div>
   )

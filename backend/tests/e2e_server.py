@@ -58,7 +58,57 @@ if not os.environ.get("RUN_AI"):
 
     from app.api import exam_pack
 
+    import copy as _copy
+    import re as _re
+
+    def _question_ai(msg, pictures):
+        """The question editor's "write or change a question with AI": the words in the request decide what the stand-in does."""
+        fences = _re.findall(r"<<<PAPER\n(.*?)\nPAPER>>>", msg, _re.S)
+        request = fences[-1]
+        if "SLOW" in request:
+            time.sleep(8)
+        pack = lambda q, done=("Wrote the question.",): {"request_ok": True, "changes": list(done), "notes": [], "question": q}  # noqa: E731
+        if "REFUSE" in request:
+            return {"request_ok": False, "notes": ["That is not a question."]}
+        if "THE QUESTION AS IT IS NOW" in msg:
+            q, done = _json.loads(fences[0]), []
+            q.pop("_note", None)
+            if "fifth" in request:
+                q["options"] = [*q["options"], "Sapporo"]
+                done.append("Added a fifth option, Sapporo.")
+            if "harder" in request:
+                q["statement"] += " Think carefully."
+                done.append("Made the question harder.")
+            if "marks" in request:
+                q["marks"] = 3
+                done.append("Marks are now 3.")
+            return pack(q, done or ["Nothing needed to change."])
+        mcq = {"type": "mcq_single", "title": "Capital of Japan", "statement": "What is the capital of Japan?", "options": ["Osaka", "Tokyo", "Kyoto", "Nagoya"], "correct": ["b"], "marks": 1, "difficulty": "easy"}
+        if "BROKEN" in request:
+            return pack({**mcq, "correct": ["z"]})
+        if "CODING" in request:
+            c = _copy.deepcopy(exam_pack.EXAMPLES["coding"])
+            c.pop("starter")
+            return pack(c)
+        if "SQL" in request:
+            return pack(_copy.deepcopy(exam_pack.EXAMPLES["sql"]))
+        if "WRITTEN" in request:
+            return pack(_copy.deepcopy(exam_pack.EXAMPLES["short"]))
+        if "Check-me" in request:  # the independent answer below says b: the key says a
+            return pack({**mcq, "statement": "Check-me: what is the capital of Japan?", "correct": ["a"]})
+        if pictures:
+            return pack({**mcq, "title": "City from the picture", "statement": "Which city is shown? [[IMAGE 1]]"})
+        return pack(mcq)
+
     def _fake_ai(system, msg, pictures):
+        if system.startswith("You write ONE question"):
+            return _json.dumps(_question_ai(msg, pictures)), "stop"
+        if system.startswith("You answer a multiple choice"):
+            return _json.dumps({"answer": ["b"]}), "stop"
+        if system.startswith("You write a correct Python 3"):
+            return _json.dumps({"source": exam_pack.EXAMPLES["coding"]["reference"]["source"]}), "stop"
+        if system.startswith("You write one correct SQLite"):
+            return _json.dumps({"sql": exam_pack.EXAMPLES["sql"]["reference_sql"]}), "stop"
         if "SLOW" in msg:
             time.sleep(8)
         ids = [p[0] for p in pictures if p[0].startswith("IMAGE")]

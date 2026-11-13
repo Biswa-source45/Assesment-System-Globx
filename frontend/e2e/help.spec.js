@@ -63,6 +63,8 @@ test("a link with ?topic= opens that topic; the bank and the Build with AI dialo
   await loginStaff(page)
   await page.goto("/admin/help?topic=json-route")
   await expect(topic(page, "Upload many questions: the AI route")).toHaveAttribute("open", "")
+  await page.goto("/admin/help?topic=ai-question")
+  await expect(topic(page, "Write or change one question with AI")).toHaveAttribute("open", "")
   await page.goto("/admin/help?topic=does-not-exist")  // an unknown topic is ignored
   await expect(page.getByRole("heading", { name: "Help", level: 1 })).toBeVisible()
   await expect(page.locator("details[open]")).toHaveCount(0)

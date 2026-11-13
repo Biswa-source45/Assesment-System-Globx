@@ -1,11 +1,12 @@
 import { useEffect, useState } from "react"
-import { Link, useNavigate, useParams } from "react-router-dom"
+import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom"
 import { toast } from "sonner"
 import { Plus, Sparkles, Trash2 } from "lucide-react"
 import { get, post, put } from "@/lib/api"
 import { TYPE_LABEL } from "@/pages/admin/Questions"
 import { Verdict } from "@/pages/candidate/CodeView"
 import SqlBuilder from "@/pages/admin/SqlBuilder"
+import AiAssist from "@/pages/admin/AiAssist"
 import { buildInserts, buildSchema, checkTables } from "@/lib/sqlbuild"
 import { fromHtml, joinImages, splitImages, toHtml } from "@/lib/html"
 import { fileToDataUrl, pastedImage } from "@/lib/image"
@@ -75,7 +76,10 @@ export default function QuestionEditor({ id, onSaved, embedded = false }) {
   const [check, setCheck] = useState(null)  // verdict per case from "Check reference solution"
   const [error, setError] = useState("")
   const [busy, setBusy] = useState("")
+  const [params] = useSearchParams()  // /admin/questions/new?ai=1 (the bank's "Create with AI") opens the AI box
   const set = (k, v) => setF((x) => ({ ...x, [k]: v }))
+  // the AI's question fills the form (the department and the linked group stay as they are)
+  const applyDraft = (q) => setF((x) => ({ ...withSql(fromQuestion(q), q), department_id: x.department_id, group_id: x.group_id }))
   const isMcq = f.type.startsWith("mcq")
   const isText = f.type === "short" || f.type === "long"
 
@@ -202,6 +206,9 @@ export default function QuestionEditor({ id, onSaved, embedded = false }) {
           <Button variant="ghost" asChild><Link to="/admin/questions">Back to bank</Link></Button>
         </div>
       )}
+
+      <AiAssist form={f} blank={!f.title.trim() && !f.body.trim()} types={allowed} current={payload} apply={applyDraft} restore={setF}
+        defaultOpen={!embedded && id === "new" && params.get("ai") === "1"} />
 
       <Card>
         <CardContent className="grid gap-4 pt-6">
