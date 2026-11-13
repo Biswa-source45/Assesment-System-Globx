@@ -342,13 +342,21 @@ export const TOPICS = [
     </div>) },
   { id: "results", group: "exams", title: "After the exam: calculate, review, declare", body: (
     <div className="grid gap-3">
-      <Steps items={[["Calculate", "Automatic after the closing time, or press the button"], ["Review", "Open written answers: accept or change the suggested marks"], ["Declare", "Candidates can now see their result"], ["Export", "CSV or Excel"]]} />
+      <Steps items={[["Calculate", "Automatic after the closing time, or press the button"], ["Review", "Open written answers: accept or change the suggested marks"], ["Declare", "Candidates see their result and report card; the PDF is e-mailed"], ["Export", "CSV, Excel or all report cards (ZIP)"]]} />
       <List items={[
         <><b>Calculate results</b> marks everything from the saved answers again. Marks you set by hand are kept.</>,
         <>Written answers show an AI suggestion. <b>Accept all suggested marks</b> takes them all; or open a candidate and change a mark yourself. <b>Mark with AI again</b> replaces the current mark, including a hand mark.</>,
         <>People who did not attend, and people whose exam was ended, are recorded too.</>,
         <><b>Declare results</b> shows candidates their score. <b>Withdraw results</b> hides it again. A mark changed later shows the candidate the new score.</>,
         "Open any candidate for the full report: answers, code verdicts, proctoring timeline and pictures.",
+      ]} />
+      <p className="font-medium">The report card</p>
+      <List items={[
+        "Every candidate who finished has a report card: letterhead, exam, candidate, score, result, rank, class average, scores by section and by type, and a result for every question (Correct, Partly correct, Incorrect, Not answered). The right answers are never shown.",
+        <>Staff: the <b>PDF</b> button on each row (and on the review page) gives one report card, <b>Report cards (ZIP)</b> gives all of them. Before declaring, a card is marked as a preview.</>,
+        <>When you <b>Declare results</b>, each candidate who has an e-mail address is sent the PDF automatically. The <b>Report card</b> column shows Emailed, Sending, Failed (with the reason above the table), Not sent or No e-mail. <b>E-mail report cards</b> sends to those who have not got it and tries failed ones again; nobody gets two.</>,
+        "A candidate with no e-mail address (a login only) signs in, sees the exam under Your exams and presses View report card or Download PDF. The same goes for everyone: the card is always current, while a mail already sent keeps the marks it had.",
+        "Withdrawing the results hides the report card again; a mail not yet sent is not sent.",
       ]} />
     </div>) },
 

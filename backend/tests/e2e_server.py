@@ -18,6 +18,35 @@ os.environ["STORAGE_DIR"] = str(e2e_storage)
 if not os.environ.get("RUN_AI"):  # the browser tests must not spend money or depend on the network; RUN_AI=1 keeps the real provider
     os.environ["LLM_PROVIDER"] = "none"
 
+# Mail: never the real server (the repo .env may hold it). A stand-in "mail server" writes every mail as a file in <storage>/mail, so a test can read it.
+os.environ.update(SMTP_HOST="smtp.test", SMTP_PORT="587", SMTP_USER="", SMTP_PASSWORD="", SMTP_FROM="KAUTILYA <support@globx.co.in>", SMTP_TLS="false")
+mail_dir = e2e_storage / "mail"
+mail_dir.mkdir(parents=True)
+import smtplib  # noqa: E402
+
+
+class _FakeSmtp:
+    def __init__(self, host, port, timeout=0):
+        pass
+
+    def starttls(self):
+        pass
+
+    def login(self, user, password):
+        pass
+
+    def send_message(self, msg):
+        (mail_dir / f"{__import__('time').time_ns()}.eml").write_bytes(msg.as_bytes())
+
+    def quit(self):
+        pass
+
+    def close(self):
+        pass
+
+
+smtplib.SMTP = _FakeSmtp
+
 base, _, name = get_settings().database_url.rpartition("/")
 os.environ["DATABASE_URL"] = f"{base}/{name}" if name.endswith("_test") else f"{base}/{name}_test"
 get_settings.cache_clear()

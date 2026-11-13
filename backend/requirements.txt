@@ -10,7 +10,8 @@ python-multipart==0.0.20
 psutil>=6.0
 openpyxl==3.1.5
 pillow==13.0.0   # question papers: re-encode and shrink uploaded pictures
-pypdfium2==5.15.2   # question papers: read PDFs
+pypdfium2==5.15.2   # question papers: read PDFs (also reads the report card back in tests)
+reportlab==5.1.0   # report cards: the PDF a candidate downloads and receives by e-mail
 httpx==0.28.1
 psycopg[binary]==3.2.3
 alembic==1.20.1

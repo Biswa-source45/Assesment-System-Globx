@@ -24,32 +24,65 @@ def queue_mail(db: Session, to: str, subject: str, body: str, kind: str = "gener
     return m
 
 
+def _message(db: Session, m: MailOutbox, sender: str) -> EmailMessage:
+    msg = EmailMessage()
+    msg["From"], msg["To"], msg["Subject"] = sender, m.to, m.subject
+    msg.set_content(m.body)
+    if m.kind == "report_card" and m.attach:  # the PDF is made now, from the current marks; ValueError when the result is no longer shared
+        from app.services.report_card import report_attachment
+        name, pdf = report_attachment(db, m.attach)
+        msg.add_attachment(pdf, maintype="application", subtype="pdf", filename=name)
+    return msg
+
+
+def _connect(s):
+    smtp = smtplib.SMTP(s.smtp_host, s.smtp_port, timeout=30)
+    try:
+        if s.smtp_tls:
+            smtp.starttls()
+        if s.smtp_user:
+            smtp.login(s.smtp_user, s.smtp_password)
+    except Exception:
+        smtp.close()
+        raise
+    return smtp
+
+
 def deliver_pending(db: Session) -> int:
+    """Sends the queued mails over one SMTP connection. A connection or login that fails (a wrong password) fails the whole batch at once with that
+    reason, instead of trying again every ten seconds; one bad mail (a result no longer shared) fails alone."""
     s = get_settings()
     n = 0
-    rows = db.scalars(select(MailOutbox).where(MailOutbox.status == "queued").limit(50)).all()
-    for m in rows:
-        if m.send_after and aware(m.send_after) > now():
-            continue
-        if not s.smtp_host:
-            m.status, m.sent_at = "logged", now()
-            log.info("[mail:logged] to=%s subject=%s", m.to, m.subject)
-            n += 1
-            continue
-        try:
-            msg = EmailMessage()
-            msg["From"], msg["To"], msg["Subject"] = s.smtp_from, m.to, m.subject
-            msg.set_content(m.body)
-            with smtplib.SMTP(s.smtp_host, s.smtp_port, timeout=20) as smtp:
-                if s.smtp_tls:
-                    smtp.starttls()
-                if s.smtp_user:
-                    smtp.login(s.smtp_user, s.smtp_password)
+    smtp = None
+    rows = [m for m in db.scalars(select(MailOutbox).where(MailOutbox.status == "queued").limit(50)).all() if not (m.send_after and aware(m.send_after) > now())]
+    try:
+        for m in rows:
+            if not s.smtp_host:
+                m.status, m.sent_at = "logged", now()
+                log.info("[mail:logged] to=%s subject=%s", m.to, m.subject)
+                n += 1
+                continue
+            try:
+                msg = _message(db, m, s.smtp_from)
+                if smtp is None:
+                    smtp = _connect(s)
                 smtp.send_message(msg)
-            m.status, m.sent_at = "sent", now()
-            n += 1
-        except Exception as e:  # keep retrying is pointless for config errors; mark failed
-            m.status, m.error = "failed", str(e)[:500]
-            log.warning("mail to %s failed: %s", m.to, e)
-    db.commit()
+                m.status, m.sent_at = "sent", now()
+                n += 1
+            except (ValueError, smtplib.SMTPRecipientsRefused, smtplib.SMTPDataError) as e:  # this mail only: no attachment can be made, or the address is refused
+                m.status, m.error = "failed", (str(e) if isinstance(e, ValueError) else f"The mail server refused it: {e}")[:500]
+            except Exception as e:
+                reason = f"{type(e).__name__}: {e}"[:500]
+                log.warning("mail to %s failed: %s", m.to, reason)
+                for later in rows[rows.index(m):]:  # the server or the login is the problem: every mail waiting now fails with it
+                    later.status, later.error = "failed", reason
+                smtp = None
+                break
+    finally:
+        if smtp is not None:
+            try:
+                smtp.quit()
+            except Exception:
+                pass
+        db.commit()
     return n

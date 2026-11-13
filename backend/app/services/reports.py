@@ -85,7 +85,7 @@ def attempt_report(db: Session, at: Attempt, staff_view: bool = True) -> Dict:
         resp = (a.response if a else {}) or {}
         attempted += 1 if has_answer(resp) else 0
         item = {"question_id": q.id, "answer_id": a.id if a else None, "title": q.title, "type": q.type,
-                "section_id": aq.section_id, "marks": aq.marks, "negative": aq.negative,
+                "section_id": aq.section_id, "marks": aq.marks, "negative": aq.negative, "answered": has_answer(resp),
                 "score": (a.final_score if a and a.final_score is not None else (a.ai_score if a and a.ai_score is not None else (a.auto_score if a else 0))),
                 "status": a.status if a else "unanswered", "flags": a.flags if a else [],
                 "feedback": a.feedback if a else ""}

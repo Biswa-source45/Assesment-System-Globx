@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useState } from "react"
 import { Link, useParams } from "react-router-dom"
 import { toast } from "sonner"
-import { Download } from "lucide-react"
+import { Download, FileText, Mail } from "lucide-react"
 import { api, get, post } from "@/lib/api"
+import { saveFile } from "@/lib/download"
 import { useAuth } from "@/lib/auth"
 import { fmtDate, RESULT_STATE, RISK } from "@/lib/labels"
 import { OUTCOME_TONE, RESULT, STATE_TONE, TONE } from "@/lib/verdict"
@@ -14,6 +15,13 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 
 const POLL_MS = 5000
+// What happened to a candidate's report-card mail.
+const MAIL = { sent: ["Emailed", "good"], queued: ["Sending...", "info"], failed: ["Failed", "bad"], logged: ["Not sent", "part"], no_email: ["No e-mail", "none"] }
+
+function mailLine(m) {
+  const parts = [m.sent && `${m.sent} sent`, m.queued && `${m.queued} sending`, m.failed && `${m.failed} failed`, m.logged && `${m.logged} not sent`, m.no_email && `${m.no_email} without an e-mail address`].filter(Boolean)
+  return parts.length ? `Report cards by e-mail: ${parts.join(", ")}.` : "Report cards by e-mail: none yet."
+}
 
 function banner(d) {
   const end = d.ends_at ? fmtDate(d.ends_at) : null
@@ -32,7 +40,7 @@ export default function ExamResults() {
   const [busy, setBusy] = useState(false)
   const load = useCallback(() => get(`/tests/${testId}/results`).then(setD).catch((e) => toast.error(e.message)), [testId])
   useEffect(() => { load() }, [load])
-  const waiting = d && (d.state === "open" || d.state === "calculating" || d.active > 0)
+  const waiting = d && (d.state === "open" || d.state === "calculating" || d.active > 0 || d.mail.queued > 0)
   useEffect(() => {
     if (!waiting) return
     const t = setInterval(load, POLL_MS)
@@ -53,10 +61,15 @@ export default function ExamResults() {
   }
   async function declare(declared) {
     const yes = await confirm(declared
-      ? { title: "Declare the results?", description: "Candidates can see their score and whether they passed. You can still change a mark later, and the candidate will then see the new score.", action: "Declare" }
+      ? { title: "Declare the results?", description: "Candidates can see their score, whether they passed and their report card. Each candidate with an e-mail address is sent the report card as a PDF. You can still change a mark later, and the candidate will then see the new score (a mail already sent is not recalled).", action: "Declare" }
       : { title: "Withdraw the results?", description: "Candidates will no longer see their result.", action: "Withdraw", destructive: true })
-    if (yes) run(() => post(`/tests/${testId}/declare`, { declared }), () => (declared ? "Results declared" : "Results withdrawn"))
+    if (yes) run(() => post(`/tests/${testId}/declare`, { declared }), (o) => (declared ? `Results declared${o.mails?.queued ? `. ${o.mails.queued} report card(s) are being e-mailed` : ""}` : "Results withdrawn"))
   }
+  async function emailCards() {
+    const yes = await confirm({ title: "E-mail the report cards?", description: "Every candidate with an e-mail address who has not received their report card is sent it now, and mails that failed are tried again. Nobody gets the same report card twice. A report card already sent keeps the marks it had when it was sent.", action: "Send" })
+    if (yes) run(() => post(`/tests/${testId}/email-report-cards`), (o) => `${o.queued + o.requeued} report card(s) are being e-mailed`)
+  }
+  const fileOf = (path, name) => saveFile(path, name).catch((e) => toast.error(e.message))
   async function download(format) {
     try {
       const blob = await (await api(`/tests/${testId}/export?format=${format}`, { raw: true })).blob()
@@ -87,14 +100,24 @@ export default function ExamResults() {
           <Button variant="outline" asChild><Link to="/admin/results">All results</Link></Button>
           {user.can.recruit && <Button variant="outline" onClick={() => download("csv")}><Download /> CSV</Button>}
           {user.can.recruit && <Button variant="outline" onClick={() => download("xlsx")}><Download /> Excel</Button>}
+          {s.appeared > 0 && <Button variant="outline" onClick={() => fileOf(`/tests/${testId}/report-cards.zip`, "report-cards.zip")}><FileText /> Report cards (ZIP)</Button>}
           {evaluate && <Button variant="outline" disabled={busy || d.active > 0} onClick={calculate}>{d.calculated_at ? "Calculate again" : "Calculate results"}</Button>}
           {evaluate && d.calculated_at && d.attention > 0 && <Button variant="outline" disabled={busy} onClick={acceptAll}>Accept all suggested marks</Button>}
           {evaluate && d.state !== "declared" && <Button disabled={busy || d.state !== "ready"} onClick={() => declare(true)}>Declare results</Button>}
+          {evaluate && d.state === "declared" && <Button variant="outline" disabled={busy || !d.mail.shared} onClick={emailCards}><Mail /> E-mail report cards</Button>}
           {evaluate && d.state === "declared" && <Button variant="outline" disabled={busy} onClick={() => declare(false)}>Withdraw results</Button>}
         </div>
       </div>
 
       <Alert className="p-3" data-testid="results-banner">{banner(d)}</Alert>
+      {d.state === "declared" && (
+        <div className="grid gap-1 text-sm text-muted-foreground" data-testid="mail-summary">
+          <p>{mailLine(d.mail)}</p>
+          {!d.mail.shared && <p>This exam does not show results to candidates, so no report cards are sent.</p>}
+          {d.mail.shared && !d.mail.smtp && <p>E-mail is not set up on this server, so nothing was sent. Candidates can still sign in and download their report card.</p>}
+          {d.mail.failed > 0 && d.mail.error && <p className="text-destructive">The mail server said: {d.mail.error}</p>}
+        </div>
+      )}
 
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-7">
         {cards.map(([label, value]) => (
@@ -104,7 +127,7 @@ export default function ExamResults() {
 
       <Table>
         <TableHeader>
-          <TableRow><TableHead>Rank</TableHead><TableHead>Name</TableHead><TableHead>What happened</TableHead><TableHead>Score</TableHead><TableHead>%</TableHead><TableHead>Result</TableHead><TableHead>Needs attention</TableHead><TableHead>Risk</TableHead><TableHead /></TableRow>
+          <TableRow><TableHead>Rank</TableHead><TableHead>Name</TableHead><TableHead>What happened</TableHead><TableHead>Score</TableHead><TableHead>%</TableHead><TableHead>Result</TableHead><TableHead>Needs attention</TableHead><TableHead>Risk</TableHead><TableHead>Report card</TableHead><TableHead /></TableRow>
         </TableHeader>
         <TableBody>
           {d.rows.map((r) => {
@@ -119,11 +142,19 @@ export default function ExamResults() {
                 <TableCell>{done && r.result ? <Badge variant="outline" className={TONE[RESULT[r.result][1]]}>{RESULT[r.result][0]}</Badge> : "-"}</TableCell>
                 <TableCell>{r.attention || "-"}</TableCell>
                 <TableCell>{done ? (RISK[r.risk_level] ?? "-") : "-"}</TableCell>
+                <TableCell>
+                  {done && (
+                    <div className="flex items-center gap-2">
+                      <Button size="sm" variant="outline" aria-label={`Report card of ${r.name}`} onClick={() => fileOf(`/attempts/${r.attempt_id}/report-card.pdf`, "report-card.pdf")}><FileText /> PDF</Button>
+                      {d.state === "declared" && r.mail && <Badge variant="outline" className={TONE[MAIL[r.mail][1]]} data-testid="mail-status">{MAIL[r.mail][0]}</Badge>}
+                    </div>
+                  )}
+                </TableCell>
                 <TableCell className="text-right">{done && <Button asChild size="sm"><Link to={`/admin/results/${testId}/${r.attempt_id}`}>Review</Link></Button>}</TableCell>
               </TableRow>
             )
           })}
-          {!d.rows.length && <TableRow><TableCell colSpan={9} className="text-muted-foreground">Nobody was assigned to this exam.</TableCell></TableRow>}
+          {!d.rows.length && <TableRow><TableCell colSpan={10} className="text-muted-foreground">Nobody was assigned to this exam.</TableCell></TableRow>}
         </TableBody>
       </Table>
     </div>

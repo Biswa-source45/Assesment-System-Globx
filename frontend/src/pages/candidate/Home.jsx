@@ -1,6 +1,9 @@
 import { useEffect, useState } from "react"
 import { Link } from "react-router-dom"
+import { toast } from "sonner"
+import { Download, FileText } from "lucide-react"
 import { get } from "@/lib/api"
+import { saveFile } from "@/lib/download"
 import { useAuth } from "@/lib/auth"
 import { ENDED } from "@/lib/labels"
 import { RESULT, TONE } from "@/lib/verdict"
@@ -56,6 +59,12 @@ export default function CandidateHome() {
                 {a.result.result === "not_attempted" && <p className="text-muted-foreground">You did not answer any question.</p>}
                 {ENDED[a.result.reason] && a.result.reason !== "submitted" && <p className="text-muted-foreground">{ENDED[a.result.reason]}</p>}
                 <div className="flex flex-wrap gap-x-4 text-muted-foreground">{a.result.sections.map((s) => <span key={s.title}>{s.title}: {s.score} / {s.max}</span>)}</div>
+                {a.result.attempt_id && (
+                  <div className="flex flex-wrap gap-2 pt-1">
+                    <Button asChild size="sm"><Link to={`/exam/report/${a.result.attempt_id}`}><FileText /> View report card</Link></Button>
+                    <Button size="sm" variant="outline" onClick={() => saveFile(`/attempts/${a.result.attempt_id}/report-card.pdf`, "report-card.pdf").catch((e) => toast.error(e.message))}><Download /> Download PDF</Button>
+                  </div>
+                )}
               </CardContent>
             )}
           </Card>

@@ -17,6 +17,7 @@ import CandidateHome from "@/pages/candidate/Home"
 import CheckIn from "@/pages/candidate/CheckIn"
 import Exam from "@/pages/candidate/Exam"
 import Done from "@/pages/candidate/Done"
+import ReportCard from "@/pages/candidate/ReportCard"
 import ErrorBoundary from "@/components/ErrorBoundary"
 
 // The screens need the permission list the server sends with the user. A backend that was not restarted after an update does not send it.
@@ -66,6 +67,7 @@ export default function App() {
       <Route path="/exam/:assignmentId/start" element={<Guard staff={false}><CheckIn /></Guard>} />
       <Route path="/exam/attempt/:attemptId" element={<Guard staff={false}><ErrorBoundary><Exam /></ErrorBoundary></Guard>} />
       <Route path="/exam/done/:attemptId" element={<Guard staff={false}><Done /></Guard>} />
+      <Route path="/exam/report/:attemptId" element={<Guard staff={false}><ReportCard /></Guard>} />
       <Route path="*" element={<Navigate to="/login" replace />} />
     </Routes>
   )

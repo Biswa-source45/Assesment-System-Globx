@@ -78,6 +78,12 @@ services:
       LLM_PROVIDER: ${LLM_PROVIDER:-none}
       LLM_OPENAI_API_KEY: ${LLM_OPENAI_API_KEY:-}
       LLM_OPENAI_MODEL: ${LLM_OPENAI_MODEL:-gpt-4o-mini}
+      SMTP_HOST: ${SMTP_HOST:-}           # e-mail: the report cards are mailed from here (empty = mails are only kept in the Mail outbox)
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_FROM: ${SMTP_FROM:-KAUTILYA <no-reply@globx.co.in>}
+      SMTP_TLS: ${SMTP_TLS:-true}
     volumes:
       - judge-sock:/run/judge
       - ${ASSETS_DIR:-./user-assets}:/data/user-assets   # pictures, recordings and uploads: a plain folder next to the project, easy to back up
