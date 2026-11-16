@@ -19,6 +19,7 @@ if not os.environ.get("RUN_AI"):  # the browser tests must not spend money or de
     os.environ["LLM_PROVIDER"] = "none"
 
 # Mail: never the real server (the repo .env may hold it). A stand-in "mail server" writes every mail as a file in <storage>/mail, so a test can read it.
+os.environ["READ_SECONDS_DEFAULT"] = "0"  # browser tests click through exams quickly; the reading-wait specs give their exams a value of their own
 os.environ.update(SMTP_HOST="smtp.test", SMTP_PORT="587", SMTP_USER="", SMTP_PASSWORD="", SMTP_FROM="KAUTILYA <support@globx.co.in>", SMTP_TLS="false")
 mail_dir = e2e_storage / "mail"
 mail_dir.mkdir(parents=True)

@@ -51,7 +51,8 @@ export default function Exam() {
   const video = useRef(null)
   const proctor = useRef(null)
   const finished = useRef(false)
-  const opened = useRef({})  // question id -> when it was first shown (monotonic ms); -Infinity = seen in an earlier session
+  const opened = useRef({})  // question id -> when it was first shown (monotonic ms); -Infinity = answered before
+  const reported = useRef(new Set())  // questions the server already knows were shown
   const [, tick] = useState(0)
   const latest = useRef({})  // newest callbacks, so timers and the proctor never use stale ones
   const cfg = st?.test.proctoring ?? {}
@@ -64,6 +65,8 @@ export default function Exam() {
         skew.current = new Date(d.attempt.server_time).getTime() - Date.now()
         version.current = d.attempt.content_version
         const r = {}, f = {}
+        // questions the server saw before (a reload, another PC): their wait carries on from the first time they were shown
+        Object.entries(d.seen).forEach(([k, at]) => { reported.current.add(k); opened.current[k] = performance.now() - (new Date(d.attempt.server_time) - new Date(at)) })
         Object.entries(d.answers).forEach(([k, v]) => { r[k] = v.response; f[k] = v.flagged; seqs.current[k] = v.seq || 0; opened.current[k] = -Infinity })
         respRef.current = r
         flagRef.current = f
@@ -89,6 +92,14 @@ export default function Exam() {
   const holdLeft = q && minRead && !curSec.closed ? Math.max(0, Math.ceil(minRead - (performance.now() - opened.current[q.id]) / 1000)) : 0
   const hold = holdLeft > 0
   useEffect(() => { if (!hold) return; const t = setTimeout(() => tick((n) => n + 1), 250); return () => clearTimeout(t) })
+  // Tell the server a question was shown, once. If it was first shown earlier (another tab, another PC) its older time wins.
+  useEffect(() => {
+    if (!q || !minRead || curSec.closed || reported.current.has(q.id)) return
+    reported.current.add(q.id)
+    post(`/attempts/${attemptId}/questions/${q.id}/seen`)
+      .then((r) => { opened.current[q.id] = Math.min(opened.current[q.id], performance.now() - (new Date(r.server_time) - new Date(r.seen_at))) })
+      .catch(() => {})  // offline: the wait simply runs on this screen only
+  }, [q?.id, minRead])  // eslint-disable-line react-hooks/exhaustive-deps
 
   // ---- saving
   async function flushOne(qid) {
@@ -123,7 +134,7 @@ export default function Exam() {
   // ---- sections
   async function enterSection(i) {
     const s = sections[i]
-    if (!s) return
+    if (!s || (hold && i > sec)) return
     try {
       const r = await post(`/attempts/${attemptId}/sections/${s.id}/enter`)
       setSt((x) => ({ ...x, sections: x.sections.map((ss) => ({ ...ss, deadline: r.section_state[ss.id]?.deadline ?? ss.deadline, closed: !!r.section_state[ss.id]?.closed })) }))
@@ -237,7 +248,7 @@ export default function Exam() {
   const answeredIn = (s) => s.questions.filter((x) => isAnswered(x, resp[x.id])).length
   const all = sections.flatMap((s) => s.questions)
   const unanswered = all.length - all.filter((x) => isAnswered(x, resp[x.id])).length
-  const go = (i) => { flushAll(); setQi(i) }
+  const go = (i) => { if (hold && i > qi) return; flushAll(); setQi(i) }  // the buttons are disabled too: this stops any other way in
   const faceBad = cfg.webcam && faces !== null && faces !== 1
 
   return (

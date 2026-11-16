@@ -35,6 +35,7 @@ class Settings(BaseSettings):
     otp_max_attempts: int = 5
     otp_max_sends_per_hour: int = 5
     require_admin_mfa: bool = False
+    read_seconds_default: int = 5  # reading wait for an exam that has no value of its own; 0 = off (the tests set 0 so they do not wait)
 
     # SMTP (optional). When empty, mails are kept in the admin "Mail outbox".
     smtp_host: str = ""

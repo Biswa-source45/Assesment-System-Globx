@@ -155,6 +155,15 @@ def enter(atid: str, sid: str, user: User = Depends(current_user), db: Session =
     return {"section_state": at.section_state, "current": st}
 
 
+@router.post("/attempts/{atid}/questions/{qid}/seen")
+def seen(atid: str, qid: str, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    """The exam page reports each question the first time it is shown (starts the reading wait for good)."""
+    at = _my_attempt(db, atid, user)
+    first = svc.mark_seen(db, at, qid)
+    db.commit()
+    return {"seen_at": first, "server_time": now().isoformat()}
+
+
 @router.put("/attempts/{atid}/answers/{qid}")
 def save(atid: str, qid: str, body: AnswerIn, user: User = Depends(current_user), db: Session = Depends(get_db)):
     at = _my_attempt(db, atid, user)

@@ -264,6 +264,7 @@ class Attempt(Base):
     consent: Mapped[dict] = mapped_column(JSON, default=dict)
     system_check: Mapped[dict] = mapped_column(JSON, default=dict)
     section_state: Mapped[dict] = mapped_column(JSON, default=dict)
+    seen: Mapped[dict] = mapped_column(JSON, default=dict, server_default="{}")  # question id -> when it was first shown (reading wait)
     total_score: Mapped[Optional[float]] = mapped_column(Money, nullable=True)
     max_score: Mapped[Optional[float]] = mapped_column(Money, nullable=True)
     section_scores: Mapped[dict] = mapped_column(JSON, default=dict)

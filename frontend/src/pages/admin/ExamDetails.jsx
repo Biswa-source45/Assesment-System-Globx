@@ -22,7 +22,7 @@ const toForm = (t) => ({
   department_id: t?.department_id ?? "", title: t?.title ?? "", description: t?.description ?? "", instructions: fromHtml(t?.instructions ?? ""),
   duration_min: t?.duration_min ?? 60, starts_at: toLocalInput(t?.starts_at), ends_at: toLocalInput(t?.ends_at), cutoff: t?.cutoff ?? 0,
   shuffle_questions: t?.shuffle_questions ?? true, shuffle_options: t?.shuffle_options ?? true,
-  show_result: t?.settings?.show_result_to_candidate ?? true, min_question_seconds: t ? (t.settings?.min_question_seconds ?? 0) : 5, proctoring: { ...PROCTORING, ...(t?.settings?.proctoring ?? {}) },
+  show_result: t?.settings?.show_result_to_candidate ?? true, min_question_seconds: t?.settings?.min_question_seconds ?? 5, proctoring: { ...PROCTORING, ...(t?.settings?.proctoring ?? {}) },
 })
 
 function toBody(f, t) {

@@ -13,6 +13,7 @@ from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.core.config import get_settings
 from app.domain import scoring
 from app.models import (Answer, Assignment, Attempt, AttemptQuestion, CodeSubmission, Evaluation, Question,
                         QuestionGroup, Section, SectionItem, Test, aware, now, uid)
@@ -200,7 +201,7 @@ def attempt_state(db: Session, at: Attempt, test: Test) -> Dict:
                         "max_score": at.max_score, "content_version": content_version(db, at)},
             "test": {"id": test.id, "title": test.title, "instructions": test.instructions,
                      "proctoring": proctoring_config(test), "min_question_seconds": min_question_seconds(test)},
-            "sections": secs,
+            "sections": secs, "seen": at.seen or {},
             "answers": {qid: {"response": a.response, "flagged": a.flagged, "seq": a.seq,
                               "saved_at": aware(a.saved_at).isoformat()} for qid, a in answers.items()}}
 
@@ -228,9 +229,24 @@ def proctoring_config(test: Test) -> Dict:
 
 
 def min_question_seconds(test: Test) -> int:
-    """How long each question stays on screen before the candidate may move on (0 = no wait). Set by the exam author."""
+    """How long each question stays on screen before the candidate may move on (0 = no wait). The exam author's value; an exam
+    that has none (older exams, exams made by upload or AI) gets the platform default, so nobody has to remember to turn it on."""
     v = (test.settings or {}).get("min_question_seconds")
+    if v is None:
+        v = get_settings().read_seconds_default
     return max(0, min(60, int(v))) if isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(v) else 0
+
+
+def mark_seen(db: Session, at: Attempt, question_id: str) -> str:
+    """Remember when a question was first shown to this candidate (kept for good: reloading or changing PC never makes them wait again)."""
+    ensure_active(at)
+    if not db.scalar(select(AttemptQuestion.id).where(AttemptQuestion.attempt_id == at.id, AttemptQuestion.question_id == question_id)):
+        raise HTTPException(404, "Question not found in this attempt")
+    db.refresh(at, with_for_update=True)  # two questions reported at once must not overwrite each other
+    seen = dict(at.seen or {})
+    seen.setdefault(question_id, now().isoformat())
+    at.seen = seen
+    return seen[question_id]
 
 
 def terminate_attempt(db: Session, at: Attempt, reason: str) -> None:

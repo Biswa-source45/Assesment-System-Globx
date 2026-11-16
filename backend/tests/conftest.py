@@ -9,6 +9,7 @@ os.environ.setdefault("SANDBOX_DIR", os.path.join(_tmp, "sandbox"))
 os.environ.setdefault("SECRET_KEY", "test-only-secret-not-used-anywhere-else")
 os.environ.setdefault("DEMO_MODE", "true")
 os.environ.setdefault("LLM_PROVIDER", "none")
+os.environ["READ_SECONDS_DEFAULT"] = "0"  # exams without their own reading wait do not wait in tests (test_read_time sets it back to 5 where it matters)
 os.environ["SMTP_HOST"] = ""  # forced, never setdefault: the repo .env may hold the real mail server, and no test may ever send a real mail
 os.environ["SMTP_USER"] = os.environ["SMTP_PASSWORD"] = ""
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))

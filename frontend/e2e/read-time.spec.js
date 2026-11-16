@@ -124,10 +124,55 @@ test("after a reload, questions already answered are free and an unanswered one 
   await expect(page.getByRole("button", { name: /^Finish$/ })).toBeEnabled({ timeout: SECONDS * 1000 + 3000 })
 })
 
+test("a question that was read once is free for good: after a reload, answered or not", async ({ page, request }) => {
+  const api = await staffRequest(request)
+  const title = "E2E Read Once"
+  const exam = await makeExam(api, title, { min_question_seconds: SECONDS }, [3])
+  const p = await person(api, exam, "Read Once")
+  await open(page, p, title)
+  await begin(page)
+
+  // read questions 1 and 2 without answering anything, then reach question 3
+  for (const n of [1, 2]) {
+    await expect(page.getByRole("heading", { name: `${title} Q${n}` })).toBeVisible()
+    await expect(next(page)).toBeEnabled({ timeout: SECONDS * 1000 + 3000 })
+    await next(page).click()
+  }
+  await expect(page.getByRole("heading", { name: `${title} Q3` })).toBeVisible()
+  await expect(next(page)).toBeDisabled()
+
+  await page.reload()  // the screen restarts at question 1; the server remembers what was shown
+  await expect(page.getByRole("heading", { name: `${title} Q1` })).toBeVisible()
+  await expect(next(page)).toBeEnabled({ timeout: 500 })  // read before: no new wait
+  await next(page).click()
+  await expect(next(page)).toBeEnabled({ timeout: 500 })
+  await next(page).click()
+  await expect(page.getByRole("heading", { name: `${title} Q3` })).toBeVisible()  // reached before the reload but not read long enough: the wait only carries on
+  await expect(next(page)).toBeEnabled({ timeout: SECONDS * 1000 + 3000 })
+})
+
+test("reloading in the middle of the wait does not start it again", async ({ page, request }) => {
+  const api = await staffRequest(request)
+  const title = "E2E Read Midway"
+  const long = 8
+  const exam = await makeExam(api, title, { min_question_seconds: long }, [2])
+  const p = await person(api, exam, "Read Midway")
+  await open(page, p, title)
+  await begin(page)
+  const label = page.getByRole("button", { name: /^Save and next \(\ds\)$/ })
+  await expect(label).toBeVisible()
+  await page.waitForTimeout(4000)  // the server has the first time by now
+  await page.reload()
+  await expect(label).toBeVisible()
+  const left = Number((await label.textContent()).match(/\((\d)s\)/)[1])
+  expect(left).toBeLessThanOrEqual(long - 4)  // a fresh start would show 8
+  await expect(next(page)).toBeEnabled({ timeout: 6000 })
+})
+
 test("with the setting off there is no wait and no line at check-in", async ({ page, request }) => {
   const api = await staffRequest(request)
   const title = "E2E Read Off"
-  const exam = await makeExam(api, title, {}, [2])
+  const exam = await makeExam(api, title, { min_question_seconds: 0 }, [2])
   const p = await person(api, exam, "Read Off")
   await open(page, p, title)
   await expect(page.getByText(/seconds before you can move on/)).toHaveCount(0)
@@ -135,6 +180,16 @@ test("with the setting off there is no wait and no line at check-in", async ({ p
   await expect(page.getByTestId("read-hint")).toHaveCount(0)
   await expect(page.getByRole("button", { name: "Save and next", exact: true })).toBeEnabled({ timeout: 500 })
   await expect(page.getByRole("button", { name: "Question 2" })).toBeEnabled()
+})
+
+test("an exam that has no value of its own shows the platform default of 5 in its form", async ({ page, request }) => {
+  const api = await staffRequest(request)
+  const dept = (await api.get("/departments")).find((d) => d.name === "General").id
+  const exam = await api.post("/tests", { department_id: dept, title: "E2E Read NoValue", duration_min: 30, settings: {} })
+  await loginStaff(page)
+  await page.goto(`/admin/exams/${exam.id}`)
+  await page.getByRole("tab", { name: "Details" }).click()
+  await expect(page.getByLabel("Seconds each question stays on screen before Next unlocks")).toHaveValue("5")
 })
 
 test("the exam form: a new exam starts at 5, a saved value is kept, a silly value is cut to 0..60", async ({ page, request }) => {

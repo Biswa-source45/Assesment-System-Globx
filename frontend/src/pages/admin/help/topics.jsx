@@ -301,7 +301,7 @@ export const TOPICS = [
         ["Opens at, Closes at", "The window in which candidates can start. Results are calculated automatically after the closing time. With no closing time you press Calculate yourself."],
         ["Time allowed per candidate", "Minutes from the moment each person starts."],
         ["Pass mark", "Total marks needed to pass."],
-        ["Seconds each question stays on screen before Next unlocks", "The reading time. 0 turns it off. New exams start at 5."],
+        ["Seconds each question stays on screen before Next unlocks", "The reading time. 0 turns it off. Exams start at 5, also older ones that never had a value."],
         ["Shuffle question order / answer options", "Each candidate sees a different order."],
         ["Show the result to the candidate", "Whether the candidate sees a score after you declare."],
         ["Proctoring on", "Switches the rules below on. Camera and face check, full screen, blocking copy/paste and right-click, blocking a second screen, entire-screen sharing, live view for the invigilator."],
@@ -373,10 +373,10 @@ export const TOPICS = [
     </div>) },
   { id: "reading-time", group: "candidate", title: "The minimum reading time", body: (
     <div className="grid gap-3">
-      <p>When set (5 seconds for new exams), a question must stay on screen for that long the first time it is opened before the candidate can move forward. The button shows a countdown, for example "Save and next (4s)".</p>
+      <p>A question must stay on screen for 5 seconds (or the number you set in the exam's Details; 0 turns it off) the first time it is opened before the candidate can move forward. The button shows a countdown, for example "Save and next (4s)". Exams with no value of their own, such as older exams or exams made from an upload, use 5.</p>
       <List items={[
         "Going back, marking for review, answering and End exam are never blocked.",
-        "A question that has had its time stays free. After a refresh, questions already answered are free.",
+        "A question that has had its time stays free for the rest of the exam, also after a refresh or on another computer: the server remembers when each question was first shown.",
         "A section whose time is over never waits.",
         "It is a rule on the screen, not a server check. Grading uses saved answers only.",
       ]} />
