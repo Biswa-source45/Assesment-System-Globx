@@ -44,7 +44,7 @@ export async function api(path, { method, body, form, raw, signal } = {}, retry 
     if (await refresh()) return api(path, { method, body, form, raw, signal }, false)
   }
   if (raw) {
-    if (!r.ok) throw new ApiError(r.status, r.statusText)
+    if (!r.ok) throw new ApiError(r.status, (await r.json().catch(() => null))?.detail ?? r.statusText)
     return r
   }
   const text = await r.text()

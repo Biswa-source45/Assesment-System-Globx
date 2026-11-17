@@ -4,6 +4,7 @@ import Login from "@/pages/Login"
 import AdminLayout from "@/pages/admin/AdminLayout"
 import Exams from "@/pages/admin/Exams"
 import Help from "@/pages/admin/help/Help"
+import AttemptAnalyticsPage from "@/pages/admin/AttemptAnalyticsPage"
 import AttemptReview from "@/pages/admin/AttemptReview"
 import Departments from "@/pages/admin/Departments"
 import ExamResults from "@/pages/admin/ExamResults"
@@ -17,6 +18,7 @@ import CandidateHome from "@/pages/candidate/Home"
 import CheckIn from "@/pages/candidate/CheckIn"
 import Exam from "@/pages/candidate/Exam"
 import Done from "@/pages/candidate/Done"
+import Analytics from "@/pages/candidate/Analytics"
 import ReportCard from "@/pages/candidate/ReportCard"
 import ErrorBoundary from "@/components/ErrorBoundary"
 
@@ -58,6 +60,7 @@ export default function App() {
         <Route path="results" element={<Results />} />
         <Route path="results/:testId" element={<ExamResults />} />
         <Route path="results/:testId/:attemptId" element={<AttemptReview />} />
+        <Route path="results/:testId/:attemptId/analytics" element={<AttemptAnalyticsPage />} />
         <Route path="departments" element={<Departments />} />
         <Route path="monitor" element={<Monitor />} />
         <Route path="help" element={<Help />} />
@@ -68,6 +71,7 @@ export default function App() {
       <Route path="/exam/attempt/:attemptId" element={<Guard staff={false}><ErrorBoundary><Exam /></ErrorBoundary></Guard>} />
       <Route path="/exam/done/:attemptId" element={<Guard staff={false}><Done /></Guard>} />
       <Route path="/exam/report/:attemptId" element={<Guard staff={false}><ReportCard /></Guard>} />
+      <Route path="/exam/analytics/:attemptId" element={<Guard staff={false}><Analytics /></Guard>} />
       <Route path="*" element={<Navigate to="/login" replace />} />
     </Routes>
   )

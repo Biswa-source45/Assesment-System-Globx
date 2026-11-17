@@ -1,43 +1,15 @@
 import { useEffect, useState } from "react"
 import { Link, useParams } from "react-router-dom"
-import { toast } from "sonner"
-import { ArrowLeft, Download } from "lucide-react"
+import { ArrowLeft, BarChart3 } from "lucide-react"
 import { get } from "@/lib/api"
 import { useAuth } from "@/lib/auth"
-import { saveFile } from "@/lib/download"
-import { TONE } from "@/lib/verdict"
+import { QUESTION_TONE, TONE } from "@/lib/verdict"
 import Brand from "@/components/Brand"
+import PdfButton from "@/components/PdfButton"
 import SignOutButton from "@/components/SignOutButton"
+import { Bar, Ring } from "@/components/charts"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-
-const STATUS_TONE = { Correct: "good", Incorrect: "bad", "Partly correct": "part", "Not answered": "none", "Awaiting marking": "info" }
-const RING = { passed: "#16a34a", not_passed: "#dc2626", not_attempted: "#d97706" }
-
-function Ring({ percent, result }) {
-  const r = 52, c = 2 * Math.PI * r, p = Math.max(0, Math.min(100, percent))
-  return (
-    <svg viewBox="0 0 128 128" className="size-32 shrink-0" role="img" aria-label={`${percent} percent`}>
-      <circle cx="64" cy="64" r={r} fill="none" stroke="#e2e8f0" strokeWidth="11" />
-      {p > 0 && <circle cx="64" cy="64" r={r} fill="none" stroke={RING[result] ?? "#1d4ed8"} strokeWidth="11" strokeLinecap="round" strokeDasharray={`${(c * p) / 100} ${c}`} transform="rotate(-90 64 64)" />}
-      <text x="64" y="68" textAnchor="middle" className="fill-slate-900 text-[26px] font-semibold" style={{ fontFamily: "Poppins, sans-serif" }}>{percent}%</text>
-    </svg>
-  )
-}
-
-function Bar({ label, score, max, average }) {
-  const w = (v) => `${Math.max(0, Math.min(100, max ? (100 * v) / max : 0))}%`
-  return (
-    <div className="grid gap-1" data-testid="rc-bar">
-      <div className="flex items-baseline justify-between gap-2 text-sm"><span className="font-medium">{label}</span><span className="font-semibold">{score} / {max}</span></div>
-      <div className="relative h-2.5 rounded-full bg-slate-200">
-        <div className="h-full rounded-full bg-primary" style={{ width: w(score) }} />
-        {average != null && <div className="absolute -top-1 h-4.5 w-0.5 bg-slate-900" style={{ left: w(average), height: 18 }} title={`Class average ${average}`} />}
-      </div>
-      {average != null && <span className="text-right text-xs text-muted-foreground">class average {average}</span>}
-    </div>
-  )
-}
 
 export default function ReportCard() {
   const { attemptId } = useParams()
@@ -46,7 +18,6 @@ export default function ReportCard() {
   const [error, setError] = useState("")
   useEffect(() => { get(`/attempts/${attemptId}/report-card`).then(setD).catch((e) => setError(e.message)) }, [attemptId])
 
-  const download = () => saveFile(`/attempts/${attemptId}/report-card.pdf`, "report-card.pdf").catch((e) => toast.error(e.message))
   const tiles = d && [["Rank", d.rank ? `${d.rank} of ${d.of}` : "-"], ["Class average", `${d.class_average}%`], ["Highest score", `${d.highest}%`],
     ["Time taken", d.exam.minutes_taken != null ? `${d.exam.minutes_taken} min` : "-", `of ${d.exam.minutes_allowed} min`], ["Attempted", `${d.attempted} of ${d.questions}`, "questions"]]
 
@@ -59,7 +30,12 @@ export default function ReportCard() {
       <main className="mx-auto grid max-w-4xl gap-4 p-4 sm:p-6" data-testid="report-card">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <Button variant="ghost" asChild><Link to="/exam"><ArrowLeft /> Your exams</Link></Button>
-          {d && <Button onClick={download}><Download /> Download PDF</Button>}
+          {d && (
+            <div className="flex flex-wrap gap-2">
+              <Button variant="outline" asChild><Link to={`/exam/analytics/${attemptId}`}><BarChart3 /> View analytics</Link></Button>
+              <PdfButton path={`/attempts/${attemptId}/report-card.pdf`} label="Report card PDF" description={d.exam.title} />
+            </div>
+          )}
         </div>
         {error && <p className="rounded-lg border bg-white p-4 text-sm text-destructive" role="alert">{error}</p>}
         {!d && !error && <p className="text-muted-foreground">Loading...</p>}
@@ -118,7 +94,7 @@ export default function ReportCard() {
                       <span className="min-w-0 break-words">{q.title}</span>
                       <span className="hidden text-muted-foreground sm:block">{q.kind}</span>
                       <span className="hidden sm:block">{q.score} / {q.marks}</span>
-                      <Badge variant="outline" className={`justify-self-end ${TONE[STATUS_TONE[q.status] ?? "none"]}`}>{q.status}</Badge>
+                      <Badge variant="outline" className={`justify-self-end ${TONE[QUESTION_TONE[q.status] ?? "none"]}`}>{q.status}</Badge>
                     </div>
                   ))}
                 </div>

@@ -17,6 +17,7 @@ from app.core.deps import EVAL, ROLE_GROUPS, VIEW, audit, current_user, same_org
 from app.db import get_db
 from app.models import Answer, Attempt, Evaluation, Test, User, aware, now, uid
 from app.services import jobs
+from app.services.analytics import attempt_analytics, progress
 from app.services.attempts import recompute_totals
 from app.services.report_card import card_data, card_pdf, file_name, is_real_email, mail_states, queue_report_cards, visible_to_candidate
 from app.services.reports import ENDED_EARLY, FINAL, candidates_table
@@ -176,6 +177,17 @@ def report_card(atid: str, user: User = Depends(current_user), db: Session = Dep
 def report_card_pdf(atid: str, user: User = Depends(current_user), db: Session = Depends(get_db)):
     d = card_data(db, _card_attempt(db, user, atid))
     return Response(card_pdf(d), media_type="application/pdf", headers={"Content-Disposition": f'attachment; filename="{file_name(d)}"'})
+
+
+@router.get("/attempts/{atid}/analytics")
+def attempt_analytics_route(atid: str, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    """One candidate against the class: the candidate for their own declared result, staff for any finished attempt. Same gate as the report card."""
+    return attempt_analytics(db, _card_attempt(db, user, atid))
+
+
+@router.get("/me/progress")
+def my_progress(user: User = Depends(current_user), db: Session = Depends(get_db)):
+    return progress(db, user)
 
 
 @router.get("/tests/{tid}/report-cards.zip")

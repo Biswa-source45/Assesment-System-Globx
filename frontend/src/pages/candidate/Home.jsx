@@ -1,15 +1,15 @@
 import { useEffect, useState } from "react"
 import { Link } from "react-router-dom"
-import { toast } from "sonner"
-import { Download, FileText } from "lucide-react"
+import { BarChart3, FileText } from "lucide-react"
 import { get } from "@/lib/api"
-import { saveFile } from "@/lib/download"
 import { useAuth } from "@/lib/auth"
 import { ENDED } from "@/lib/labels"
 import { RESULT, TONE } from "@/lib/verdict"
 import { Badge } from "@/components/ui/badge"
 import Brand from "@/components/Brand"
+import PdfButton from "@/components/PdfButton"
 import SignOutButton from "@/components/SignOutButton"
+import { LineChart, Legend, COLOR, Panel } from "@/components/charts"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 
@@ -20,9 +20,11 @@ export default function CandidateHome() {
   const { user } = useAuth()
   const [items, setItems] = useState(null)
   const [error, setError] = useState("")
+  const [progress, setProgress] = useState([])
 
   useEffect(() => {
     get("/me/assignments").then(setItems).catch((e) => setError(e.message))
+    get("/me/progress").then(setProgress).catch(() => {})   // the strip is a bonus: nothing is shown when it cannot be loaded
   }, [])
 
   return (
@@ -37,6 +39,12 @@ export default function CandidateHome() {
       <main className="mx-auto grid max-w-2xl gap-4 p-6">
         <h1 className="text-2xl font-semibold">Your exams</h1>
         {error && <p className="text-sm text-destructive">{error}</p>}
+        {progress.length > 0 && (
+          <Panel title="My progress" hint="Your score in each exam you have taken, with the class average" data-testid="my-progress">
+            <LineChart points={progress.map((p) => ({ label: p.title, you: p.percent, avg: p.class_average }))} name="Your scores by exam" />
+            <Legend items={[[COLOR.blue, "You"], [COLOR.slate, "Class average"]]} />
+          </Panel>
+        )}
         {items?.map((a) => (
           <Card key={a.assignment_id}>
             <CardHeader>
@@ -62,7 +70,8 @@ export default function CandidateHome() {
                 {a.result.attempt_id && (
                   <div className="flex flex-wrap gap-2 pt-1">
                     <Button asChild size="sm"><Link to={`/exam/report/${a.result.attempt_id}`}><FileText /> View report card</Link></Button>
-                    <Button size="sm" variant="outline" onClick={() => saveFile(`/attempts/${a.result.attempt_id}/report-card.pdf`, "report-card.pdf").catch((e) => toast.error(e.message))}><Download /> Download PDF</Button>
+                    <Button asChild size="sm" variant="outline"><Link to={`/exam/analytics/${a.result.attempt_id}`}><BarChart3 /> View analytics</Link></Button>
+                    <PdfButton path={`/attempts/${a.result.attempt_id}/report-card.pdf`} size="sm" variant="outline" label="Report card PDF" description={a.test.title} />
                   </div>
                 )}
               </CardContent>

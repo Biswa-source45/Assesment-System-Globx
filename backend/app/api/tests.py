@@ -18,6 +18,7 @@ from app.models import (Assignment, Attempt, Department, PlagiarismMatch, Questi
                         User, AttemptQuestion, CodeSubmission, Answer, aware, now, uid)
 from app.services import invites as inv
 from app.services import reports
+from app.services.analytics import exam_analytics
 from app.services.attempts import retime_open_attempts
 from app.services.populate import pick_questions
 from app.services.sanitize import sanitize_html
@@ -607,7 +608,7 @@ def assignment_action(aid: str, body: ActionIn, request: Request, user: User = D
 # ------------------------------------------------------------------ analytics / export / plagiarism
 @router.get("/tests/{tid}/analytics")
 def analytics(tid: str, user: User = Depends(VIEW), db: Session = Depends(get_db)):
-    return reports.test_analytics(db, _test(db, tid, user))
+    return exam_analytics(db, _test(db, tid, user))
 
 
 @router.get("/tests/{tid}/export")

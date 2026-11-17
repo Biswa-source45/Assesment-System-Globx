@@ -40,6 +40,14 @@ async function sit(api, request, examId, line, pick) {
 }
 
 const pdfOf = async (download) => fs.readFileSync(await download.path())
+// A PDF button opens a dialog first; Download in it saves the file.
+async function downloadFrom(page, button) {
+  await button.click()
+  const saved = page.waitForEvent("download")
+  await dialog(page).getByRole("button", { name: "Download" }).click()
+  await expect(dialog(page)).toHaveCount(0)
+  return saved
+}
 
 test("declaring e-mails the PDF to candidates with an address; staff download cards; a login-only candidate reads and downloads theirs", async ({ page, request }) => {
   const creator = await staffRequest(request)                                                      // makes the exam and its participants
@@ -58,9 +66,7 @@ test("declaring e-mails the PDF to candidates with an address; staff download ca
   expect(cardMails("priya.mailed@example.com")).toHaveLength(0)
 
   // a preview card can be downloaded before the results are declared; the exam's ZIP holds every card
-  const one = page.waitForEvent("download")
-  await page.getByRole("button", { name: "Report card of Priya Mailed" }).click()
-  const preview = await one
+  const preview = await downloadFrom(page, page.getByRole("button", { name: "Report card of Priya Mailed" }))
   expect(preview.suggestedFilename()).toBe("report-card-Priya-Mailed-E2E-Card-Exam.pdf")
   expect((await pdfOf(preview)).subarray(0, 5).toString()).toBe("%PDF-")
   const zip = page.waitForEvent("download")
@@ -103,9 +109,7 @@ test("declaring e-mails the PDF to candidates with an address; staff download ca
   await login(page, only.username, only.password)
   const result = page.getByTestId("my-result")
   await expect(result).toContainText("1 / 1")
-  const dl = page.waitForEvent("download")
-  await result.getByRole("button", { name: "Download PDF" }).click()
-  expect((await dl).suggestedFilename()).toBe("report-card-Login-Only-E2E-Card-Exam.pdf")
+  expect((await downloadFrom(page, result.getByRole("button", { name: "Report card PDF" }))).suggestedFilename()).toBe("report-card-Login-Only-E2E-Card-Exam.pdf")
   await result.getByRole("link", { name: "View report card" }).click()
   const card = page.getByTestId("report-card")
   await expect(card.getByTestId("rc-name")).toHaveText("Login Only")
@@ -118,9 +122,27 @@ test("declaring e-mails the PDF to candidates with an address; staff download ca
   await expect(card.getByTestId("rc-question")).toContainText("Correct")
   await expect(card).not.toContainText("Preview")
   await shot(page, "report-card-screen")
-  const again = page.waitForEvent("download")
-  await card.getByRole("button", { name: "Download PDF" }).click()
-  expect((await pdfOf(await again)).subarray(0, 5).toString()).toBe("%PDF-")
+  expect((await pdfOf(await downloadFrom(page, card.getByRole("button", { name: "Report card PDF" })))).subarray(0, 5).toString()).toBe("%PDF-")
+
+  // Preview shows it on this page (a headless browser has no PDF viewer, so what is checked is the frame, its address and the file behind it)
+  await card.getByRole("button", { name: "Report card PDF" }).click()
+  await expect(dialog(page)).toContainText("Preview")
+  await expect(page.getByTestId("pdf-preview")).toHaveCount(0)                                     // first the choice, nothing loaded yet
+  await dialog(page).getByRole("button", { name: "Preview" }).click()
+  const frame = page.getByTestId("pdf-preview")
+  await expect(frame).toBeVisible()
+  const src = await frame.getAttribute("src")
+  expect(src).toMatch(/^blob:/)
+  const head = await page.evaluate(async (u) => { const b = await (await fetch(u)).blob(); return [b.type, await b.slice(0, 5).text()] }, src)
+  expect(head).toEqual(["application/pdf", "%PDF-"])
+  await shot(page, "pdf-preview-dialog")
+  await expect(dialog(page).getByRole("button", { name: "Download" })).toBeVisible()               // still possible from the preview
+  await dialog(page).locator("[data-slot=dialog-footer]").getByRole("button", { name: "Close" }).click()
+  await expect(dialog(page)).toHaveCount(0)
+  await card.getByRole("button", { name: "Report card PDF" }).click()                              // opening again starts at the choice, nothing left over
+  await expect(page.getByTestId("pdf-preview")).toHaveCount(0)
+  await dialog(page).locator("[data-slot=dialog-footer]").getByRole("button", { name: "Cancel" }).click()
+  await expect(dialog(page)).toHaveCount(0)
 
   // the phone: nothing runs off the side
   await page.setViewportSize({ width: 360, height: 800 })
@@ -130,7 +152,12 @@ test("declaring e-mails the PDF to candidates with an address; staff download ca
   await shot(page, "report-card-phone")
 
   // withdrawn: the card is gone again, with a plain reason
+  await card.getByRole("button", { name: "Report card PDF" }).click()                              // the page is open, the results get withdrawn, then Preview is pressed
   await staff.post(`/tests/${exam.id}/declare`, { declared: false })
+  await dialog(page).getByRole("button", { name: "Preview" }).click()
+  await expect(dialog(page).getByRole("alert")).toContainText("have not been declared")
+  await expect(page.getByTestId("pdf-preview")).toHaveCount(0)
+  await dialog(page).locator("[data-slot=dialog-footer]").getByRole("button", { name: "Cancel" }).click()
   await page.reload()
   await expect(page.getByRole("alert")).toContainText("have not been declared")
   await expect(page.getByTestId("rc-name")).toHaveCount(0)

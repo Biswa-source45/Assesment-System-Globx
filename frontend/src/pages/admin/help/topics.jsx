@@ -353,10 +353,18 @@ export const TOPICS = [
       <p className="font-medium">The report card</p>
       <List items={[
         "Every candidate who finished has a report card: letterhead, exam, candidate, score, result, rank, class average, scores by section and by type, and a result for every question (Correct, Partly correct, Incorrect, Not answered). The right answers are never shown.",
-        <>Staff: the <b>PDF</b> button on each row (and on the review page) gives one report card, <b>Report cards (ZIP)</b> gives all of them. Before declaring, a card is marked as a preview.</>,
+        <>Staff: the <b>PDF</b> button on each row (and on the review page) asks <b>Preview</b> (look at it on screen) or <b>Download</b>; <b>Report cards (ZIP)</b> downloads all of them. Before declaring, a card is marked as a preview.</>,
         <>When you <b>Declare results</b>, each candidate who has an e-mail address is sent the PDF automatically. The <b>Report card</b> column shows Emailed, Sending, Failed (with the reason above the table), Not sent or No e-mail. <b>E-mail report cards</b> sends to those who have not got it and tries failed ones again; nobody gets two.</>,
-        "A candidate with no e-mail address (a login only) signs in, sees the exam under Your exams and presses View report card or Download PDF. The same goes for everyone: the card is always current, while a mail already sent keeps the marks it had.",
+        "A candidate with no e-mail address (a login only) signs in, sees the exam under Your exams and presses View report card or Report card PDF (Preview or Download). The same goes for everyone: the card is always current, while a mail already sent keeps the marks it had.",
         "Withdrawing the results hides the report card again; a mail not yet sent is not sent.",
+      ]} />
+      <p className="font-medium">Analytics</p>
+      <List items={[
+        <>Open the exam under <b>Results</b> and press the <b>Analytics</b> tab. It shows how many came and finished, the average, median and spread of the scores, the pass rate, a histogram of the scores (with the average and the pass mark), how much of the time was used, a dot for each candidate (score against time, coloured by integrity risk), every section, type, difficulty and topic, and every question.</>,
+        <><b>Earned</b> is the average share of a question's marks. <b>Separates</b> says how well the question tells strong candidates from weak ones: close to 1 is good, around 0 means it makes no difference, and below 0 means the strong did worse than the weak. That is usually a wrong answer key, so the verdict says <b>Check the key</b>. It needs six or more finished candidates. Press the arrow on a choice question to see how many picked each option.</>,
+        "Numbers are provisional while some candidates are still waiting for review or the results are not calculated yet; the tab says so.",
+        <>Open a candidate and press <b>Analytics</b> to see that person against the class: rank, how many of the others they scored higher than, their band in the class histogram, each section, type, difficulty and topic against the class average, and how much of the class got each question right.</>,
+        "Candidates see the same page for themselves once the results are declared (View analytics on their home page and report card), plus a My progress chart of their score in every exam they have taken. They never see the answer key or another person's name.",
       ]} />
     </div>) },
 

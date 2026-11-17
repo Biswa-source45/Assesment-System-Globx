@@ -63,7 +63,8 @@ def attempt_report(db: Session, at: Attempt, staff_view: bool = True) -> Dict:
     asg = db.get(Assignment, at.assignment_id)
     ranked = ranked_attempts(db, test.id)
     rank = next((i + 1 for i, a in enumerate(ranked) if a.id == at.id), None)
-    aqs = db.scalars(select(AttemptQuestion).where(AttemptQuestion.attempt_id == at.id).order_by(AttemptQuestion.order)).all()
+    where = {s.id: i for i, s in enumerate(test.sections)}  # the order of a question restarts in every section: sort by section first, so numbering follows the exam
+    aqs = sorted(db.scalars(select(AttemptQuestion).where(AttemptQuestion.attempt_id == at.id)).all(), key=lambda aq: (where.get(aq.section_id, 0), aq.order))
     answers = {a.question_id: a for a in db.scalars(select(Answer).where(Answer.attempt_id == at.id)).all()}
     # section averages across all finished attempts
     avg: Dict[str, float] = {}
@@ -138,44 +139,6 @@ def attempt_report(db: Session, at: Attempt, staff_view: bool = True) -> Dict:
                                             "faces": s.face_count, "flags": s.flags} for s in snaps]}
         rep["plagiarism"] = {"level": at.plagiarism_level, "max": at.plagiarism_max, "matches": candidate_summary(db, at)}
     return rep
-
-
-def test_analytics(db: Session, test: Test) -> Dict:
-    asgs = db.scalars(select(Assignment).where(Assignment.test_id == test.id)).all()
-    atts = db.scalars(select(Attempt).where(Attempt.test_id == test.id)).all()
-    done = [a for a in atts if a.status in FINAL]
-    pct = [100 * (a.total_score or 0) / a.max_score for a in done if a.max_score]
-    dist = [0] * 10
-    for p in pct:
-        dist[min(9, int(p // 10))] += 1
-    times = [int((aware(a.submitted_at) - aware(a.started_at)).total_seconds() // 60) for a in done if a.submitted_at]
-    langs = Counter()
-    for a in done:
-        for s in db.scalars(select(CodeSubmission).where(CodeSubmission.attempt_id == a.id, CodeSubmission.kind == "submit")).all():
-            langs[s.language] += 1
-    qstats = []
-    qids = {aq.question_id for a in done for aq in db.scalars(select(AttemptQuestion).where(AttemptQuestion.attempt_id == a.id)).all()}
-    for qid in qids:
-        q = db.get(Question, qid)
-        ans = db.scalars(select(Answer).where(Answer.question_id == qid, Answer.attempt_id.in_([a.id for a in done]))).all()
-        aqm = {aq.attempt_id: aq.marks for aq in db.scalars(select(AttemptQuestion).where(AttemptQuestion.question_id == qid)).all()}
-        scored = [(x.final_score or 0, aqm.get(x.attempt_id, q.marks)) for x in ans]
-        full = sum(1 for s, m in scored if m and s >= m - 1e-9)
-        qstats.append({"question_id": qid, "title": q.title, "type": q.type, "attempts": len(ans),
-                       "full_marks_pct": round(100 * full / len(ans), 1) if ans else 0,
-                       "avg_score": round(sum(s for s, _ in scored) / len(scored), 2) if scored else 0,
-                       "health": ("too easy" if ans and full / len(ans) > 0.9 else "too hard" if ans and full / len(ans) < 0.1 else "good")})
-    status = Counter(a.status for a in asgs)
-    return {"funnel": {"invited": len(asgs), "started": len(atts), "completed": len(done),
-                       "cleared_cutoff": sum(1 for r in results_of(db, test, done).values() if r == "passed"),
-                       "shortlisted": status.get("shortlisted", 0)},
-            "status_counts": dict(status), "score_distribution": dist,
-            "average_percent": round(sum(pct) / len(pct), 1) if pct else 0,
-            "time_minutes": {"min": min(times) if times else 0, "max": max(times) if times else 0,
-                             "avg": round(sum(times) / len(times), 1) if times else 0},
-            "integrity": dict(Counter(a.risk_level for a in done)),
-            "plagiarism": dict(Counter(a.plagiarism_level for a in done)),
-            "languages": dict(langs), "questions": sorted(qstats, key=lambda x: x["title"])}
 
 
 def candidates_table(db: Session, test: Test, status: str = "") -> List[Dict]:

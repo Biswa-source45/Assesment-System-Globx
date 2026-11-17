@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react"
-import { Link, useParams } from "react-router-dom"
+import { Link, useParams, useSearchParams } from "react-router-dom"
 import { toast } from "sonner"
 import { Download, FileText, Mail } from "lucide-react"
 import { api, get, post } from "@/lib/api"
@@ -8,10 +8,13 @@ import { useAuth } from "@/lib/auth"
 import { fmtDate, RESULT_STATE, RISK } from "@/lib/labels"
 import { OUTCOME_TONE, RESULT, STATE_TONE, TONE } from "@/lib/verdict"
 import { useConfirm } from "@/components/ConfirmDialog"
+import PdfButton from "@/components/PdfButton"
 import { Alert } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import ExamAnalytics from "@/pages/admin/ExamAnalytics"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 
 const POLL_MS = 5000
@@ -38,6 +41,7 @@ export default function ExamResults() {
   const confirm = useConfirm()
   const [d, setD] = useState(null)
   const [busy, setBusy] = useState(false)
+  const [params, setParams] = useSearchParams()
   const load = useCallback(() => get(`/tests/${testId}/results`).then(setD).catch((e) => toast.error(e.message)), [testId])
   useEffect(() => { load() }, [load])
   const waiting = d && (d.state === "open" || d.state === "calculating" || d.active > 0 || d.mail.queued > 0)
@@ -109,54 +113,63 @@ export default function ExamResults() {
         </div>
       </div>
 
-      <Alert className="p-3" data-testid="results-banner">{banner(d)}</Alert>
-      {d.state === "declared" && (
-        <div className="grid gap-1 text-sm text-muted-foreground" data-testid="mail-summary">
-          <p>{mailLine(d.mail)}</p>
-          {!d.mail.shared && <p>This exam does not show results to candidates, so no report cards are sent.</p>}
-          {d.mail.shared && !d.mail.smtp && <p>E-mail is not set up on this server, so nothing was sent. Candidates can still sign in and download their report card.</p>}
-          {d.mail.failed > 0 && d.mail.error && <p className="text-destructive">The mail server said: {d.mail.error}</p>}
-        </div>
-      )}
+      <Tabs value={params.get("tab") ?? "results"} onValueChange={(v) => setParams({ tab: v }, { replace: true })}>
+        <TabsList>
+          <TabsTrigger value="results">Results</TabsTrigger>
+          <TabsTrigger value="analytics">Analytics</TabsTrigger>
+        </TabsList>
+        <TabsContent value="results" className="grid gap-4 pt-2">
+          <Alert className="p-3" data-testid="results-banner">{banner(d)}</Alert>
+          {d.state === "declared" && (
+            <div className="grid gap-1 text-sm text-muted-foreground" data-testid="mail-summary">
+              <p>{mailLine(d.mail)}</p>
+              {!d.mail.shared && <p>This exam does not show results to candidates, so no report cards are sent.</p>}
+              {d.mail.shared && !d.mail.smtp && <p>E-mail is not set up on this server, so nothing was sent. Candidates can still sign in and download their report card.</p>}
+              {d.mail.failed > 0 && d.mail.error && <p className="text-destructive">The mail server said: {d.mail.error}</p>}
+            </div>
+          )}
 
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-7">
-        {cards.map(([label, value]) => (
-          <Card key={label}><CardContent className="grid gap-0.5 pt-4"><span className="text-xs text-muted-foreground">{label}</span><span className="text-xl font-semibold" data-testid={`summary-${label}`}>{value}</span></CardContent></Card>
-        ))}
-      </div>
+          <div className="grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-7">
+            {cards.map(([label, value]) => (
+              <Card key={label}><CardContent className="grid gap-0.5 pt-4"><span className="text-xs text-muted-foreground">{label}</span><span className="text-xl font-semibold" data-testid={`summary-${label}`}>{value}</span></CardContent></Card>
+            ))}
+          </div>
 
-      <Table>
-        <TableHeader>
-          <TableRow><TableHead>Rank</TableHead><TableHead>Name</TableHead><TableHead>What happened</TableHead><TableHead>Score</TableHead><TableHead>%</TableHead><TableHead>Result</TableHead><TableHead>Needs attention</TableHead><TableHead>Risk</TableHead><TableHead>Report card</TableHead><TableHead /></TableRow>
-        </TableHeader>
-        <TableBody>
-          {d.rows.map((r) => {
-            const done = r.attempt_id && r.outcome !== "in_progress"
-            return (
-              <TableRow key={r.assignment_id} data-testid="results-row">
-                <TableCell>{r.rank ?? "-"}</TableCell>
-                <TableCell className="font-medium">{r.name}<div className="font-mono text-xs font-normal text-muted-foreground">{r.username}</div></TableCell>
-                <TableCell><Badge variant="outline" className={TONE[OUTCOME_TONE[r.outcome] ?? "none"]}>{r.outcome_label}</Badge></TableCell>
-                <TableCell>{done && r.score != null ? `${r.score} / ${r.max}` : "-"}</TableCell>
-                <TableCell>{done && r.percent != null ? `${r.percent}%` : "-"}</TableCell>
-                <TableCell>{done && r.result ? <Badge variant="outline" className={TONE[RESULT[r.result][1]]}>{RESULT[r.result][0]}</Badge> : "-"}</TableCell>
-                <TableCell>{r.attention || "-"}</TableCell>
-                <TableCell>{done ? (RISK[r.risk_level] ?? "-") : "-"}</TableCell>
-                <TableCell>
-                  {done && (
-                    <div className="flex items-center gap-2">
-                      <Button size="sm" variant="outline" aria-label={`Report card of ${r.name}`} onClick={() => fileOf(`/attempts/${r.attempt_id}/report-card.pdf`, "report-card.pdf")}><FileText /> PDF</Button>
-                      {d.state === "declared" && r.mail && <Badge variant="outline" className={TONE[MAIL[r.mail][1]]} data-testid="mail-status">{MAIL[r.mail][0]}</Badge>}
-                    </div>
-                  )}
-                </TableCell>
-                <TableCell className="text-right">{done && <Button asChild size="sm"><Link to={`/admin/results/${testId}/${r.attempt_id}`}>Review</Link></Button>}</TableCell>
-              </TableRow>
-            )
-          })}
-          {!d.rows.length && <TableRow><TableCell colSpan={10} className="text-muted-foreground">Nobody was assigned to this exam.</TableCell></TableRow>}
-        </TableBody>
-      </Table>
+          <Table>
+            <TableHeader>
+              <TableRow><TableHead>Rank</TableHead><TableHead>Name</TableHead><TableHead>What happened</TableHead><TableHead>Score</TableHead><TableHead>%</TableHead><TableHead>Result</TableHead><TableHead>Needs attention</TableHead><TableHead>Risk</TableHead><TableHead>Report card</TableHead><TableHead /></TableRow>
+            </TableHeader>
+            <TableBody>
+              {d.rows.map((r) => {
+                const done = r.attempt_id && r.outcome !== "in_progress"
+                return (
+                  <TableRow key={r.assignment_id} data-testid="results-row">
+                    <TableCell>{r.rank ?? "-"}</TableCell>
+                    <TableCell className="font-medium">{r.name}<div className="font-mono text-xs font-normal text-muted-foreground">{r.username}</div></TableCell>
+                    <TableCell><Badge variant="outline" className={TONE[OUTCOME_TONE[r.outcome] ?? "none"]}>{r.outcome_label}</Badge></TableCell>
+                    <TableCell>{done && r.score != null ? `${r.score} / ${r.max}` : "-"}</TableCell>
+                    <TableCell>{done && r.percent != null ? `${r.percent}%` : "-"}</TableCell>
+                    <TableCell>{done && r.result ? <Badge variant="outline" className={TONE[RESULT[r.result][1]]}>{RESULT[r.result][0]}</Badge> : "-"}</TableCell>
+                    <TableCell>{r.attention || "-"}</TableCell>
+                    <TableCell>{done ? (RISK[r.risk_level] ?? "-") : "-"}</TableCell>
+                    <TableCell>
+                      {done && (
+                        <div className="flex items-center gap-2">
+                          <PdfButton path={`/attempts/${r.attempt_id}/report-card.pdf`} size="sm" variant="outline" aria-label={`Report card of ${r.name}`} label="PDF" description={r.name} />
+                          {d.state === "declared" && r.mail && <Badge variant="outline" className={TONE[MAIL[r.mail][1]]} data-testid="mail-status">{MAIL[r.mail][0]}</Badge>}
+                        </div>
+                      )}
+                    </TableCell>
+                    <TableCell className="text-right">{done && <Button asChild size="sm"><Link to={`/admin/results/${testId}/${r.attempt_id}`}>Review</Link></Button>}</TableCell>
+                  </TableRow>
+                )
+              })}
+              {!d.rows.length && <TableRow><TableCell colSpan={10} className="text-muted-foreground">Nobody was assigned to this exam.</TableCell></TableRow>}
+            </TableBody>
+          </Table>
+        </TabsContent>
+        <TabsContent value="analytics" className="pt-2"><ExamAnalytics testId={testId} /></TabsContent>
+      </Tabs>
     </div>
   )
 }

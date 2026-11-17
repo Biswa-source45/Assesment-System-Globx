@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react"
 import { Link, useParams } from "react-router-dom"
 import { toast } from "sonner"
-import { Check, Circle, Download, Minus, X } from "lucide-react"
+import { BarChart3, Check, Circle, Minus, X } from "lucide-react"
 import { api, get, post } from "@/lib/api"
 import { useAuth } from "@/lib/auth"
 import { saveFile } from "@/lib/download"
@@ -9,6 +9,7 @@ import { ENDED, RISK, fmtDate } from "@/lib/labels"
 import { EDGE, TONE, VERDICT_TEXT, verdictOf, RESULT } from "@/lib/verdict"
 import { TYPE_LABEL } from "@/pages/admin/Questions"
 import { Verdict } from "@/pages/candidate/CodeView"
+import PdfButton from "@/components/PdfButton"
 import Snapshot from "@/components/Snapshot"
 import { useConfirm } from "@/components/ConfirmDialog"
 import { Alert } from "@/components/ui/alert"
@@ -244,7 +245,8 @@ export default function AttemptReview() {
           <p className="text-sm text-muted-foreground">{rep.test.title}. {ENDED[a.submit_reason] ?? a.submit_reason}{a.submitted_at ? `, ${fmtDate(a.submitted_at)}` : ""}</p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <Button variant="outline" onClick={() => saveFile(`/attempts/${attemptId}/report-card.pdf`, "report-card.pdf").catch((e) => toast.error(e.message))}><Download /> Report card (PDF)</Button>
+          <Button variant="outline" asChild><Link to={`/admin/results/${testId}/${attemptId}/analytics`}><BarChart3 /> Analytics</Link></Button>
+          <PdfButton path={`/attempts/${attemptId}/report-card.pdf`} variant="outline" label="Report card (PDF)" description={rep.candidate.name} />
           <Button variant="outline" asChild><Link to={`/admin/results/${testId}`}>Back to the results</Link></Button>
         </div>
       </div>

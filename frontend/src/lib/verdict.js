@@ -22,3 +22,6 @@ export function verdictOf(score, marks, answered) {
   if (score <= 0) return "bad"
   return "part"
 }
+
+// The status words of the report card and analytics (question_status in services/report_card.py) and their colour.
+export const QUESTION_TONE = { Correct: "good", Incorrect: "bad", "Partly correct": "part", "Not answered": "none", "Awaiting marking": "info" }
