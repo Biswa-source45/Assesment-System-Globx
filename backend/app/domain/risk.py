@@ -8,6 +8,7 @@ DEFAULT_WEIGHTS: Dict[str, float] = {
     "fs_exit": 6,           # per event
     "face_missing": 1,      # per 10 s of absence (after first 10 s)
     "multi_face": 15,       # per episode
+    "face_off_centre": 3,   # per episode: the face stayed outside the oval
     "face_mismatch": 25,    # per episode
     "voice": 5,             # per event
     "multi_voice": 10,      # per event

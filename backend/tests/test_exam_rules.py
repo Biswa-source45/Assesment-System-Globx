@@ -96,6 +96,30 @@ def test_fifth_face_incident_bans_until_admin_reset(client):
     assert _start(client, cand, aid)  # admin reset lets the candidate back in
 
 
+def test_face_outside_the_oval_counts_like_no_face(client):
+    staff, cand, aid = _new_candidate(client, "Dev Oval")
+    at = _start(client, cand, aid)
+    out = _event(client, cand, at, type="face_off_centre", duration_ms=1000)  # too short to count
+    assert out["face_incidents"] == 0
+    out = _event(client, cand, at, type="face_off_centre", duration_ms=4000)
+    assert out["action"] == "warn" and out["face_incidents"] == 1 and "oval" in out["message"]
+    _event(client, cand, at, type="face_missing", duration_ms=4000)
+    _event(client, cand, at, type="face_off_centre", duration_ms=5000)
+    _event(client, cand, at, type="multi_face")
+    assert _event(client, cand, at, type="face_off_centre", duration_ms=4000)["action"] == "ban"  # the fifth incident of any kind locks the login
+    review = client.get(f"/api/v1/reports/attempts/{at}", headers=staff).json()["proctoring"]["counts"]
+    assert review["face_off_centre"] == 4
+
+
+def test_face_zone_is_always_inside_its_limits():
+    from types import SimpleNamespace
+    from app.services.attempts import proctoring_config
+    zone = lambda v: proctoring_config(SimpleNamespace(settings={"proctoring": {"face_zone": v}}))["face_zone"]
+    assert [zone(v) for v in (None, 0, -5, 39, 40, 85, 100, 500, "x", True, float("nan"), float("inf"), 72.9)] == [70, 40, 40, 40, 40, 85, 100, 100, 70, 70, 70, 70, 72]
+    assert proctoring_config(SimpleNamespace(settings={}))["face_zone"] == 70
+    assert proctoring_config(SimpleNamespace(settings={"proctoring": {"video_retention_days": float("nan")}}))["video_retention_days"] == 14  # NaN no longer crashes the other numbers either
+
+
 def test_coding_cases_any_count_weights_follow_marks(client):
     creator = _login(client, "creator@globx.co.in", PW["creator@globx.co.in"])
     body = {"department_id": DEPT["Technical"], "type": "coding", "title": "Echo", "body": "<p>Print the number.</p>", "marks": 10,

@@ -2,6 +2,8 @@ import { useEffect, useState } from "react"
 import { toast } from "sonner"
 import { post, put } from "@/lib/api"
 import { useAuth } from "@/lib/auth"
+import { DEFAULT_ZONE } from "@/lib/faces"
+import FaceGuide from "@/components/FaceGuide"
 import { fromHtml, toHtml } from "@/lib/html"
 import { fromLocalInput, toLocalInput } from "@/lib/labels"
 import { useDepartments } from "@/lib/useDepartments"
@@ -15,7 +17,9 @@ import { Switch } from "@/components/ui/switch"
 import { Textarea } from "@/components/ui/textarea"
 
 // What the server assumes when a setting is missing (see proctoring_config in services/attempts.py).
-const PROCTORING = { enabled: true, webcam: true, fullscreen: true, tab_switch_limit: 3, face_limit: 5, face_min_seconds: 3, block_paste: true, snapshot_seconds: 15, block_multi_display: true,
+const ZONE_MIN = 40, ZONE_MAX = 100  // the server clamps to the same range
+const clampZone = (v) => Math.max(ZONE_MIN, Math.min(ZONE_MAX, Math.round(Number(v)) || DEFAULT_ZONE))
+const PROCTORING = { enabled: true, webcam: true, fullscreen: true, tab_switch_limit: 3, face_limit: 5, face_min_seconds: 3, face_zone: DEFAULT_ZONE, block_paste: true, snapshot_seconds: 15, block_multi_display: true,
   evidence: "pictures", screen_share: false, live_view: false, screenshot_seconds: 60, video_retention_days: 14 }
 
 const toForm = (t) => ({
@@ -35,7 +39,7 @@ function toBody(f, t) {
       ...(t?.settings ?? {}), show_result_to_candidate: f.show_result, min_question_seconds: Math.max(0, Math.min(60, Math.floor(Number(f.min_question_seconds)) || 0)),
       proctoring: {
         ...(t?.settings?.proctoring ?? {}), ...p, tab_switch_limit: Number(p.tab_switch_limit), face_limit: Number(p.face_limit),
-        face_min_seconds: Number(p.face_min_seconds), snapshot_seconds: Number(p.snapshot_seconds),
+        face_min_seconds: Number(p.face_min_seconds), face_zone: clampZone(p.face_zone), snapshot_seconds: Number(p.snapshot_seconds),
         screenshot_seconds: Number(p.screenshot_seconds), video_retention_days: Number(p.video_retention_days),
       },
     },
@@ -75,6 +79,7 @@ export default function ExamDetails({ test, onSaved }) {
   useEffect(() => { if (!test && departments?.length && !f.department_id) set("department_id", departments[0].id) }, [departments])  // eslint-disable-line react-hooks/exhaustive-deps
   const setP = (k, v) => setF((x) => ({ ...x, proctoring: { ...x.proctoring, [k]: v } }))
   const p = f.proctoring
+  const zone = clampZone(p.face_zone)
 
   async function save(e) {
     e.preventDefault()
@@ -166,8 +171,17 @@ export default function ExamDetails({ test, onSaved }) {
                 {p.webcam && (
                   <>
                     <Field id="p-face" label="Face warnings before the exam ends and the login is locked" type="number" min="0" max="20" value={p.face_limit} onChange={(e) => setP("face_limit", e.target.value)}
-                      hint="Counts no face, or more than one face. 0 turns the rule off." />
+                      hint="Counts no face, more than one face, or a face outside the oval. 0 turns the rule off." />
                     <Field id="p-facesec" label="Seconds a face problem must last to count" type="number" min="1" max="30" value={p.face_min_seconds} onChange={(e) => setP("face_min_seconds", e.target.value)} />
+                    <div className="grid items-center gap-4 sm:grid-cols-[1fr_12rem] md:col-span-2" data-testid="zone-setup">
+                      <div className="grid gap-1.5">
+                        <Label htmlFor="p-zone">Face area: {zone}% of the camera picture</Label>
+                        <input id="p-zone" type="range" min={ZONE_MIN} max={ZONE_MAX} step="5" value={zone} onChange={(e) => setP("face_zone", Number(e.target.value))} className="w-full accent-primary" />
+                        <div className="flex justify-between text-xs text-muted-foreground"><span>{ZONE_MIN}% (strict)</span><span>{ZONE_MAX}% (whole picture)</span></div>
+                        <p className="text-xs text-muted-foreground">The candidate sees a green oval of this size and must keep the middle of their face inside it. Moving out for the seconds above counts as a face warning. The smallest size still fits a face; the largest is the whole picture.</p>
+                      </div>
+                      <FaceGuide sample zone={zone} className="rounded-lg" />
+                    </div>
                     <Field id="p-snap" label="Camera snapshot every (seconds)" type="number" min="5" max="120" value={p.snapshot_seconds} onChange={(e) => setP("snapshot_seconds", e.target.value)} />
                   </>
                 )}

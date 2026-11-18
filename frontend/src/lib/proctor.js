@@ -3,11 +3,11 @@
 // the face-limit-th face incident terminates and bans. The server decides; this class only reports.
 import { api } from "@/lib/api"
 import { cameraLive } from "@/lib/media"
-import { countFaces } from "@/lib/faces"
+import { detectFaces, faceState } from "@/lib/faces"
 
 export class Proctor {
   // onResult receives server answers ({action: warn | force_submit | ban, message, ...}) and {action: "fullscreen_required"}
-  // onFaces receives the current face count (null while unknown) for the on-screen indicator
+  // onFaces receives the faces seen ({w, h, faces}) and their state (ok, none, many, off) for the on-screen indicator
   // screenVideo: a (hidden) video showing the shared screen, when the exam asks for the screen
   constructor({ attemptId, cfg, video, screenVideo, onResult, onFaces }) {
     Object.assign(this, { attemptId, cfg, video, screenVideo, onResult, onFaces })
@@ -95,15 +95,16 @@ export class Proctor {
     if (this.busy) return
     this.busy = true
     try {
-      const n = cameraLive() ? await countFaces(this.video) : 0  // a stopped camera counts as no face
-      this.faces = n
-      this.onFaces?.(n)
+      const seen = cameraLive() ? await detectFaces(this.video) : { w: 640, h: 480, faces: [] }  // a stopped camera counts as no face
+      const state = faceState(seen, this.cfg.face_zone)
+      this.faces = seen.faces.length
+      this.onFaces?.(seen, state)
       const now = Date.now()
-      if (n === 1) { this.badSince = 0; this.reported = false; return }
+      if (state === "ok") { this.badSince = 0; this.reported = false; return }
       this.badSince ||= now
       if (!this.reported && now - this.badSince >= (this.cfg.face_min_seconds || 3) * 1000) {
         this.reported = true
-        this.event(n > 1 ? "multi_face" : "face_missing", now - this.badSince)
+        this.event({ many: "multi_face", off: "face_off_centre", none: "face_missing" }[state], now - this.badSince)
         this.flush()
         this.snapshot()  // a picture at the moment of the incident, besides the regular ones
       }

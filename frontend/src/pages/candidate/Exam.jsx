@@ -6,6 +6,7 @@ import { get, post, put } from "@/lib/api"
 import { getCamera, stopCamera } from "@/lib/media"
 import { useEvidence } from "@/lib/useEvidence"
 import { Proctor } from "@/lib/proctor"
+import FaceGuide from "@/components/FaceGuide"
 import { hms, useCountdown } from "@/lib/useCountdown"
 import { Badge } from "@/components/ui/badge"
 import Brand from "@/components/Brand"
@@ -40,7 +41,7 @@ export default function Exam() {
   const [busy, setBusy] = useState(false)
   const [info, setInfo] = useState({})
   const [deadline, setDeadline] = useState(null)  // the server's deadline, refreshed by syncClock
-  const [faces, setFaces] = useState(null)
+  const [face, setFace] = useState(null)  // what the camera sees: {seen: {w, h, faces}, state: ok | none | many | off}
   const respRef = useRef({})
   const flagRef = useRef({})
   const seqs = useRef({})
@@ -233,7 +234,7 @@ export default function Exam() {
           await video.current.play().catch(() => {})
         } catch { /* a missing camera shows up as "no face" and counts against the candidate */ }
       }
-      p = new Proctor({ attemptId, cfg, video: video.current, screenVideo: ev.screenVideo.current, onResult: (r) => latest.current.onProctor(r), onFaces: setFaces })
+      p = new Proctor({ attemptId, cfg, video: video.current, screenVideo: ev.screenVideo.current, onResult: (r) => latest.current.onProctor(r), onFaces: (seen, state) => setFace({ seen, state }) })
       proctor.current = p
       p.start()
       ev.begin()
@@ -249,7 +250,9 @@ export default function Exam() {
   const all = sections.flatMap((s) => s.questions)
   const unanswered = all.length - all.filter((x) => isAnswered(x, resp[x.id])).length
   const go = (i) => { if (hold && i > qi) return; flushAll(); setQi(i) }  // the buttons are disabled too: this stops any other way in
-  const faceBad = cfg.webcam && faces !== null && faces !== 1
+  const faceBad = cfg.webcam && face !== null && face.state !== "ok"
+  const n = face?.seen.faces.length
+  const faceText = !face ? "Camera starting" : { ok: "Face OK", off: "Move to the centre", none: "No face!", many: `${n} faces!` }[face.state]
 
   return (
     <div className="min-h-svh bg-muted/40 pb-32">
@@ -287,10 +290,10 @@ export default function Exam() {
         </div>
         </div>
         {cfg.enabled && cfg.webcam && (
-          <div className={"w-40 shrink-0 overflow-hidden rounded-lg border-2 bg-black " + (faceBad ? "border-destructive" : "border-green-600")} data-testid="camera-box">
-            <video ref={video} muted playsInline className="aspect-[4/3] w-full object-cover" />
+          <div className={"w-48 shrink-0 overflow-hidden rounded-lg border-2 bg-black " + (faceBad ? "border-destructive" : "border-green-600")} data-testid="camera-box">
+            <FaceGuide videoRef={video} seen={face?.seen} state={face?.state} zone={cfg.face_zone} />
             <div className={"px-2 py-1 text-center text-xs " + (faceBad ? "bg-destructive text-white" : "text-white")}>
-              {faces === null ? "Camera starting" : faces === 1 ? "Face OK" : faces === 0 ? "No face!" : `${faces} faces!`}
+              {faceText}
               {info.faceLimit ? ` · ${info.faceIncidents ?? 0}/${info.faceLimit}` : ""}
             </div>
           </div>

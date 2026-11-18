@@ -217,7 +217,8 @@ def proctoring_config(test: Test) -> Dict:
     p.setdefault("face_min_seconds", 3)    # no/extra face must last this long to count as an incident
     p.setdefault("limit_action", "submit")
     p.setdefault("block_paste", True)
-    clamp = lambda v, lo, hi, default: max(lo, min(hi, int(v))) if isinstance(v, (int, float)) and not isinstance(v, bool) else default
+    clamp = lambda v, lo, hi, default: max(lo, min(hi, int(v))) if isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(v) else default
+    p["face_zone"] = clamp(p.get("face_zone"), 40, 100, 70)  # % of the camera picture the green oval covers; the face centre must stay inside
     p["evidence"] = p.get("evidence") if p.get("evidence") in ("pictures", "video") else "pictures"  # what is kept for the whole exam
     p["screen_share"] = bool(p.get("screen_share", False))  # the candidate shares the whole screen (needed for screen pictures, screen video, live screen)
     p["live_view"] = bool(p.get("live_view", False))        # the examiner may watch live and talk

@@ -306,7 +306,8 @@ export const TOPICS = [
         ["Show the result to the candidate", "Whether the candidate sees a score after you declare."],
         ["Proctoring on", "Switches the rules below on. Camera and face check, full screen, blocking copy/paste and right-click, blocking a second screen, entire-screen sharing, live view for the invigilator."],
         ["Window or full-screen leaves allowed", "How many times a candidate may leave the exam window or full screen before the limit is reached."],
-        ["Face warnings before the exam ends", "After this many warnings the exam ends and the login is locked."],
+        ["Face warnings before the exam ends", "After this many warnings the exam ends and the login is locked. A warning is no face, more than one face, or a face that stays outside the green oval."],
+        ["Face area", "The size of the green oval the candidate sees in the camera box, from 40% (strict, close to the middle) to 100% (the whole picture). The middle of the face must stay inside it. The small picture beside the slider shows how it will look."],
         ["Evidence kept", "What is recorded (pictures, video) and for how many days."],
       ]} />
       <Warn>Test the camera rules on one laptop first. Turn Proctoring on only when the room and computers are ready.</Warn>

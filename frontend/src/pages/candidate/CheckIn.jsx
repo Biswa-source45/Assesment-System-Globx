@@ -2,7 +2,8 @@ import { useEffect, useRef, useState } from "react"
 import { Link, useNavigate, useParams } from "react-router-dom"
 import { Camera } from "lucide-react"
 import { get, post } from "@/lib/api"
-import { countFaces, loadFaceDetector } from "@/lib/faces"
+import { detectFaces, faceState, loadFaceDetector } from "@/lib/faces"
+import FaceGuide from "@/components/FaceGuide"
 import { getCamera, getScreen, screenLive, stopCamera, systemCheck } from "@/lib/media"
 import { Alert } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
@@ -21,7 +22,7 @@ export default function CheckIn() {
   const [item, setItem] = useState(null)
   const [error, setError] = useState("")
   const [cameraOn, setCameraOn] = useState(false)
-  const [faces, setFaces] = useState(null)
+  const [face, setFace] = useState(null)  // {seen: {w, h, faces}, state: ok | none | many | off}
   const [stable, setStable] = useState(false)
   const [consent, setConsent] = useState(false)
   const [busy, setBusy] = useState(false)
@@ -40,16 +41,17 @@ export default function CheckIn() {
     let streak = 0
     const id = setInterval(async () => {
       try {
-        const n = await countFaces(video.current)
-        streak = n === 1 ? streak + 1 : 0
-        setFaces(n)
+        const seen = await detectFaces(video.current)
+        const state = faceState(seen, item?.test.proctoring.face_zone)
+        streak = state === "ok" ? streak + 1 : 0
+        setFace({ seen, state })
         setStable(streak >= STABLE_CHECKS)
       } catch {
         setError("Face detection could not start. Refresh the page; if it keeps failing, tell the invigilator.")
       }
     }, 500)
     return () => clearInterval(id)
-  }, [cameraOn])
+  }, [cameraOn, item])
 
   async function enableCamera() {
     setError("")
@@ -72,7 +74,8 @@ export default function CheckIn() {
   const needScreen = cfg.enabled && cfg.screen_share
   const extraScreen = cfg.enabled && cfg.block_multi_display && window.screen.isExtended === true
   const ready = (!needCamera || (cameraOn && stable)) && (!cfg.enabled || consent) && !extraScreen
-  const faceLabel = faces === null ? "Waiting for camera" : faces === 1 ? "1 face detected" : faces === 0 ? "No face detected" : `${faces} faces detected`
+  const faceLabel = !face ? "Waiting for camera"
+    : { ok: "1 face detected", off: "Move your face into the oval", none: "No face detected", many: `${face.seen.faces.length} faces detected` }[face.state]
 
   async function start() {
     setBusy(true)
@@ -110,7 +113,7 @@ export default function CheckIn() {
             {cfg.enabled ? (
               <ul className="list-disc space-y-1.5 pl-5">
                 {cfg.fullscreen && <li>The exam runs in full screen. You may leave full screen or switch tabs <b>{cfg.tab_switch_limit} times</b>, each with a warning; the next time your exam ends.</li>}
-                {cfg.webcam && <li>Keep <b>exactly one face</b> in the camera. After <b>{cfg.face_limit} face warnings</b> your exam ends and your login is locked.</li>}
+                {cfg.webcam && <li>Keep <b>exactly one face</b>, inside the <b>green oval</b>, in the camera. After <b>{cfg.face_limit} face warnings</b> your exam ends and your login is locked.</li>}
                 {cfg.block_paste && <li>Copy, paste and right-click are disabled.</li>}
                 {needScreen && <li>You share your <b>entire screen</b> for the whole exam. Your browser asks you once, when you press the start button: keep <b>Entire screen</b> selected and press <b>Share</b>. If you stop sharing it counts like leaving the window.</li>}
                 {cfg.evidence === "video"
@@ -139,14 +142,12 @@ export default function CheckIn() {
           <Card>
             <CardHeader>
               <CardTitle>Camera check</CardTitle>
-              <CardDescription>Sit in good light, facing the camera, alone in the frame.</CardDescription>
+              <CardDescription>Sit in good light, alone, and keep your face inside the green oval.</CardDescription>
             </CardHeader>
             <CardContent className="grid gap-3">
-              <div className="aspect-[4/3] overflow-hidden rounded-lg bg-black">
-                <video ref={video} muted playsInline className="size-full object-cover" />
-              </div>
+              <FaceGuide videoRef={video} seen={face?.seen} state={face?.state} zone={cfg.face_zone} className="rounded-lg" />
               {cameraOn ? (
-                <Badge data-testid="face-status" variant={faces === 1 ? "default" : "destructive"} className={"w-fit " + (faces === 1 ? "bg-green-600" : "")}>{faceLabel}</Badge>
+                <Badge data-testid="face-status" variant={face?.state === "ok" ? "default" : "destructive"} className={"w-fit " + (face?.state === "ok" ? "bg-green-600" : "")}>{faceLabel}</Badge>
               ) : (
                 <Button variant="outline" onClick={enableCamera}><Camera /> Enable camera</Button>
               )}

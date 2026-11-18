@@ -4,7 +4,7 @@ Read at the start of every task; update after every change. Plan and decisions: 
 
 ## Current state (2026-11-02)
 
-- Codebase: FastAPI backend (`backend/app`) and a React **JSX** frontend (`frontend/`: Vite, Tailwind, shadcn/ui). 196 pytest tests and 112 Playwright browser tests pass (plus 12 that call the real model, `RUN_AI=1`, two of them on the user's two real PDFs); **Question bank > Create with AI** and the AI box in every question editor write or change one question from words, a picture or both (the AI fills the form, nothing is saved until Save); the browser tests run all code through the judge service.
+- Codebase: FastAPI backend (`backend/app`) and a React **JSX** frontend (`frontend/`: Vite, Tailwind, shadcn/ui). 198 pytest tests and 116 Playwright browser tests pass (plus 12 that call the real model, `RUN_AI=1`, two of them on the user's two real PDFs); **Question bank > Create with AI** and the AI box in every question editor write or change one question from words, a picture or both (the AI fills the form, nothing is saved until Save); the browser tests run all code through the judge service.
 - Built and browser-tested: login (staff email or candidate username); admin Exams list; **question bank** (list, filter, create/edit/archive MCQ, short,
   explained, coding and **SQL** questions; coding has a case table, reference-solution check and "Generate with AI", both working on the unsaved form; saving returns to the bank with the question at the top); **candidate flow** (home, camera check-in with
   MediaPipe face gate and consent, exam runner with section tabs, palette, mark for review, autosave, server timer, CodeMirror editor with Run/Submit,
@@ -12,7 +12,7 @@ Read at the start of every task; update after every change. Plan and decisions: 
 - Run frontend: `cd frontend && npm install && npm run dev` (port 5173, proxies /api to 8000) or `npm run build` (backend serves `frontend/dist`).
   `SECRET_KEY` is required in `.env`. OpenAI is configured in `.env` (`LLM_PROVIDER=openai`, model `gpt-4o-mini`, key git-ignored); restart the backend after changing it.
 - Browser tests: `cd frontend && npx playwright test` (starts its own API on :8001 with the throw-away `oap_test` database and Vite on :5174; add `RUN_AI=1` to include the
-  real OpenAI call). Screenshots land in `frontend/test-results/screens/`. A dev-only hook `window.__faceCount` lets tests pin the face count (the fake camera is an animated picture).
+  real OpenAI call). Screenshots land in `frontend/test-results/screens/`. Dev-only hooks `window.__faceCount` and `window.__faceAt = [x, y]` let tests pin the face count and where the face is (the fake camera is an animated picture).
 - Theme: light/white only, black text, blue (`--primary`) for buttons and labels, green for success, red for warnings. Fonts (bundled, work offline): Inter body, Poppins headings, Montserrat brand.
 - Dev logins after `python -m app.seed --reset`: staff as in `backend/data/seeded_accounts.txt`; candidates `rahul` / `sneha` / `amit`. All demo passwords are random per seed and live only in that file.
 - Schema changes: Alembic. The app upgrades the database on start (an old database is adopted and keeps its data). After editing `models.py`: `cd backend && .venv/Scripts/alembic revision --autogenerate -m "what changed"`, check the file, commit it. `seed --reset` still wipes and rebuilds.
@@ -35,6 +35,13 @@ Read at the start of every task; update after every change. Plan and decisions: 
    through the judge container once it exists; old email-OTP/invite flow still in the backend; bundle is one 1.4 MB chunk (split later); rotate the OpenAI key.
 
 ## Log
+
+### 2026-11-18 (face box and a green oval to stay in, its size set per exam)
+- **Asked for.** The candidate sees a face-tracking box on their face, at check-in and all through the exam, and a green oval to stay inside; leaving it counts as a face warning; the exam author sets the oval's size in the exam setup, with a preview and a minimum and maximum.
+- **Rule.** `faceState` (`lib/faces.js`): none / many / off / ok. The **middle of the face box** must be inside the oval, so leaning a little never counts; two faces beat the oval. The oval is centred and spans `face_zone`% of the camera picture (40 to 100, 70 by default). Outside it for `face_min_seconds` = a new event `face_off_centre` (risk 3), counted with `face_missing` and `multi_face` towards `face_limit`; the warning text says "inside the oval". The server clamps `face_zone` (`proctoring_config`); the same clamp now also ignores NaN and infinity for the other numbers.
+- **Screens.** New `components/FaceGuide.jsx` (video + SVG: dimmed outside the oval, dashed oval, one box per face; green when fine, amber off centre, red no face or several; shown mirrored like a video call, the evidence pictures are not). Used on `CheckIn.jsx` (Start unlocks only after three checks in a row with the face inside), `Exam.jsx` (camera box, a little larger, text "Move to the centre") and `ExamDetails.jsx` (a "Face area" slider with a drawn preview). Help topic updated. `detectFaces` replaces `countFaces`; the dev hooks are `window.__faceCount` and the new `window.__faceAt = [x, y]` (0 to 1).
+- **Tests.** pytest (a face outside the oval: too short ignored, counted, mixes with the other face events up to the ban; `face_zone` limits for 13 odd values; NaN no longer crashes). Playwright `face-zone.spec.js` (setup slider limits and saving; check-in states and box counts, Start blocked outside the oval, phone width; a warning in the exam and a short move not counted; round corners at 100%). Screenshots looked at.
+- **Limit (honest).** Checked with the test hook, not a real face: after deploying, try a real laptop and look at where the box sits (DEPLOYMENT checklist). No migration.
 
 ### 2026-11-17 (PDF: Preview or Download; analytics for the whole exam, for each candidate, and progress over exams)
 - **Asked for.** A click on a report-card PDF must ask Preview (in the browser) or Download instead of downloading at once; an analytics tab per exam with graphs, histograms and plots for the evaluation; each candidate's own analytics on their login (and the same for staff); a progress view over all exams. Time per question was not asked for (total time only).
