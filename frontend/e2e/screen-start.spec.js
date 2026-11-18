@@ -39,7 +39,7 @@ test("one 'Accept and start exam' press shares the entire screen and enters full
   await start.click()
   await expect(page.getByText("Please share your entire screen, not a window or a tab.")).toBeVisible()
   await expect(page).toHaveURL(/\/start$/)
-  expect(await page.evaluate(() => !!document.fullscreenElement)).toBe(false)
+  await expect.poll(() => page.evaluate(() => !!document.fullscreenElement)).toBe(false)  // leaving full screen takes a moment
   expect(await page.evaluate(() => !!window.__media.screen)).toBe(false)
 
   // then the whole screen: one press, the exam is running, the screen is shared and the page is in full screen

@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react"
 import { Link, useNavigate, useParams } from "react-router-dom"
 import { Camera } from "lucide-react"
 import { get, post } from "@/lib/api"
-import { detectFaces, faceState, loadFaceDetector } from "@/lib/faces"
+import { detectFaces, faceState, loadFaceDetector, loadLandmarker, meanPose, setNeutral, usesPose } from "@/lib/faces"
 import FaceGuide from "@/components/FaceGuide"
 import { getCamera, getScreen, screenLive, stopCamera, systemCheck } from "@/lib/media"
 import { Alert } from "@/components/ui/alert"
@@ -34,15 +34,29 @@ export default function CheckIn() {
     loadFaceDetector().catch(() => {})  // warm up while the candidate reads the rules
     return () => { if (!started.current) stopCamera() }
   }, [assignmentId])
+  useEffect(() => { if (item && usesPose(item.test.proctoring)) loadLandmarker().catch(() => {}) }, [item])
 
   // Count faces twice a second while the camera is on.
   useEffect(() => {
     if (!cameraOn) return
-    let streak = 0
+    const rules = item.test.proctoring, rulesOn = usesPose(rules)
+    let streak = 0, neutral = null, poses = []
+    setNeutral(null)  // "looking straight" is measured afresh, from the first good looks
     const id = setInterval(async () => {
       try {
-        const seen = await detectFaces(video.current)
-        const state = faceState(seen, item?.test.proctoring.face_zone)
+        const seen = await detectFaces(video.current, { pose: rulesOn, strict: true })
+        let state = faceState(seen, { ...rules, look: undefined })  // the count, a covered face, the oval
+        if (state === "ok" && seen.pose) {
+          if (!neutral) {
+            poses = [...poses, seen.pose].slice(-STABLE_CHECKS)
+            if (poses.length === STABLE_CHECKS) {
+              const m = meanPose(poses)
+              if (Math.abs(m.yaw) > 25 || Math.abs(m.pitch) > 25) { state = "straight"; poses = [] }  // not a straight look at the screen
+              else { neutral = m; setNeutral(m) }
+            }
+          }
+          if (neutral) state = faceState(seen, rules, neutral)
+        } else poses = []
         streak = state === "ok" ? streak + 1 : 0
         setFace({ seen, state })
         setStable(streak >= STABLE_CHECKS)
@@ -74,8 +88,12 @@ export default function CheckIn() {
   const needScreen = cfg.enabled && cfg.screen_share
   const extraScreen = cfg.enabled && cfg.block_multi_display && window.screen.isExtended === true
   const ready = (!needCamera || (cameraOn && stable)) && (!cfg.enabled || consent) && !extraScreen
-  const faceLabel = !face ? "Waiting for camera"
-    : { ok: "1 face detected", off: "Move your face into the oval", none: "No face detected", many: `${face.seen.faces.length} faces detected` }[face.state]
+  const faceLabel = !face ? "Waiting for camera" : {
+    ok: "1 face detected", off: "Move your face into the oval", none: "No face detected", many: `${face.seen.faces.length} faces detected`,
+    hand: "Face covered: take your hand away", straight: "Look straight at the screen", left: "Looking left: look at the screen",
+    right: "Looking right: look at the screen", up: "Looking up: look at the screen", down: "Looking down: look at the screen",
+  }[face.state]
+  const dirs = ["left", "right", "up", "down"].filter((d) => cfg.look?.[d] > 0)
 
   async function start() {
     setBusy(true)
@@ -114,6 +132,7 @@ export default function CheckIn() {
               <ul className="list-disc space-y-1.5 pl-5">
                 {cfg.fullscreen && <li>The exam runs in full screen. You may leave full screen or switch tabs <b>{cfg.tab_switch_limit} times</b>, each with a warning; the next time your exam ends.</li>}
                 {cfg.webcam && <li>Keep <b>exactly one face</b>, inside the <b>green oval</b>, in the camera. After <b>{cfg.face_limit} face warnings</b> your exam ends and your login is locked.</li>}
+                {cfg.webcam && (dirs.length > 0 || cfg.hand_on_face) && <li>Look at the screen{dirs.length > 0 && <>: do not turn your head <b>{dirs.join(", ")}</b></>}{cfg.hand_on_face ? <>{dirs.length > 0 ? "; " : ": "}do not cover your face with your hand</> : ""}. These count as face warnings too.</li>}
                 {cfg.block_paste && <li>Copy, paste and right-click are disabled.</li>}
                 {needScreen && <li>You share your <b>entire screen</b> for the whole exam. Your browser asks you once, when you press the start button: keep <b>Entire screen</b> selected and press <b>Share</b>. If you stop sharing it counts like leaving the window.</li>}
                 {cfg.evidence === "video"

@@ -308,6 +308,8 @@ export const TOPICS = [
         ["Window or full-screen leaves allowed", "How many times a candidate may leave the exam window or full screen before the limit is reached."],
         ["Face warnings before the exam ends", "After this many warnings the exam ends and the login is locked. A warning is no face, more than one face, or a face that stays outside the green oval."],
         ["Face area", "The size of the green oval the candidate sees in the camera box, from 40% (strict, close to the middle) to 100% (the whole picture). The middle of the face must stay inside it. The small picture beside the slider shows how it will look."],
+        ["Where the candidate may look", "Switch on Looking left, right, up or down and set how many degrees the head may turn that way (10 to 60). The head is measured from how the candidate sits at check-in, so a laptop camera below the eyes does not matter. Left and right are the candidate's own. Staying turned further than the limit counts as a face warning. Looking down at the keyboard is normal in coding exams, so keep Down off or generous there. All four are off until you switch them on."],
+        ["Face covered by a hand", "Counts as a face warning when the camera can no longer see the face behind a hand. Off until you switch it on."],
         ["Evidence kept", "What is recorded (pictures, video) and for how many days."],
       ]} />
       <Warn>Test the camera rules on one laptop first. Turn Proctoring on only when the room and computers are ready.</Warn>

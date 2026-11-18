@@ -120,6 +120,35 @@ def test_face_zone_is_always_inside_its_limits():
     assert proctoring_config(SimpleNamespace(settings={"proctoring": {"video_retention_days": float("nan")}}))["video_retention_days"] == 14  # NaN no longer crashes the other numbers either
 
 
+def test_looking_away_and_a_covered_face_count_as_face_problems(client):
+    staff, cand, aid = _new_candidate(client, "Eli Turn")
+    at = _start(client, cand, aid)
+    out = _event(client, cand, at, type="face_turned", duration_ms=4000, payload={"direction": "left"})
+    assert out["action"] == "warn" and out["face_incidents"] == 1
+    out = _event(client, cand, at, type="hand_on_face", duration_ms=1000)  # too short to count
+    assert out["face_incidents"] == 1
+    _event(client, cand, at, type="hand_on_face", duration_ms=5000)
+    _event(client, cand, at, type="face_turned", duration_ms=4000, payload={"direction": "down"})
+    _event(client, cand, at, type="face_missing", duration_ms=4000)
+    assert _event(client, cand, at, type="face_turned", duration_ms=4000, payload={"direction": "up"})["action"] == "ban"
+    rep = client.get(f"/api/v1/reports/attempts/{at}", headers=staff).json()["proctoring"]
+    assert [e["direction"] for e in rep["events"] if e["type"] == "face_turned"] == ["left", "down", "up"]
+    assert rep["counts"]["hand_on_face"] == 2
+
+
+def test_look_settings_are_always_inside_their_limits():
+    from types import SimpleNamespace
+    from app.services.attempts import proctoring_config
+    cfg = lambda **p: proctoring_config(SimpleNamespace(settings={"proctoring": p}))
+    off = {"left": 0, "right": 0, "up": 0, "down": 0}
+    assert cfg()["look"] == off and cfg()["hand_on_face"] is False                      # exams made before the rules: nothing is checked
+    assert cfg(look="left")["look"] == off and cfg(look=None)["look"] == off and cfg(look=[1])["look"] == off
+    odd = cfg(look={"left": 5, "right": 500, "up": -5, "down": float("nan"), "sideways": 30})["look"]
+    assert odd == {"left": 10, "right": 60, "up": 0, "down": 0}                         # a small value is raised to 10, a large one cut to 60, a bad one means off
+    assert cfg(look={"left": "x", "right": True, "up": 33.7, "down": float("inf")})["look"] == {"left": 0, "right": 0, "up": 33, "down": 0}
+    assert [cfg(hand_on_face=v)["hand_on_face"] for v in (True, False, 1, "yes", None)] == [True, False, False, False, False]
+
+
 def test_coding_cases_any_count_weights_follow_marks(client):
     creator = _login(client, "creator@globx.co.in", PW["creator@globx.co.in"])
     body = {"department_id": DEPT["Technical"], "type": "coding", "title": "Echo", "body": "<p>Print the number.</p>", "marks": 10,

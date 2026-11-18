@@ -134,7 +134,7 @@ def attempt_report(db: Session, at: Attempt, staff_view: bool = True) -> Dict:
                              "violations": at.violations, "breakdown": at.risk_breakdown, "counts": dict(counts),
                              "consent": at.consent, "system_check": at.system_check,
                              "events": [{"type": e.type, "at": aware(e.started_at).isoformat(), "duration_ms": e.duration_ms,
-                                         "weight": e.weight} for e in evs[-300:]],
+                                         "weight": e.weight, "direction": (e.payload or {}).get("direction")} for e in evs[-300:]],
                              "snapshots": [{"id": s.id, "kind": s.kind, "at": aware(s.captured_at).isoformat(),
                                             "faces": s.face_count, "flags": s.flags} for s in snaps]}
         rep["plagiarism"] = {"level": at.plagiarism_level, "max": at.plagiarism_max, "matches": candidate_summary(db, at)}

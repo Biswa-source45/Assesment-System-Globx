@@ -3,11 +3,11 @@
 // the face-limit-th face incident terminates and bans. The server decides; this class only reports.
 import { api } from "@/lib/api"
 import { cameraLive } from "@/lib/media"
-import { detectFaces, faceState } from "@/lib/faces"
+import { detectFaces, faceState, getNeutral, meanPose, setNeutral, usesPose } from "@/lib/faces"
 
 export class Proctor {
   // onResult receives server answers ({action: warn | force_submit | ban, message, ...}) and {action: "fullscreen_required"}
-  // onFaces receives the faces seen ({w, h, faces}) and their state (ok, none, many, off) for the on-screen indicator
+  // onFaces receives the faces seen ({w, h, faces}) and their state (ok, none, many, hand, off, left, right, up, down) for the on-screen indicator
   // screenVideo: a (hidden) video showing the shared screen, when the exam asks for the screen
   constructor({ attemptId, cfg, video, screenVideo, onResult, onFaces }) {
     Object.assign(this, { attemptId, cfg, video, screenVideo, onResult, onFaces })
@@ -17,6 +17,8 @@ export class Proctor {
     this.badSince = 0
     this.reported = false
     this.faces = null
+    this.neutral = getNeutral()  // the candidate's own "looking straight", saved by the check-in page
+    this.warm = []
     this.running = false
   }
 
@@ -95,8 +97,13 @@ export class Proctor {
     if (this.busy) return
     this.busy = true
     try {
-      const seen = cameraLive() ? await detectFaces(this.video) : { w: 640, h: 480, faces: [] }  // a stopped camera counts as no face
-      const state = faceState(seen, this.cfg.face_zone)
+      const pose = usesPose(this.cfg)
+      const seen = cameraLive() ? await detectFaces(this.video, { pose }) : { w: 640, h: 480, faces: [] }  // a stopped camera counts as no face
+      if (pose && seen.pose && !this.neutral) {  // no check-in value (a new tab): the first three looks are "straight"
+        this.warm.push(seen.pose)
+        if (this.warm.length >= 3) { this.neutral = meanPose(this.warm); setNeutral(this.neutral) }
+      }
+      const state = faceState(seen, this.cfg, this.neutral ?? undefined)
       this.faces = seen.faces.length
       this.onFaces?.(seen, state)
       const now = Date.now()
@@ -104,7 +111,8 @@ export class Proctor {
       this.badSince ||= now
       if (!this.reported && now - this.badSince >= (this.cfg.face_min_seconds || 3) * 1000) {
         this.reported = true
-        this.event({ many: "multi_face", off: "face_off_centre", none: "face_missing" }[state], now - this.badSince)
+        const turned = ["left", "right", "up", "down"].includes(state)
+        this.event(turned ? "face_turned" : { many: "multi_face", off: "face_off_centre", hand: "hand_on_face", none: "face_missing" }[state], now - this.badSince, turned ? { direction: state } : {})
         this.flush()
         this.snapshot()  // a picture at the moment of the incident, besides the regular ones
       }

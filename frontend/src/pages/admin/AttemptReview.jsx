@@ -318,7 +318,7 @@ export default function AttemptReview() {
           {p.events.length > 0 && (
             <div className="grid gap-1" data-testid="timeline">
               <b>Timeline</b>
-              {p.events.map((e, i) => <div key={i} className="flex gap-3"><span className="w-24 font-mono text-xs text-muted-foreground">{time(e.at)}</span><span>{words(e.type)}{e.duration_ms ? ` (${Math.round(e.duration_ms / 1000)} s)` : ""}</span></div>)}
+              {p.events.map((e, i) => <div key={i} className="flex gap-3"><span className="w-24 font-mono text-xs text-muted-foreground">{time(e.at)}</span><span>{words(e.type)}{e.direction ? ` ${e.direction}` : ""}{e.duration_ms ? ` (${Math.round(e.duration_ms / 1000)} s)` : ""}</span></div>)}
             </div>
           )}
           <div className="grid gap-2">

@@ -252,7 +252,7 @@ export default function Exam() {
   const go = (i) => { if (hold && i > qi) return; flushAll(); setQi(i) }  // the buttons are disabled too: this stops any other way in
   const faceBad = cfg.webcam && face !== null && face.state !== "ok"
   const n = face?.seen.faces.length
-  const faceText = !face ? "Camera starting" : { ok: "Face OK", off: "Move to the centre", none: "No face!", many: `${n} faces!` }[face.state]
+  const faceText = !face ? "Camera starting" : { ok: "Face OK", off: "Move to the centre", none: "No face!", many: `${n} faces!`, hand: "Face covered!", left: "Looking left!", right: "Looking right!", up: "Looking up!", down: "Looking down!" }[face.state]
 
   return (
     <div className="min-h-svh bg-muted/40 pb-32">

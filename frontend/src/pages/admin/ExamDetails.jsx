@@ -19,14 +19,17 @@ import { Textarea } from "@/components/ui/textarea"
 // What the server assumes when a setting is missing (see proctoring_config in services/attempts.py).
 const ZONE_MIN = 40, ZONE_MAX = 100  // the server clamps to the same range
 const clampZone = (v) => Math.max(ZONE_MIN, Math.min(ZONE_MAX, Math.round(Number(v)) || DEFAULT_ZONE))
-const PROCTORING = { enabled: true, webcam: true, fullscreen: true, tab_switch_limit: 3, face_limit: 5, face_min_seconds: 3, face_zone: DEFAULT_ZONE, block_paste: true, snapshot_seconds: 15, block_multi_display: true,
+const LOOK = [["left", "Looking left"], ["right", "Looking right"], ["up", "Looking up"], ["down", "Looking down"]]
+const DEFAULT_LOOK = 30  // degrees, when a direction is switched on
+const clampLook = (v) => (Number(v) > 0 ? Math.max(10, Math.min(60, Math.round(Number(v)))) : 0)  // 0 = not checked
+const PROCTORING = { look: { left: 0, right: 0, up: 0, down: 0 }, hand_on_face: false, enabled: true, webcam: true, fullscreen: true, tab_switch_limit: 3, face_limit: 5, face_min_seconds: 3, face_zone: DEFAULT_ZONE, block_paste: true, snapshot_seconds: 15, block_multi_display: true,
   evidence: "pictures", screen_share: false, live_view: false, screenshot_seconds: 60, video_retention_days: 14 }
 
 const toForm = (t) => ({
   department_id: t?.department_id ?? "", title: t?.title ?? "", description: t?.description ?? "", instructions: fromHtml(t?.instructions ?? ""),
   duration_min: t?.duration_min ?? 60, starts_at: toLocalInput(t?.starts_at), ends_at: toLocalInput(t?.ends_at), cutoff: t?.cutoff ?? 0,
   shuffle_questions: t?.shuffle_questions ?? true, shuffle_options: t?.shuffle_options ?? true,
-  show_result: t?.settings?.show_result_to_candidate ?? true, min_question_seconds: t?.settings?.min_question_seconds ?? 5, proctoring: { ...PROCTORING, ...(t?.settings?.proctoring ?? {}) },
+  show_result: t?.settings?.show_result_to_candidate ?? true, min_question_seconds: t?.settings?.min_question_seconds ?? 5, proctoring: { ...PROCTORING, ...(t?.settings?.proctoring ?? {}), look: { ...PROCTORING.look, ...(t?.settings?.proctoring?.look ?? {}) } },
 })
 
 function toBody(f, t) {
@@ -39,7 +42,7 @@ function toBody(f, t) {
       ...(t?.settings ?? {}), show_result_to_candidate: f.show_result, min_question_seconds: Math.max(0, Math.min(60, Math.floor(Number(f.min_question_seconds)) || 0)),
       proctoring: {
         ...(t?.settings?.proctoring ?? {}), ...p, tab_switch_limit: Number(p.tab_switch_limit), face_limit: Number(p.face_limit),
-        face_min_seconds: Number(p.face_min_seconds), face_zone: clampZone(p.face_zone), snapshot_seconds: Number(p.snapshot_seconds),
+        face_min_seconds: Number(p.face_min_seconds), face_zone: clampZone(p.face_zone), look: Object.fromEntries(LOOK.map(([k]) => [k, clampLook(p.look[k])])), hand_on_face: !!p.hand_on_face,snapshot_seconds: Number(p.snapshot_seconds),
         screenshot_seconds: Number(p.screenshot_seconds), video_retention_days: Number(p.video_retention_days),
       },
     },
@@ -181,6 +184,22 @@ export default function ExamDetails({ test, onSaved }) {
                         <p className="text-xs text-muted-foreground">The candidate sees a green oval of this size and must keep the middle of their face inside it. Moving out for the seconds above counts as a face warning. The smallest size still fits a face; the largest is the whole picture.</p>
                       </div>
                       <FaceGuide sample zone={zone} className="rounded-lg" />
+                    </div>
+                    <div className="grid gap-3 md:col-span-2" data-testid="look-setup">
+                      <div className="grid gap-0.5">
+                        <span className="text-sm font-medium">Where the candidate may look</span>
+                        <p className="text-xs text-muted-foreground">Each direction you switch on counts as a face warning when the head stays turned further than the limit for the seconds above. The limit is measured from how the candidate sits at check-in. Left and right are the candidate's own. Looking down at the keyboard is normal in coding exams: keep Down off or generous there.</p>
+                      </div>
+                      {LOOK.map(([k, label]) => (
+                        <div key={k} className="flex flex-wrap items-center gap-3">
+                          <Switch id={`look-${k}`} checked={p.look[k] > 0} onCheckedChange={(v) => setP("look", { ...p.look, [k]: v ? DEFAULT_LOOK : 0 })} />
+                          <Label htmlFor={`look-${k}`} className="w-32">{label}</Label>
+                          {p.look[k] > 0
+                            ? <><input id={`look-${k}-deg`} aria-label={`${label}: degrees allowed`} type="range" min="10" max="60" step="5" value={p.look[k]} onChange={(e) => setP("look", { ...p.look, [k]: Number(e.target.value) })} className="w-48 accent-primary" /><span className="text-sm" data-testid={`look-${k}-value`}>up to {p.look[k]}°</span></>
+                            : <span className="text-xs text-muted-foreground">Not checked</span>}
+                        </div>
+                      ))}
+                      <Toggle id="p-hand" label="Face covered by a hand" hint="Counts as a face warning when the camera can no longer see the face behind a hand." checked={p.hand_on_face} onChange={(v) => setP("hand_on_face", v)} />
                     </div>
                     <Field id="p-snap" label="Camera snapshot every (seconds)" type="number" min="5" max="120" value={p.snapshot_seconds} onChange={(e) => setP("snapshot_seconds", e.target.value)} />
                   </>

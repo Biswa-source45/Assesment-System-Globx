@@ -16,7 +16,7 @@ from app.services.attempts import proctoring_config
 
 log = logging.getLogger("oap.proctor")
 EVENT_TYPES = set(risk.DEFAULT_WEIGHTS) | {"fs_enter", "focus", "resume", "consent", "face_ok", "talk_started", "talk_ended", "message_sent"}
-FACE_TYPES = {"face_missing", "multi_face", "face_off_centre"}
+FACE_TYPES = {"face_missing", "multi_face", "face_off_centre", "face_turned", "hand_on_face"}
 _cv = None
 
 
@@ -92,7 +92,7 @@ def ingest_events(db: Session, at: Attempt, events: List[Dict]) -> Dict:
         msg = f"You left the test environment {r['violations']} times (limit {limit}). Your exam has been terminated."
     elif face_limit and any(e.get("type") in FACE_TYPES for e in events):
         action = "warn"
-        msg = f"Warning {faces} of {face_limit}: keep exactly one face, inside the oval, in the camera view."
+        msg = f"Warning {faces} of {face_limit}: keep exactly one face, inside the oval, uncovered and looking at the screen."
     elif limit and r["violations"] and any(e.get("type") in risk.VIOLATION_TYPES for e in events):
         action = "warn"
         msg = f"Warning {r['violations']} of {limit}: leaving fullscreen, switching tabs or stopping the screen share is recorded."

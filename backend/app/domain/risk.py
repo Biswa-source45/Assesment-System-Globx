@@ -9,6 +9,8 @@ DEFAULT_WEIGHTS: Dict[str, float] = {
     "face_missing": 1,      # per 10 s of absence (after first 10 s)
     "multi_face": 15,       # per episode
     "face_off_centre": 3,   # per episode: the face stayed outside the oval
+    "face_turned": 3,       # per episode: the head stayed turned left, right, up or down beyond the exam's limit
+    "hand_on_face": 3,      # per episode: the face stayed covered
     "face_mismatch": 25,    # per episode
     "voice": 5,             # per event
     "multi_voice": 10,      # per event

@@ -219,6 +219,10 @@ def proctoring_config(test: Test) -> Dict:
     p.setdefault("block_paste", True)
     clamp = lambda v, lo, hi, default: max(lo, min(hi, int(v))) if isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(v) else default
     p["face_zone"] = clamp(p.get("face_zone"), 40, 100, 70)  # % of the camera picture the green oval covers; the face centre must stay inside
+    look = p.get("look") if isinstance(p.get("look"), dict) else {}  # degrees the head may turn each way from the candidate's own straight-ahead; 0 = not checked
+    num = lambda v: isinstance(v, (int, float)) and not isinstance(v, bool) and v > 0
+    p["look"] = {d: clamp(look.get(d), 10, 60, 0) if num(look.get(d)) else 0 for d in ("left", "right", "up", "down")}
+    p["hand_on_face"] = p.get("hand_on_face") is True  # a covered face (a hand in front of it) counts as a face problem
     p["evidence"] = p.get("evidence") if p.get("evidence") in ("pictures", "video") else "pictures"  # what is kept for the whole exam
     p["screen_share"] = bool(p.get("screen_share", False))  # the candidate shares the whole screen (needed for screen pictures, screen video, live screen)
     p["live_view"] = bool(p.get("live_view", False))        # the examiner may watch live and talk
