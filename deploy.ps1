@@ -2,8 +2,9 @@
 #   .\deploy.ps1            first time (asks two questions, then starts everything) and every later update
 #   .\deploy.ps1 -Seed      also creates the first accounts (only for an empty database; the passwords are shown once)
 #   .\deploy.ps1 -Drill     also runs the safety drill against the judge (must end with: 39 of 39 checks passed)
+#   .\deploy.ps1 -Tunnel    also asks for the Cloudflare Tunnel token (once) so people outside the office can open the site
 # It never touches any other app on this server. To go back to an earlier version put OAP_TAG=<version> in .env and run it again.
-param([switch]$Seed, [switch]$Drill)
+param([switch]$Seed, [switch]$Drill, [switch]$Tunnel)
 Set-Location $PSScriptRoot
 
 function Fail($message) { Write-Host $message -ForegroundColor Red; exit 1 }
@@ -28,6 +29,17 @@ if (-not (Test-Path .env)) {
     [IO.File]::WriteAllText((Join-Path $PWD ".env"), (($lines -join "`n") + "`n"), (New-Object Text.UTF8Encoding $false))
     icacls .env /inheritance:r /grant:r "$($env:USERNAME):F" "Administrators:F" 2>&1 | Out-Null   # only this user and administrators can read it
     Write-Host ".env written (random passwords; the Cloudflare token is in it, keep the file private)." -ForegroundColor Green
+}
+
+# 1b. Open to the internet, once: the tunnel token goes into .env (the tunnel connects out to Cloudflare; no port is opened on the router).
+if ($Tunnel) {
+    $hidden = Read-Host "Cloudflare Tunnel token (what you type is hidden)" -AsSecureString
+    $tunnelToken = [Runtime.InteropServices.Marshal]::PtrToStringAuto([Runtime.InteropServices.Marshal]::SecureStringToBSTR($hidden)).Trim()
+    if ($tunnelToken -match '--token\s+(\S+)') { $tunnelToken = $Matches[1] }   # the whole "docker run ..." line pasted: keep only the token
+    if ($tunnelToken -notmatch '^[A-Za-z0-9+/=_-]{60,}$') { Fail "That does not look like a tunnel token (one long text that starts with eyJ). Nothing was written; run this again." }
+    $kept = @(Get-Content .env | Where-Object { $_ -notmatch '^(CLOUDFLARE_TUNNEL_TOKEN|COMPOSE_PROFILES)=' })
+    [IO.File]::WriteAllText((Join-Path $PWD ".env"), ((($kept + "CLOUDFLARE_TUNNEL_TOKEN=$tunnelToken", "COMPOSE_PROFILES=tunnel") -join "`n") + "`n"), (New-Object Text.UTF8Encoding $false))
+    Write-Host "Tunnel token saved in .env." -ForegroundColor Green
 }
 
 # 2. Windows Firewall: HTTPS (443) from the office network only.

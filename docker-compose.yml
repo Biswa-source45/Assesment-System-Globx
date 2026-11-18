@@ -109,6 +109,18 @@ services:
     volumes:
       - caddy-data:/data                              # the certificate: kept, so a restart does not ask for a new one
 
+  # The way in from the internet: this container makes an OUTGOING connection to Cloudflare, and Cloudflare passes visitors through it to caddy.
+  # Nothing is opened on the router. It only runs once `.\deploy.ps1 -Tunnel` has put the token and COMPOSE_PROFILES=tunnel in .env.
+  tunnel:
+    <<: *keep
+    image: cloudflare/cloudflared:latest
+    profiles: ["tunnel"]
+    command: tunnel --no-autoupdate run
+    environment:
+      TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN:-}
+    depends_on: [caddy]
+    mem_limit: 128m
+
 volumes:
   judge-sock:
   db-data:

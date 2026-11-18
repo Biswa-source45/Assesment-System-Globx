@@ -23,7 +23,7 @@ An exam platform for hiring, used inside one office.
 | Database | PostgreSQL. Local dev: the PostgreSQL 18 service on port **5433**, database `oap` (tests use `oap_test`). Production: PostgreSQL in Docker. |
 | Frontend | React + **JavaScript (JSX, no TypeScript)** + Tailwind + **shadcn/ui** (JS mode), CodeMirror for code (lighter than Monaco, works offline). Light white theme, blue buttons, Inter/Poppins/Montserrat fonts. **[done]** |
 | Hosting | Docker only on the office server. No other software installed there. |
-| Address | `https://assessment.globx.co.in` pointing to the server's **private office IP**. Only reachable from the office network. (Confirm the domain spelling.) |
+| Address | `https://assessment.globx.co.in`. Until the tunnel (section 4b) is switched on it points to the server's **private office IP** and is reachable only from the office network; with the tunnel it opens from anywhere. |
 | Why HTTPS | Browsers block the camera on plain `http://192.168.x.x`. A real HTTPS address fixes it. `localhost` is exempt, so development needs nothing. |
 | AI | OpenAI `gpt-4o-mini`. Key lives in the server's `.env`, never in git or chat. |
 | Test cases | AI proposes test **inputs** only. Expected outputs always come from running the admin's reference solution. Admin reviews before use. |
@@ -60,6 +60,20 @@ Optional later upgrade: run the judge under gVisor (`runsc`) on a Linux host for
 3. **Certificate:** Let's Encrypt, proven with a DNS TXT record that Caddy writes itself through the Cloudflare API (Caddy built with the `caddy-dns/cloudflare` module), so the server needs no internet exposure. The token is a Cloudflare **API token** limited to the `globx.co.in` zone with `Zone: Zone: Read` and `Zone: DNS: Edit`.
 4. Some routers refuse DNS answers that point to private IPs ("DNS rebinding protection"). If candidate PCs cannot open the page,
    add a local DNS entry on the router, or a hosts-file entry on the PCs.
+
+## 4b. Open from anywhere: Cloudflare Tunnel (2026-11-18)
+
+The office PC makes an **outgoing** connection to Cloudflare (a `tunnel` container, `cloudflare/cloudflared`); Cloudflare passes visitors through it to Caddy. Nothing is opened on the router, the office address is hidden, and the certificate Caddy already holds is used between the two.
+
+1. **Before opening the site:** disable the demo accounts, give every staff account a long unique password, replace the OpenAI key and the Gmail app password that were once shown in chat.
+2. Cloudflare Zero Trust (`one.dash.cloudflare.com`, Free plan) > Networks > Connectors > Cloudflare Tunnels > create `kautilya-office` (type Cloudflared). Do not run the docker command it shows; copy the token (the part after `--token`) into Notepad.
+3. Cloudflare DNS: delete the old `assessment` **A** record (grey cloud, 192.168.1.50). Nothing opens, not even in the office, between this and step 6.
+4. Tunnel > Published application routes > add: subdomain `assessment`, domain `globx.co.in`, **Service URL `https://caddy:443`**, Additional settings > TLS > **Origin Server Name `assessment.globx.co.in`**. Cloudflare makes the proxied `assessment` record by itself (shown as type "Tunnel").
+5. Push and wait for the green *publish* (the Caddy change is inside the new `oap-caddy` image). On the server (no exam running) copy the new `docker-compose.yml` and `deploy.ps1` from the repository over the two in the server folder (`D:\oap`), then run `.\deploy.ps1 -Tunnel` and paste the token when asked (hidden; the whole "docker run ..." line also works). It saves `CLOUDFLARE_TUNNEL_TOKEN` and `COMPOSE_PROFILES=tunnel` in `.env`; later runs of `.\deploy.ps1` keep the tunnel.
+6. Check: in Cloudflare the tunnel shows **Healthy**; on a phone with Wi-Fi off open `https://assessment.globx.co.in`; run a practice exam (camera, Live monitor, pictures).
+7. Recommended: a local DNS entry in the office router, `assessment.globx.co.in` -> `192.168.1.50`, so office PCs still reach the server directly when the internet is down (the certificate is real, so browsers do not warn).
+
+Caddy passes the real visitor address (`Cf-Connecting-Ip`) on as `X-Forwarded-For`, so each attempt records the candidate's own IP, not the tunnel's. **Limits:** the PC must be on and the internet up; everything candidates send (pictures, video) goes through the office upload speed; Cloudflare's free plan ends any single request after 100 seconds (a very large paper upload with AI could time out); the login page is now public (an account locks after 10 wrong passwords, so someone could lock a candidate on purpose: an admin unlocks it). Optional on Cloudflare's free plan: a rate-limit rule on `/api/v1/auth/login`, and a country rule if every user is in India. To close the site again: stop the tunnel (`docker compose stop tunnel`) and put the grey A record back.
 
 ## 5. Server prerequisites [planned]
 
@@ -180,6 +194,7 @@ Every event is stored with a timestamp, plus when and why the exam ended. Browse
 - [done] PDF Preview or Download dialog, analytics per exam (Results > Analytics tab), per candidate (candidate home and review page) and the My progress chart (2026-11-17). No migration and nothing to set on the server; deploy as usual. After deploying, open one finished exam's Analytics tab and one candidate's analytics as a quick check.
 - [done] Face box and green oval (2026-11-18): the camera box on the check-in page and in the exam draws a box on the face and an oval to stay in; the middle of the face outside the oval for the face-problem seconds counts as a face warning. The oval's size is an exam setting ("Face area", 40-100%, 70 if never set; older exams get 70). No migration and nothing to set on the server; deploy as usual. After deploying, open one exam's Details to see the slider, then do a camera check on a real laptop (the real detector, not the test hook) and look at where the box sits on the face.
 - [done] Look-away rules (2026-11-18): Exam Details > Proctoring > "Where the candidate may look" (left, right, up, down, each with its own degrees) and "Face covered by a hand"; they count as face warnings. All off for every exam until the author switches them on, so deploying changes nothing by itself. New file `frontend/public/mediapipe/face_landmarker.task` (3.7 MB) is in the image. No migration. After deploying: switch the rules on for one practice exam and try them with a few real people on real laptops (adjust the degrees; keep Down generous in coding exams).
+- [prepared, not yet switched on] Open from anywhere through a Cloudflare Tunnel (2026-11-18): the tunnel and the route are made in Cloudflare (steps in section 4b, the route and the `assessment` Tunnel record already exist), the `tunnel` service and `.\deploy.ps1 -Tunnel` are in the repository. Still to do: push, wait for green Actions, copy the new `docker-compose.yml` and `deploy.ps1` to the server, run `.\deploy.ps1 -Tunnel` with no exam running, then the phone test. **The tunnel, the Caddy header change and the deploy option could not be run on the development machine (no Docker there), so the first run on the server is the real test.**
 - [planned] Backups; push to GitHub and see the workflow turn green; real certificate and DNS record on the office server
 - [planned] LAN test with 2-3 PCs
 

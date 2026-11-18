@@ -8,5 +8,15 @@
 		dns cloudflare {env.CLOUDFLARE_API_TOKEN}
 	}
 	encode zstd gzip
-	reverse_proxy api:8000
+	# Visitors from the internet arrive through the Cloudflare tunnel, which names the real visitor in Cf-Connecting-Ip (Cloudflare always sets it).
+	# Pass that on, so the exam records the candidate's own address and not the tunnel's. Office visitors have no such header and keep the default.
+	@viaTunnel header Cf-Connecting-Ip *
+	handle @viaTunnel {
+		reverse_proxy api:8000 {
+			header_up X-Forwarded-For {header.Cf-Connecting-Ip}
+		}
+	}
+	handle {
+		reverse_proxy api:8000
+	}
 }
