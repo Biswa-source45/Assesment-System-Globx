@@ -5,12 +5,13 @@ import json
 import re
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, Response, UploadFile
 from pydantic import BaseModel
 from sqlalchemy import and_, or_, select
 from sqlalchemy.orm import Session
 
 from app.core.deps import AUTHOR, BANK, audit, same_org
+from app.core.paging import like, limit_q, offset_q, page_list, page_sql
 from app.db import get_db
 from app.models import QTYPES, Answer, Department, Question, QuestionGroup, Section, SectionItem, Test, TestCase, User, aware, uid
 from app.sandbox.judge import judge_code, run_reference, sql_expected_for
@@ -226,9 +227,11 @@ def _in_published_exam(db: Session, q: Question) -> bool:
 
 
 @router.get("/questions")
-def list_questions(type: Optional[str] = None, department_id: Optional[str] = None, skill: Optional[str] = None, difficulty: Optional[str] = None,
+def list_questions(response: Response, type: Optional[str] = None, department_id: Optional[str] = None, skill: Optional[str] = None, difficulty: Optional[str] = None,
                    q: Optional[str] = None, status: Optional[str] = None, group_id: Optional[str] = None,
-                   standalone: bool = False, user: User = Depends(BANK), db: Session = Depends(get_db)):
+                   standalone: bool = False, limit: Optional[int] = Depends(limit_q), offset: int = Depends(offset_q),
+                   user: User = Depends(BANK), db: Session = Depends(get_db)):
+    """The bank, newest change first. With ?limit=&offset= one page, and the number of questions in all in the X-Total-Count header."""
     stmt = select(Question).where(Question.org_id == user.org_id)
     if type:
         stmt = stmt.where(Question.type == type)
@@ -244,12 +247,13 @@ def list_questions(type: Optional[str] = None, department_id: Optional[str] = No
         stmt = stmt.where(Question.group_id == group_id)
     if standalone:
         stmt = stmt.where(Question.group_id.is_(None))
-    rows = db.scalars(stmt.order_by(Question.updated_at.desc())).all()
-    if skill:
-        rows = [r for r in rows if skill.lower() in [s.lower() for s in r.skills or []]]
-    if q:
-        rows = [r for r in rows if q.lower() in r.title.lower()]
-    return [q_out(r, full=False) for r in rows]
+    if q and q.strip():
+        stmt = stmt.where(Question.title.ilike(like(q), escape="\\"))
+    stmt = stmt.order_by(Question.updated_at.desc(), Question.id)  # the id keeps the order fixed when two were changed at the same moment, so pages never repeat or skip
+    if skill:  # tags are a list inside the row: filtered here, then paged (rarely used)
+        rows = [r for r in db.scalars(stmt).all() if skill.lower() in [s.lower() for s in r.skills or []]]
+        return [q_out(r, full=False) for r in page_list(response, rows, limit, offset)]
+    return [q_out(r, full=False) for r in page_sql(db, response, stmt, limit, offset)]
 
 
 @router.post("/questions")

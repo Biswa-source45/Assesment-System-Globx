@@ -1,3 +1,4 @@
+import { BusyChip } from "@/components/Spinner"
 import { useEffect, useState } from "react"
 import { NavLink, Outlet } from "react-router-dom"
 import { Building2, CircleHelp, ClipboardList, FileQuestion, MonitorPlay, Trophy, Users } from "lucide-react"
@@ -24,9 +25,10 @@ const NAV = [
 export default function AdminLayout() {
   const { user } = useAuth()
   const [unsafe, setUnsafe] = useState(false)  // production without the isolated judge: candidate code would run inside the server
-  useEffect(() => { get("/system/sandboxes").then((s) => setUnsafe(s.unsafe_in_production)).catch(() => {}) }, [])
+  useEffect(() => { get("/system/sandboxes", { quiet: true }).then((s) => setUnsafe(s.unsafe_in_production)).catch(() => {}) }, [])
   return (
     <SidebarProvider>
+      <BusyChip />
       <Sidebar>
         <SidebarHeader className="h-12 flex-row items-center px-4 py-0"><Brand data-testid="brand" /></SidebarHeader>
         <SidebarContent>

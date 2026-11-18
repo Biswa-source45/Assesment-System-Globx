@@ -12,6 +12,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { Loading } from "@/components/Spinner"
 
 const POLL_MS = 5000
 const FINISHED = ["submitted", "auto_submitted", "evaluating", "review_pending", "evaluated", "test_taken"]
@@ -46,7 +47,7 @@ export default function Monitor() {
 
   const load = useCallback(() => {
     if (!examId) return
-    get(`/tests/${examId}/monitor`)
+    get(`/tests/${examId}/monitor`, { quiet: true })  // the 5-second refresh does not flash the spinner
       .then((d) => { setData({ ...d, skew: new Date(d.server_time).getTime() - Date.now() }); setUpdated(new Date()); setError("") })
       .catch((e) => setError(e.message))
   }, [examId])
@@ -82,6 +83,7 @@ export default function Monitor() {
         </div>
       </div>
       {error && <p className="text-sm text-destructive">{error}</p>}
+      {examId && !data && !error && <Loading />}
       {exams && !exams.length && <p className="text-muted-foreground">No exam is published. Publish an exam to watch it here.</p>}
 
       {data && (

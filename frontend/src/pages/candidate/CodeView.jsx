@@ -166,8 +166,8 @@ export function CodeView({ q, r, onChange, attemptId, closed, blockPaste }) {
           basicSetup={{ foldGutter: false }} theme={dark ? vscodeDark : vscodeLight} />
       </div>
       <div className="flex gap-2">
-        <Button variant="outline" disabled={!!busy || closed || !langs.length} onClick={() => exec("run")}>{busy === "run" ? "Running..." : "Run on samples"}</Button>
-        <Button disabled={!!busy || closed || !langs.length} onClick={() => exec("submit")}>{busy === "submit" ? "Judging..." : "Submit"}</Button>
+        <Button variant="outline" disabled={!!busy || closed || !langs.length} onClick={() => exec("run")} loading={busy === "run"}>{busy === "run" ? "Running..." : "Run on samples"}</Button>
+        <Button disabled={!!busy || closed || !langs.length} onClick={() => exec("submit")} loading={busy === "submit"}>{busy === "submit" ? "Judging..." : "Submit"}</Button>
       </div>
       <Tabs defaultValue="results">
         <TabsList>

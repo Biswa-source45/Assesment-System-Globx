@@ -6,6 +6,7 @@ import { useAuth } from "@/lib/auth"
 import { fmtDate, RESULT_STATE } from "@/lib/labels"
 import { STATE_TONE, TONE } from "@/lib/verdict"
 import { useDepartments } from "@/lib/useDepartments"
+import { Loading } from "@/components/Spinner"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
@@ -18,7 +19,7 @@ export default function Results() {
 
   useEffect(() => {
     Promise.all([get("/tests"), user.can.super ? get("/tests?archived=true") : []])
-      .then(([list, old]) => Promise.all([...list.filter((t) => t.status === "published"), ...old].map(async (t) => ({ ...t, results: await get(`/tests/${t.id}/results`) }))))
+      .then(([list, old]) => Promise.all([...list.filter((t) => t.status === "published"), ...old].map(async (t) => ({ ...t, results: await get(`/tests/${t.id}/results?limit=0`) }))))
       .then(setRows)
       .catch((e) => toast.error(e.message))
   }, [user.can.super])
@@ -46,7 +47,7 @@ export default function Results() {
             </TableRow>
           ))}
           {rows && !rows.length && <TableRow><TableCell colSpan={7} className="text-muted-foreground">No published exams yet.</TableCell></TableRow>}
-          {!rows && <TableRow><TableCell colSpan={7} className="text-muted-foreground">Loading...</TableCell></TableRow>}
+          {!rows && <TableRow><TableCell colSpan={7}><Loading /></TableCell></TableRow>}
         </TableBody>
       </Table>
     </div>

@@ -21,6 +21,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Textarea } from "@/components/ui/textarea"
+import { Loading } from "@/components/Spinner"
 
 const plain = (html) => new DOMParser().parseFromString(html || "", "text/html").body.textContent  // the candidate's text, never run as HTML
 const time = (iso) => new Date(iso).toLocaleTimeString([], { timeStyle: "medium" })
@@ -94,7 +95,7 @@ function MarkDialog({ q, onClose, onSaved }) {
           {error && <Alert variant="destructive" className="p-3">{error}</Alert>}
           <DialogFooter>
             <Button type="button" variant="outline" onClick={onClose}>Cancel</Button>
-            <Button type="submit" disabled={busy}>{busy ? "Saving..." : "Save mark"}</Button>
+            <Button type="submit" disabled={busy} loading={busy}>{busy ? "Saving..." : "Save mark"}</Button>
           </DialogFooter>
         </form>
       </DialogContent>
@@ -227,7 +228,7 @@ export default function AttemptReview() {
     act(() => post(`/answers/${q.answer_id}/ai`), "Marked again")
   }
 
-  if (!rep) return <p className="text-muted-foreground">Loading...</p>
+  if (!rep) return <Loading />
   const a = rep.attempt, p = rep.proctoring
   const problems = p.snapshots.filter((s) => s.kind === "webcam" && s.faces !== 1)
   const pics = (onlyProblems && problems.length ? problems : p.snapshots.filter((s) => s.kind === "webcam"))

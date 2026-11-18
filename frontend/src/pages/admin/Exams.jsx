@@ -11,6 +11,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { Loading } from "@/components/Spinner"
 
 // Can candidates start this exam right now? Read from the exam's own dates, which the admin can change at any time.
 function windowOf(t) {
@@ -57,6 +58,7 @@ export default function Exams() {
         </Tabs>
       )}
       {error && <p className="text-sm text-destructive">{error}</p>}
+      {rows === null && !error && <Loading />}
       {rows && (
         <Table>
           <TableHeader>

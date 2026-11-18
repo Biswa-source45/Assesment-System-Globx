@@ -15,6 +15,7 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { CodeView, SqlSamples } from "@/pages/candidate/CodeView"
 import { Html, McqView, TextView, echoes } from "@/pages/candidate/questions"
+import { Loading } from "@/components/Spinner"
 
 const isCode = (q) => q.type === "coding" || q.type === "sql"
 const isAnswered = (q, r) => {
@@ -244,7 +245,7 @@ export default function Exam() {
   }, [!!st])  // eslint-disable-line react-hooks/exhaustive-deps
 
   if (error) return <div className="p-8 text-destructive">{error}</div>
-  if (!st || !curSec) return <div className="p-8 text-muted-foreground">Loading your exam...</div>
+  if (!st || !curSec) return <div className="p-8"><Loading label="Loading your exam..." /></div>
 
   const answeredIn = (s) => s.questions.filter((x) => isAnswered(x, resp[x.id])).length
   const all = sections.flatMap((s) => s.questions)
@@ -398,7 +399,7 @@ export default function Exam() {
           </DialogHeader>
           <DialogFooter>
             <Button variant="outline" onClick={() => setEndOpen(false)}>Keep working</Button>
-            <Button disabled={busy} onClick={() => finish("user")}>{busy ? "Submitting..." : "Submit exam"}</Button>
+            <Button disabled={busy} onClick={() => finish("user")} loading={busy}>{busy ? "Submitting..." : "Submit exam"}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

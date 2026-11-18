@@ -130,6 +130,7 @@ test("candidates are listed with their exams and can get a new password", async 
   await page.goto("/admin/users")
   await page.getByRole("tab", { name: /^Candidates/ }).click()
   const rows = page.getByTestId("user-row")
+  await page.getByLabel("Search users").fill("rahul")  // the list is paged (newest first): the server finds a person who is not on the first page
   const rahul = rows.filter({ hasText: "rahul" })
   await expect(rahul).toContainText("GLOBX Full-Stack Screening (Sample)")
   await page.getByLabel("Search users").fill("sneha")

@@ -11,6 +11,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.deps import AUTHOR, RECRUIT, SUPER, VIEW, audit, same_org
+from app.core.paging import limit_q, offset_q, page_rows
 from app.core.security import hash_password
 from app.db import get_db
 from app.api.library import q_out
@@ -526,7 +527,9 @@ def fresh_login_sheet(tid: str, request: Request, user: User = Depends(RECRUIT),
 
 
 @router.get("/tests/{tid}/candidates")
-def candidates(tid: str, status: str = "", user: User = Depends(VIEW), db: Session = Depends(get_db)):
+def candidates(tid: str, status: str = "", q: Optional[str] = None, limit: Optional[int] = Depends(limit_q), offset: int = Depends(offset_q),
+               user: User = Depends(VIEW), db: Session = Depends(get_db)):
+    """The people of an exam. `counts` always covers everyone; `rows` is the whole table, or with ?limit=&offset= (and q to search) one page, `total` the rows that match."""
     t = _test(db, tid, user)
     rows = reports.candidates_table(db, t)
     counts: Dict[str, int] = {}
@@ -534,7 +537,8 @@ def candidates(tid: str, status: str = "", user: User = Depends(VIEW), db: Sessi
         counts[r["status"]] = counts.get(r["status"], 0) + 1
     if status:
         rows = [r for r in rows if r["status"] == status]
-    return {"rows": rows, "counts": counts}
+    page, total = page_rows(rows, q, limit, offset)
+    return {"rows": page, "counts": counts, "total": total}
 
 
 @router.get("/tests/{tid}/monitor")

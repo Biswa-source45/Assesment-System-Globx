@@ -7,6 +7,7 @@ import { TONE } from "@/lib/verdict"
 import { Alert } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
 import { Bar, COLOR, Histogram, Legend, Panel, RISK_COLOR, Scatter, Tile } from "@/components/charts"
+import { Loading } from "@/components/Spinner"
 
 const HEALTH_TONE = { good: "good", "too easy": "part", "too hard": "part", "often skipped": "part", "check the key": "bad", "few answers": "none" }
 const HEALTH_HELP = { "check the key": "The strongest candidates did worse on this question than the weakest. The answer key may be wrong.", "too easy": "Almost everyone got it right, so it tells you little.", "too hard": "Almost nobody got it right: check the question and the key.", "often skipped": "Many candidates left it blank.", "few answers": "Too few candidates for a verdict." }
@@ -57,7 +58,7 @@ export default function ExamAnalytics({ testId }) {
   const [d, setD] = useState(null)
   const [problemsOnly, setProblemsOnly] = useState(false)
   useEffect(() => { setD(null); get(`/tests/${testId}/analytics`).then(setD).catch((e) => toast.error(e.message)) }, [testId])
-  if (!d) return <p className="text-muted-foreground">Loading...</p>
+  if (!d) return <Loading />
 
   const f = d.funnel, s = d.scores
   const none = f.completed === 0

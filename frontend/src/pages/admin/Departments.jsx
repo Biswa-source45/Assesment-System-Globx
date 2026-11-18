@@ -61,7 +61,7 @@ function DepartmentDialog({ target, onClose, onSaved }) {
           {error && <Alert variant="destructive" className="p-3">{error}</Alert>}
           <DialogFooter>
             <Button type="button" variant="outline" onClick={onClose}>Cancel</Button>
-            <Button type="submit" disabled={busy || !types.length}>{busy ? "Saving..." : editing ? "Save department" : "Create department"}</Button>
+            <Button type="submit" disabled={busy || !types.length} loading={busy}>{busy ? "Saving..." : editing ? "Save department" : "Create department"}</Button>
           </DialogFooter>
         </form>
       </DialogContent>

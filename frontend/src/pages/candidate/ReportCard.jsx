@@ -10,6 +10,7 @@ import SignOutButton from "@/components/SignOutButton"
 import { Bar, Ring } from "@/components/charts"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { Loading } from "@/components/Spinner"
 
 export default function ReportCard() {
   const { attemptId } = useParams()
@@ -38,7 +39,7 @@ export default function ReportCard() {
           )}
         </div>
         {error && <p className="rounded-lg border bg-white p-4 text-sm text-destructive" role="alert">{error}</p>}
-        {!d && !error && <p className="text-muted-foreground">Loading...</p>}
+        {!d && !error && <Loading />}
         {d && (
           <>
             <section className="flex flex-wrap items-center justify-between gap-6 rounded-2xl border bg-white p-6 shadow-sm">

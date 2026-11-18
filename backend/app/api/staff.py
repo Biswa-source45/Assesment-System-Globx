@@ -5,14 +5,15 @@ import os
 from datetime import timedelta
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
-from sqlalchemy import func, select, update
+from sqlalchemy import func, or_, select, update
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
 from app.core.deps import ADMIN, EVAL, SUPER, VIEW, audit, same_org, staff
+from app.core.paging import like, limit_q, offset_q, page_sql
 from app.core.security import hash_password, password_policy_error
 from app.db import get_db
 from app.domain import scoring
@@ -223,19 +224,27 @@ def _user_out(u: User, exams: Optional[List[str]] = None) -> dict:
 
 
 @router.get("/users")
-def list_users(role: Optional[str] = None, org_id: Optional[str] = None, user: User = Depends(ADMIN), db: Session = Depends(get_db)):
-    """Staff by default; role=candidate lists the people who sit exams, with the exams they were given."""
+def list_users(response: Response, role: Optional[str] = None, org_id: Optional[str] = None, q: Optional[str] = None,
+               limit: Optional[int] = Depends(limit_q), offset: int = Depends(offset_q), user: User = Depends(ADMIN), db: Session = Depends(get_db)):
+    """Staff by default; role=candidate lists the people who sit exams, with the exams they were given. q searches name, email, username
+    (and, for candidates, exam titles). With ?limit=&offset= one page, and the number of people in all in the X-Total-Count header."""
     oid = org_id if (org_id and user.has("super_admin")) else user.org_id
-    us = db.scalars(select(User).where(User.org_id == oid).order_by(User.created_at.desc())).all()
-    if role:
-        us = [u for u in us if role in u.role_names]
-    else:
-        us = [u for u in us if set(u.role_names) - {"candidate"}]
+    stmt = select(User).where(User.org_id == oid)
+    stmt = stmt.where(User.id.in_(select(UserRole.user_id).where(UserRole.role == role if role else UserRole.role != "candidate")))
+    if q and q.strip():
+        pat = like(q)
+        hit = [User.name.ilike(pat, escape="\\"), User.email.ilike(pat, escape="\\"), User.username.ilike(pat, escape="\\")]
+        if role == "candidate":
+            hit.append(User.id.in_(select(Assignment.candidate_id).join(Test, Test.id == Assignment.test_id).where(Test.title.ilike(pat, escape="\\"))))
+        stmt = stmt.where(or_(*hit))
+    us = page_sql(db, response, stmt.order_by(User.created_at.desc(), User.id), limit, offset)
     if role != "candidate":
         return [_user_out(u) for u in us]
     taken: Dict[str, List[str]] = {}
-    for cid, title in db.execute(select(Assignment.candidate_id, Test.title).join(Test, Test.id == Assignment.test_id).order_by(Test.created_at)).all():
-        taken.setdefault(cid, []).append(title)
+    if us:  # the exams of the people on this page only
+        for cid, title in db.execute(select(Assignment.candidate_id, Test.title).join(Test, Test.id == Assignment.test_id)
+                                     .where(Assignment.candidate_id.in_([u.id for u in us])).order_by(Test.created_at)).all():
+            taken.setdefault(cid, []).append(title)
     return [_user_out(u, taken.get(u.id, [])) for u in us]
 
 

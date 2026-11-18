@@ -1,18 +1,22 @@
-import { useCallback, useEffect, useState } from "react"
+import { useEffect, useState } from "react"
 import { Link, useParams, useSearchParams } from "react-router-dom"
 import { toast } from "sonner"
 import { Download, FileText, Mail } from "lucide-react"
-import { api, get, post } from "@/lib/api"
+import { api, post } from "@/lib/api"
 import { saveFile } from "@/lib/download"
 import { useAuth } from "@/lib/auth"
 import { fmtDate, RESULT_STATE, RISK } from "@/lib/labels"
 import { OUTCOME_TONE, RESULT, STATE_TONE, TONE } from "@/lib/verdict"
+import { useDebounced, usePaged } from "@/lib/usePaged"
+import MoreRows from "@/components/MoreRows"
+import { Loading } from "@/components/Spinner"
 import { useConfirm } from "@/components/ConfirmDialog"
 import PdfButton from "@/components/PdfButton"
 import { Alert } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
+import { Input } from "@/components/ui/input"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import ExamAnalytics from "@/pages/admin/ExamAnalytics"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
@@ -39,11 +43,14 @@ export default function ExamResults() {
   const { testId } = useParams()
   const { user } = useAuth()
   const confirm = useConfirm()
-  const [d, setD] = useState(null)
   const [busy, setBusy] = useState(false)
+  const [search, setSearch] = useState("")
   const [params, setParams] = useSearchParams()
-  const load = useCallback(() => get(`/tests/${testId}/results`).then(setD).catch((e) => toast.error(e.message)), [testId])
-  useEffect(() => { load() }, [load])
+  // the summary always covers everyone; the table comes 50 people at a time, the next 50 when it is scrolled to its end (quiet: the 5-second refresh shows no spinner)
+  const paged = usePaged(`/tests/${testId}/results`, { q: useDebounced(search.trim()) }, { idKey: "assignment_id", quiet: true })
+  const d = paged.meta && paged.rows ? { ...paged.meta, rows: paged.rows } : null
+  const load = paged.reload
+  useEffect(() => { if (paged.error && !paged.rows) toast.error(paged.error) }, [paged.error, paged.rows])
   const waiting = d && (d.state === "open" || d.state === "calculating" || d.active > 0 || d.mail.queued > 0)
   useEffect(() => {
     if (!waiting) return
@@ -85,7 +92,7 @@ export default function ExamResults() {
     } catch (e) { toast.error(e.message) }
   }
 
-  if (!d) return <p className="text-muted-foreground">Loading...</p>
+  if (!d) return paged.error ? <p className="text-destructive">{paged.error}</p> : <Loading />
   const evaluate = user.can.evaluate
   const s = d.summary
   const cards = [["Assigned", s.assigned], ["Appeared", s.appeared], ["Did not attend", s.absent], ["Ended early", s.ended_early], ["Passed", s.passed], ["Failed", s.failed], ["Did not attempt", s.not_attempted], ["Average", `${s.average_percent}%`]]
@@ -135,6 +142,7 @@ export default function ExamResults() {
             ))}
           </div>
 
+          <Input className="w-64" placeholder="Search by name or username" aria-label="Search the results" value={search} onChange={(e) => setSearch(e.target.value)} />
           <Table>
             <TableHeader>
               <TableRow><TableHead>Rank</TableHead><TableHead>Name</TableHead><TableHead>What happened</TableHead><TableHead>Score</TableHead><TableHead>%</TableHead><TableHead>Result</TableHead><TableHead>Needs attention</TableHead><TableHead>Risk</TableHead><TableHead>Report card</TableHead><TableHead /></TableRow>
@@ -164,9 +172,10 @@ export default function ExamResults() {
                   </TableRow>
                 )
               })}
-              {!d.rows.length && <TableRow><TableCell colSpan={10} className="text-muted-foreground">Nobody was assigned to this exam.</TableCell></TableRow>}
+              {!d.rows.length && <TableRow><TableCell colSpan={10} className="text-muted-foreground">{search.trim() ? "Nobody matches." : "Nobody was assigned to this exam."}</TableCell></TableRow>}
             </TableBody>
           </Table>
+          <MoreRows paged={paged} what="people" />
         </TabsContent>
         <TabsContent value="analytics" className="pt-2"><ExamAnalytics testId={testId} /></TabsContent>
       </Tabs>

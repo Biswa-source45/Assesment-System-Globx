@@ -1,9 +1,12 @@
-import { useCallback, useEffect, useState } from "react"
+import { useState } from "react"
 import { toast } from "sonner"
 import { Eye, EyeOff, KeyRound, Pencil, Plus, Shuffle } from "lucide-react"
-import { get, post, put } from "@/lib/api"
+import { post, put } from "@/lib/api"
 import { useAuth } from "@/lib/auth"
 import { fmtDate } from "@/lib/labels"
+import { useDebounced, usePaged } from "@/lib/usePaged"
+import MoreRows from "@/components/MoreRows"
+import { Loading } from "@/components/Spinner"
 import { Alert } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -113,7 +116,7 @@ function UserDialog({ target, me, onClose, onSaved }) {
           {error && <Alert variant="destructive" className="p-3">{error}</Alert>}
           <DialogFooter>
             <Button type="button" variant="outline" onClick={onClose}>Cancel</Button>
-            <Button type="submit" disabled={busy || (!candidate && !f.roles.length)}>{busy ? "Saving..." : isNew ? "Create user" : "Save user"}</Button>
+            <Button type="submit" disabled={busy || (!candidate && !f.roles.length)} loading={busy}>{busy ? "Saving..." : isNew ? "Create user" : "Save user"}</Button>
           </DialogFooter>
         </form>
       </DialogContent>
@@ -154,7 +157,7 @@ function PasswordDialog({ target, onClose, onSaved }) {
           {error && <Alert variant="destructive" className="p-3">{error}</Alert>}
           <DialogFooter>
             <Button type="button" variant="outline" onClick={onClose}>Cancel</Button>
-            <Button type="submit" disabled={busy || !password}>{busy ? "Saving..." : "Set password"}</Button>
+            <Button type="submit" disabled={busy || !password} loading={busy}>{busy ? "Saving..." : "Set password"}</Button>
           </DialogFooter>
         </form>
       </DialogContent>
@@ -167,25 +170,22 @@ const statusBadge = (u) => (u.locked ? <Badge variant="destructive">Locked</Badg
 export default function Users() {
   const { user: me } = useAuth()
   const [tab, setTab] = useState("staff")
-  const [staff, setStaff] = useState(null)
-  const [candidates, setCandidates] = useState(null)
   const [search, setSearch] = useState("")
   const [role, setRole] = useState("all")
   const [dialog, setDialog] = useState(null)  // { kind: "edit" | "password", target } or { kind: "edit", target: "new" }
 
-  const load = useCallback(() => {
-    get("/users").then(setStaff).catch((e) => toast.error(e.message))
-    get("/users?role=candidate").then(setCandidates).catch((e) => toast.error(e.message))
-  }, [])
-  useEffect(load, [load])
+  // the server searches and pages both lists: 50 people now, the next 50 when the list is scrolled to its end
+  const needle = useDebounced(search.trim())
+  const staff = usePaged("/users", { role: role === "all" ? "" : role, q: needle })
+  const candidates = usePaged("/users", { role: "candidate", q: needle })
+  const paged = tab === "staff" ? staff : candidates
+  const load = () => { staff.reload(); candidates.reload() }
 
   async function unlock(u) {
     try { await put(`/users/${u.id}`, { unlock: true }); toast.success(`${u.name || u.email} can sign in again`); load() } catch (e) { toast.error(e.message) }
   }
 
-  const q = search.trim().toLowerCase()
-  const match = (u) => [u.name, u.email, u.username, ...(u.exams ?? [])].some((v) => v?.toLowerCase().includes(q))
-  const rows = ((tab === "staff" ? staff : candidates) ?? []).filter((u) => match(u) && (tab !== "staff" || role === "all" || u.roles.includes(role)))
+  const rows = paged.rows ?? []
   const protectedRow = (u) => u.roles.includes("super_admin") && !me.can.super  // only a Super Admin may change a Super Admin
 
   return (
@@ -201,8 +201,8 @@ export default function Users() {
       <div className="flex flex-wrap items-center gap-2">
         <Tabs value={tab} onValueChange={setTab}>
           <TabsList>
-            <TabsTrigger value="staff">Staff ({staff?.length ?? "..."})</TabsTrigger>
-            <TabsTrigger value="candidates">Candidates ({candidates?.length ?? "..."})</TabsTrigger>
+            <TabsTrigger value="staff">Staff ({staff.rows ? staff.total : "..."})</TabsTrigger>
+            <TabsTrigger value="candidates">Candidates ({candidates.rows ? candidates.total : "..."})</TabsTrigger>
           </TabsList>
         </Tabs>
         <Input className="w-64" placeholder="Search by name, email or exam" aria-label="Search users" value={search} onChange={(e) => setSearch(e.target.value)} />
@@ -243,9 +243,10 @@ export default function Users() {
               </TableCell>
             </TableRow>
           ))}
-          {!rows.length && <TableRow><TableCell colSpan={6} className="text-muted-foreground">{(tab === "staff" ? staff : candidates) ? "Nobody matches." : "Loading..."}</TableCell></TableRow>}
+          {!rows.length && <TableRow><TableCell colSpan={6} className="text-muted-foreground">{paged.rows ? "Nobody matches." : paged.error || <Loading />}</TableCell></TableRow>}
         </TableBody>
       </Table>
+      <MoreRows paged={paged} what={tab === "staff" ? "staff" : "candidates"} />
 
       {dialog?.kind === "edit" && <UserDialog key={dialog.target === "new" ? "new" : dialog.target.id} target={dialog.target} me={me} onClose={() => setDialog(null)} onSaved={load} />}
       {dialog?.kind === "password" && <PasswordDialog key={dialog.target.id} target={dialog.target} onClose={() => setDialog(null)} onSaved={load} />}

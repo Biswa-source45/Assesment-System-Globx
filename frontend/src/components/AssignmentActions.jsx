@@ -93,7 +93,7 @@ function Actions({ row, onDone }) {
             {dialog?.kind === "terminate" && <Alert variant="destructive" className="p-3">The candidate's screen will end within a few seconds.</Alert>}
             <DialogFooter>
               <Button type="button" variant="outline" onClick={close}>Back</Button>
-              <Button type="submit" disabled={busy}>{busy ? "Working..." : a?.button}</Button>
+              <Button type="submit" disabled={busy} loading={busy}>{busy ? "Working..." : a?.button}</Button>
             </DialogFooter>
           </form>
         </DialogContent>

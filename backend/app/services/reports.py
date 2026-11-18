@@ -145,7 +145,11 @@ def candidates_table(db: Session, test: Test, status: str = "") -> List[Dict]:
     asgs = db.scalars(select(Assignment).where(Assignment.test_id == test.id)).all()
     ranked = ranked_attempts(db, test.id)
     rank = {a.id: i + 1 for i, a in enumerate(ranked)}
-    pairs = [(g, db.scalar(select(Attempt).where(Attempt.assignment_id == g.id, Attempt.status != "reset").order_by(Attempt.started_at.desc()))) for g in asgs]
+    latest: Dict[str, Attempt] = {}  # each person's newest attempt that was not reset: one query for everyone, not one per person
+    if asgs:
+        for at in db.scalars(select(Attempt).where(Attempt.assignment_id.in_([g.id for g in asgs]), Attempt.status != "reset").order_by(Attempt.started_at.desc())):
+            latest.setdefault(at.assignment_id, at)
+    pairs = [(g, latest.get(g.id)) for g in asgs]
     results = results_of(db, test, [at for _, at in pairs if at and at.status != "in_progress"])
     rows = []
     for g, at in pairs:

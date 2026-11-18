@@ -1,14 +1,18 @@
-import { useCallback, useEffect, useState } from "react"
+import { useState } from "react"
 import { toast } from "sonner"
 import { Download, Printer } from "lucide-react"
-import { get, post } from "@/lib/api"
+import { post } from "@/lib/api"
 import { useAuth } from "@/lib/auth"
 import { STATUS } from "@/lib/labels"
+import { useDebounced, usePaged } from "@/lib/usePaged"
 import { useConfirm } from "@/components/ConfirmDialog"
 import AssignmentActions from "@/components/AssignmentActions"
+import MoreRows from "@/components/MoreRows"
+import { Loading } from "@/components/Spinner"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Textarea } from "@/components/ui/textarea"
@@ -31,13 +35,12 @@ export default function ExamParticipants({ test }) {
   const confirm = useConfirm()
   const [names, setNames] = useState("")
   const [created, setCreated] = useState(null)  // the only time the passwords are visible
-  const [rows, setRows] = useState(null)
   const [busy, setBusy] = useState(false)
-
-  const load = useCallback(() => {
-    get(`/tests/${test.id}/candidates`).then((d) => setRows(d.rows)).catch((e) => toast.error(e.message))
-  }, [test.id])
-  useEffect(() => { load() }, [load])
+  const [search, setSearch] = useState("")
+  // 50 people now, the next 50 when the list is scrolled to its end; the server searches
+  const paged = usePaged(`/tests/${test.id}/candidates`, { q: useDebounced(search.trim()) }, { idKey: "assignment_id" })
+  const { rows } = paged
+  const load = paged.reload
 
   async function create(e) {
     e.preventDefault()
@@ -80,7 +83,7 @@ export default function ExamParticipants({ test }) {
           <form onSubmit={create} className="grid gap-3">
             <Label htmlFor="names" className="sr-only">Participant names</Label>
             <Textarea id="names" className="min-h-28" placeholder={"Asha Rao\nVikram Das, vikram@example.com"} value={names} onChange={(e) => setNames(e.target.value)} />
-            <div><Button type="submit" disabled={busy || !names.trim()}>{busy ? "Creating..." : "Create logins"}</Button></div>
+            <div><Button type="submit" disabled={!names.trim()} loading={busy}>{busy ? "Creating..." : "Create logins"}</Button></div>
           </form>
         </CardContent>
       </Card>}
@@ -119,8 +122,11 @@ export default function ExamParticipants({ test }) {
             <CardTitle>Participants</CardTitle>
             {recruit && <Button variant="outline" size="sm" onClick={freshSheet}>Get a fresh login sheet</Button>}
           </div>
+          <Input className="mt-2 w-64" placeholder="Search by name or username" aria-label="Search participants" value={search} onChange={(e) => setSearch(e.target.value)} />
         </CardHeader>
         <CardContent>
+          {rows === null && !paged.error && <Loading />}
+          {paged.error && !rows && <p className="text-sm text-destructive">{paged.error}</p>}
           {rows && (
             <Table>
               <TableHeader><TableRow><TableHead>Name</TableHead><TableHead>Username</TableHead><TableHead>Status</TableHead><TableHead>Score</TableHead><TableHead /></TableRow></TableHeader>
@@ -136,10 +142,11 @@ export default function ExamParticipants({ test }) {
                     </TableCell>
                   </TableRow>
                 ))}
-                {!rows.length && <TableRow><TableCell colSpan={5} className="text-muted-foreground">Nobody yet.</TableCell></TableRow>}
+                {!rows.length && <TableRow><TableCell colSpan={5} className="text-muted-foreground">{search.trim() ? "Nobody matches." : "Nobody yet."}</TableCell></TableRow>}
               </TableBody>
             </Table>
           )}
+          <MoreRows paged={paged} what="people" />
         </CardContent>
       </Card>
     </div>

@@ -21,6 +21,7 @@ import Done from "@/pages/candidate/Done"
 import Analytics from "@/pages/candidate/Analytics"
 import ReportCard from "@/pages/candidate/ReportCard"
 import ErrorBoundary from "@/components/ErrorBoundary"
+import { Loading } from "@/components/Spinner"
 
 // The screens need the permission list the server sends with the user. A backend that was not restarted after an update does not send it.
 function ServerTooOld() {
@@ -35,7 +36,7 @@ function ServerTooOld() {
 // Sends signed-out visitors to /login and keeps candidates out of the admin area (and staff out of the exam area).
 function Guard({ staff, children }) {
   const { user, loading } = useAuth()
-  if (loading) return <div className="p-8 text-muted-foreground">Loading...</div>
+  if (loading) return <div className="p-8"><Loading /></div>
   if (!user) return <Navigate to="/login" replace />
   if (staff !== user.is_staff) return <Navigate to={user.is_staff ? "/admin" : "/exam"} replace />
   if (user.is_staff && !user.can) return <ServerTooOld />

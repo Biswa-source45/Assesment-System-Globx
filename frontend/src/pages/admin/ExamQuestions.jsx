@@ -4,11 +4,14 @@ import { Pencil, Plus, Shuffle, Sparkles, Trash2 } from "lucide-react"
 import { del, get, post, put } from "@/lib/api"
 import { useAuth } from "@/lib/auth"
 import { useDepartments } from "@/lib/useDepartments"
+import { useDebounced, usePaged } from "@/lib/usePaged"
 import AutoPopulate from "@/pages/admin/AutoPopulate"
 import QuestionEditor from "@/pages/admin/QuestionEditor"
 import QuestionPack from "@/pages/admin/QuestionPack"
 import { TYPE_LABEL } from "@/pages/admin/Questions"
 import { useConfirm } from "@/components/ConfirmDialog"
+import MoreRows from "@/components/MoreRows"
+import { Loading } from "@/components/Spinner"
 import { Alert } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -26,20 +29,16 @@ const needsReference = (q) => (q.type === "coding" || q.type === "sql") && !q.va
 function QuestionPicker({ section, test, used, onClose, onAdded }) {
   const { departments } = useDepartments()
   const [department, setDepartment] = useState("any")
-  const [rows, setRows] = useState(null)
   const [search, setSearch] = useState("")
   const [type, setType] = useState("all")
   const [picked, setPicked] = useState([])
   const [busy, setBusy] = useState(false)
 
   useEffect(() => { if (section) setDepartment(test.department_id ?? "any") }, [section, test.department_id])  // starts with the exam's own department
-  useEffect(() => {
-    if (!section) return
-    setPicked([])
-    get("/questions?standalone=true" + (department === "any" ? "" : `&department_id=${department}`)).then(setRows).catch((e) => toast.error(e.message))
-  }, [section, department])
-
-  const shown = (rows ?? []).filter((q) => (type === "all" || q.type === type) && q.title.toLowerCase().includes(search.toLowerCase()))
+  useEffect(() => { setPicked([]) }, [section, department])
+  // the server filters and pages the bank: 30 questions now, the next 30 when the list is scrolled to its end
+  const paged = usePaged(section ? "/questions" : "", { standalone: "true", department_id: department === "any" ? "" : department, type: type === "all" ? "" : type, q: useDebounced(search.trim()) }, { size: 30 })
+  const rows = paged.rows
   const toggle = (id) => setPicked((p) => (p.includes(id) ? p.filter((x) => x !== id) : [...p, id]))
 
   async function add() {
@@ -81,8 +80,9 @@ function QuestionPicker({ section, test, used, onClose, onAdded }) {
           </Select>
         </div>
         <div className="grid max-h-80 gap-1.5 overflow-auto">
-          {rows === null && <p className="text-sm text-muted-foreground">Loading...</p>}
-          {shown.map((q) => (
+          {rows === null && !paged.error && <Loading />}
+          {paged.error && !rows && <p className="text-sm text-destructive">{paged.error}</p>}
+          {(rows ?? []).map((q) => (
             <Label key={q.id} className="flex items-center gap-3 rounded-md border p-2 font-normal has-[[data-disabled]]:opacity-50">
               <Checkbox checked={picked.includes(q.id) || used.has(q.id)} disabled={used.has(q.id)} onCheckedChange={() => toggle(q.id)} />
               <span className="grow">{q.title}</span>
@@ -92,11 +92,12 @@ function QuestionPicker({ section, test, used, onClose, onAdded }) {
               <span className="w-14 text-right text-xs text-muted-foreground">{q.marks} marks</span>
             </Label>
           ))}
-          {rows && !shown.length && <p className="text-sm text-muted-foreground">No questions found.</p>}
+          {rows && !rows.length && <p className="text-sm text-muted-foreground">No questions found.</p>}
+          <MoreRows paged={paged} what="questions" />
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={onClose}>Cancel</Button>
-          <Button disabled={!picked.length || busy} onClick={add}>{busy ? "Adding..." : `Add ${picked.length || ""} selected`}</Button>
+          <Button disabled={!picked.length} onClick={add} loading={busy}>{busy ? "Adding..." : `Add ${picked.length || ""} selected`}</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

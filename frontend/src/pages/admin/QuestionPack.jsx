@@ -184,7 +184,7 @@ export default function QuestionPack({ test, onClose, onImported }) {
 
         <DialogFooter>
           <Button variant="outline" onClick={onClose}>Cancel</Button>
-          {report?.ok && <Button disabled={busy} onClick={importAll}>{busy ? "Importing..." : `Import ${report.total_questions} questions`}</Button>}
+          {report?.ok && <Button disabled={busy} onClick={importAll} loading={busy}>{busy ? "Importing..." : `Import ${report.total_questions} questions`}</Button>}
         </DialogFooter>
       </DialogContent>
     </Dialog>

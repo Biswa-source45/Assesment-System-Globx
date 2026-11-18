@@ -11,6 +11,7 @@ import { Alert } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Loading } from "@/components/Spinner"
 
 export default function ExamEditor() {
   const confirm = useConfirm()
@@ -58,7 +59,7 @@ export default function ExamEditor() {
   }
 
   if (error) return <p className="text-sm text-destructive">{error}</p>
-  if (!isNew && !test) return <p className="text-muted-foreground">Loading...</p>
+  if (!isNew && !test) return <Loading />
 
   return (
     <div className="grid gap-4">
@@ -73,7 +74,7 @@ export default function ExamEditor() {
         <div className="flex gap-2">
           <Button variant="ghost" asChild><Link to="/admin">All exams</Link></Button>
           {test?.status === "published" && <Button variant="outline" asChild><Link to={`/admin/monitor?exam=${test.id}`}>Live monitor</Link></Button>}
-          {author && test?.status === "draft" && <Button onClick={publish} disabled={busy}>{busy ? "Publishing..." : "Publish"}</Button>}
+          {author && test?.status === "draft" && <Button onClick={publish} disabled={busy} loading={busy}>{busy ? "Publishing..." : "Publish"}</Button>}
           {author && test?.status === "published" && <Button variant="outline" onClick={unpublish}>Unpublish</Button>}
         </div>
       </div>

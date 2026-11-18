@@ -9,7 +9,7 @@ export default function Snapshot({ id, alt = "Latest camera snapshot", className
   useEffect(() => {
     if (!id) return
     let alive = true
-    api(`/snapshots/${id}`, { raw: true })
+    api(`/snapshots/${id}`, { raw: true, quiet: true })
       .then((r) => r.blob())
       .then((b) => {
         if (!alive) return

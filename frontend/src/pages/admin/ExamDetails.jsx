@@ -211,7 +211,7 @@ export default function ExamDetails({ test, onSaved }) {
       </Card>
 
       {error && <Alert variant="destructive" className="p-3">{error}</Alert>}
-      {author && <div><Button type="submit" disabled={busy}>{busy ? "Saving..." : test ? "Save exam" : "Create exam"}</Button></div>}
+      {author && <div><Button type="submit" disabled={busy} loading={busy}>{busy ? "Saving..." : test ? "Save exam" : "Create exam"}</Button></div>}
     </fieldset></form>
   )
 }

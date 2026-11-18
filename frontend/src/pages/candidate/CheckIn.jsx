@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Label } from "@/components/ui/label"
+import { Loading } from "@/components/Spinner"
 
 const STABLE_CHECKS = 3  // consecutive 0.5 s checks with exactly one face before Start is allowed
 
@@ -79,7 +80,7 @@ export default function CheckIn() {
     }
   }
 
-  if (item === null && !error) return <div className="p-8 text-muted-foreground">Loading...</div>
+  if (item === null && !error) return <div className="p-8"><Loading /></div>
   if (item === false) return <div className="p-8">Exam not found. <Link className="text-primary underline" to="/exam">Back</Link></div>
   if (!item) return <div className="p-8 text-destructive">{error}</div>
 
@@ -153,7 +154,7 @@ export default function CheckIn() {
             {extraScreen && <Alert variant="destructive" className="p-3">Disconnect the second screen to continue.</Alert>}
             {error && <Alert variant="destructive" className="p-3">{error}</Alert>}
             {item.message && !item.can_start && <Alert className="p-3">{item.message}</Alert>}
-            <Button size="lg" disabled={!ready || busy || !item.can_start} onClick={start}>{busy ? "Starting..." : needScreen ? "Accept and start exam" : "Start exam"}</Button>
+            <Button size="lg" disabled={!ready || busy || !item.can_start} onClick={start} loading={busy}>{busy ? "Starting..." : needScreen ? "Accept and start exam" : "Start exam"}</Button>
           </CardContent>
         </Card>
 

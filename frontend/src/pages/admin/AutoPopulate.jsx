@@ -132,7 +132,7 @@ export default function AutoPopulate({ test, section, onClose, onAdded }) {
         <DialogFooter>
           <Button variant="outline" onClick={onClose}>Cancel</Button>
           <Button variant={pick ? "outline" : "default"} disabled={busy || total < 1 || total > 50 || !chosen.length} onClick={choose}><Shuffle /> {pick ? "Pick again" : "Pick questions"}</Button>
-          {pick?.questions.length > 0 && <Button disabled={busy} onClick={add}>{busy ? "Adding..." : `Add ${pick.questions.length} questions`}</Button>}
+          {pick?.questions.length > 0 && <Button disabled={busy} onClick={add} loading={busy}>{busy ? "Adding..." : `Add ${pick.questions.length} questions`}</Button>}
         </DialogFooter>
       </DialogContent>
     </Dialog>

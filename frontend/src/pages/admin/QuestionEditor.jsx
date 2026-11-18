@@ -368,7 +368,7 @@ export default function QuestionEditor({ id, onSaved, embedded = false }) {
       {f.type === "sql" && <SqlBuilder f={f} set={set} />}
 
       {error && <Alert variant="destructive" className="p-3">{error}</Alert>}
-      <div><Button onClick={save} disabled={busy === "save"}>{busy === "save" ? "Saving..." : "Save question"}</Button></div>
+      <div><Button onClick={save} disabled={busy === "save"} loading={busy === "save"}>{busy === "save" ? "Saving..." : "Save question"}</Button></div>
     </div>
   )
 }

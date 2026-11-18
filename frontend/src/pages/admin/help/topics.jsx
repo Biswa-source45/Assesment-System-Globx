@@ -58,6 +58,7 @@ export const TOPICS = [
         ["Participants", "Names in, logins out"], ["Exam day", "Candidates sit it; you watch the Live monitor"], ["Results", "Calculate, review written answers, declare"],
       ]} />
       <Tip>The fastest way to a first exam: create the exam, press <b>Build with AI</b> on its Questions tab, upload the JSON the AI gives you, add participants, publish.</Tip>
+      <p>Long lists (the Question bank, the question picker inside an exam, Users, an exam's participants and results) come <b>50 at a time</b>: scroll to the end and the next 50 load by themselves (or press <b>Load more</b>). The line under the list says how many are shown out of how many. The search box and the filters look through <b>everything</b>, not only what is on the screen. A round spinner appears while something takes more than a moment.</p>
     </div>) },
   { id: "roles", group: "start", title: "Who can do what (roles)", body: (
     <div className="grid gap-3">

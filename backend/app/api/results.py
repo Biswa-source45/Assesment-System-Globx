@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session
 from app.api.tests import _test
 from app.core.config import get_settings
 from app.core.deps import EVAL, ROLE_GROUPS, VIEW, audit, current_user, same_org
+from app.core.paging import limit_q, offset_q, page_rows
 from app.db import get_db
 from app.models import Answer, Attempt, Evaluation, Test, User, aware, now, uid
 from app.services import jobs
@@ -45,7 +46,10 @@ def _state(t: Test, attention: int) -> str:
 
 
 @router.get("/tests/{tid}/results")
-def results(tid: str, user: User = Depends(VIEW), db: Session = Depends(get_db)):
+def results(tid: str, q: Optional[str] = None, limit: Optional[int] = Depends(limit_q), offset: int = Depends(offset_q),
+            user: User = Depends(VIEW), db: Session = Depends(get_db)):
+    """The summary always covers everyone; `rows` is the whole table, or with ?limit=&offset= (and q to search) one page of it, `total` the rows that match.
+    ?limit=0 is the summary alone."""
     t = _test(db, tid, user)
     review = _review_by_attempt(db, t)
     rows = candidates_table(db, t)
@@ -58,6 +62,7 @@ def results(tid: str, user: User = Depends(VIEW), db: Session = Depends(get_db))
     for r in done:
         r["mail"] = "no_email" if not is_real_email(r["email"]) else states.get(r["attempt_id"], "")
     mail = {k: sum(1 for r in done if r.get("mail") == k) for k in ("sent", "queued", "failed", "logged", "no_email")}
+    page, total = page_rows(rows, q, limit, offset)
     return {"state": _state(t, attention), "attention": attention, "active": _active(db, t), "title": t.title, "cutoff": t.cutoff, "ends_at": aware(t.ends_at).isoformat() if t.ends_at else None,
             "calculated_at": aware(t.calculated_at).isoformat() if t.calculated_at else None,
             "declared_at": aware(t.results_declared_at).isoformat() if t.results_declared_at else None,
@@ -68,7 +73,7 @@ def results(tid: str, user: User = Depends(VIEW), db: Session = Depends(get_db))
                         "average_percent": round(sum(r["percent"] for r in scored) / len(scored), 1) if scored else 0,
                         "highest": max((r["score"] for r in scored), default=None)},
             "mail": {**mail, "error": mail_error, "smtp": bool(get_settings().smtp_host), "shared": bool((t.settings or {}).get("show_result_to_candidate", True))},
-            "rows": rows}
+            "rows": page, "total": total}
 
 
 @router.post("/tests/{tid}/calculate")

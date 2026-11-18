@@ -170,7 +170,7 @@ export default function PaperUpload({ test, onImported, onClose }) {
             </div>
           ))}
           <div className="flex flex-wrap items-center gap-2">
-            <Button disabled={busy || !include.size} onClick={importChosen}>{busy ? "Importing..." : `Import ${include.size} questions`}</Button>
+            <Button disabled={busy || !include.size} onClick={importChosen} loading={busy}>{busy ? "Importing..." : `Import ${include.size} questions`}</Button>
             <Button variant="outline" onClick={() => { setResult(null); setPhase("") }}>Start again with another file</Button>
             <span className="text-xs text-muted-foreground">Questions with a problem cannot be added. Fix the paper and upload it again, or add them by hand.</span>
           </div>

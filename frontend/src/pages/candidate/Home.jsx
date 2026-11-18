@@ -12,6 +12,7 @@ import SignOutButton from "@/components/SignOutButton"
 import { LineChart, Legend, COLOR, Panel } from "@/components/charts"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { BusyChip, Loading } from "@/components/Spinner"
 
 // "Marked" is not shown: a candidate hears about a result only when it has been declared
 const LABEL = { invited: "Ready", in_progress: "In progress", banned: "Locked", test_taken: "Submitted", review_pending: "Submitted", evaluated: "Submitted" }
@@ -29,6 +30,7 @@ export default function CandidateHome() {
 
   return (
     <div className="min-h-svh bg-muted/40">
+      <BusyChip />
       <header className="flex items-center justify-between border-b bg-white px-6 py-3">
         <Brand />
         <div className="flex items-center gap-3 text-sm">
@@ -39,6 +41,7 @@ export default function CandidateHome() {
       <main className="mx-auto grid max-w-2xl gap-4 p-6">
         <h1 className="text-2xl font-semibold">Your exams</h1>
         {error && <p className="text-sm text-destructive">{error}</p>}
+        {items === null && !error && <Loading />}
         {progress.length > 0 && (
           <Panel title="My progress" hint="Your score in each exam you have taken, with the class average" data-testid="my-progress">
             <LineChart points={progress.map((p) => ({ label: p.title, you: p.percent, avg: p.class_average }))} name="Your scores by exam" />

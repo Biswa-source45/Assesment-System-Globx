@@ -3,6 +3,7 @@ import { get } from "@/lib/api"
 import { QUESTION_TONE, RESULT, TONE } from "@/lib/verdict"
 import { Badge } from "@/components/ui/badge"
 import { Bar, COLOR, Histogram, Legend, Panel, Ring, Tile } from "@/components/charts"
+import { Loading } from "@/components/Spinner"
 
 const GROUPS = [["kinds", "By type of question"], ["difficulty", "By difficulty"], ["skills", "By topic"]]
 const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1)
@@ -14,7 +15,7 @@ export default function AttemptAnalytics({ attemptId }) {
   useEffect(() => { setD(null); setError(""); get(`/attempts/${attemptId}/analytics`).then(setD).catch((e) => setError(e.message)) }, [attemptId])
 
   if (error) return <p className="rounded-lg border bg-white p-4 text-sm text-destructive" role="alert">{error}</p>
-  if (!d) return <p className="text-muted-foreground">Loading...</p>
+  if (!d) return <Loading />
   const s = d.score, c = d.class
   const [label, tone] = RESULT[s.result]
   const time = d.time.taken != null ? `${d.time.taken} min` : "-"

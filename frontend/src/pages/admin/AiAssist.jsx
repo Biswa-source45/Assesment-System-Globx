@@ -90,7 +90,7 @@ export default function AiAssist({ form, blank, types, current, apply, restore, 
         <QuestionPictures name="request" images={images} onChange={setImages} hint={blank ? "A picture of a question for the AI to read. You can also paste a screenshot into the box. Up to 4." : "A picture for the AI to look at or use. You can also paste a screenshot into the box. Up to 4."} />
         {error && <Alert variant="destructive" className="p-3" data-testid="ai-error">{error}</Alert>}
         <div className="flex items-center gap-2">
-          <Button onClick={run} disabled={busy || (!prompt.trim() && (!blank || !images.length))}>{busy ? "The AI is working..." : blank ? "Write question" : "Change question"}</Button>
+          <Button onClick={run} disabled={busy || (!prompt.trim() && (!blank || !images.length))} loading={busy}>{busy ? "The AI is working..." : blank ? "Write question" : "Change question"}</Button>
           {busy && <Button variant="outline" onClick={() => abort.current?.abort()}>Cancel</Button>}
           {busy && <span className="text-xs text-muted-foreground" role="status">Reading your request and checking the answer. This can take up to a minute.</span>}
           {undo && !busy && <Button variant="outline" onClick={undoLast}><Undo2 /> Undo the last AI change</Button>}

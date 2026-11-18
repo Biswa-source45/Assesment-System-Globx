@@ -1,11 +1,14 @@
-import { useCallback, useEffect, useState } from "react"
+import { useState } from "react"
 import { Link } from "react-router-dom"
 import { toast } from "sonner"
 import { Archive, CircleHelp, Pencil, Plus, Sparkles } from "lucide-react"
-import { del, get } from "@/lib/api"
+import { del } from "@/lib/api"
 import { useAuth } from "@/lib/auth"
+import { useDebounced, usePaged } from "@/lib/usePaged"
 import { useDepartments } from "@/lib/useDepartments"
 import { useConfirm } from "@/components/ConfirmDialog"
+import MoreRows from "@/components/MoreRows"
+import { Loading } from "@/components/Spinner"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -20,27 +23,19 @@ export default function Questions() {
   const confirm = useConfirm()
   const { departments, byId } = useDepartments()
   const author = useAuth().user.can.author  // other roles that may read the bank cannot change it
-  const [rows, setRows] = useState(null)
   const [type, setType] = useState("all")
   const [department, setDepartment] = useState("all")
   const [search, setSearch] = useState("")
-  const [error, setError] = useState("")
-
-  const load = useCallback(() => {
-    const q = new URLSearchParams()
-    if (type !== "all") q.set("type", type)
-    if (department !== "all") q.set("department_id", department)
-    get(`/questions?${q}`).then(setRows).catch((e) => setError(e.message))
-  }, [type, department])
-  useEffect(load, [load])
+  // the server filters and pages: 50 questions now, the next 50 when the list is scrolled to its end
+  const paged = usePaged("/questions", { type: type === "all" ? "" : type, department_id: department === "all" ? "" : department, q: useDebounced(search.trim()) })
+  const { rows } = paged
 
   async function archive(q) {
     const yes = await confirm({ title: "Archive this question?", description: `"${q.title}" disappears from the bank. Exams that already use it keep working.`, action: "Archive", destructive: true })
     if (!yes) return
-    try { await del(`/questions/${q.id}`); toast.success("Archived"); load() } catch (e) { toast.error(e.message) }
+    try { await del(`/questions/${q.id}`); toast.success("Archived"); paged.reload() } catch (e) { toast.error(e.message) }
   }
 
-  const shown = rows?.filter((r) => r.title.toLowerCase().includes(search.toLowerCase()))
   return (
     <div className="grid gap-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -68,14 +63,15 @@ export default function Questions() {
           </SelectContent>
         </Select>
       </div>
-      {error && <p className="text-sm text-destructive">{error}</p>}
-      {shown && (
+      {paged.error && !rows && <p className="text-sm text-destructive">{paged.error}</p>}
+      {rows === null && !paged.error && <Loading />}
+      {rows && (
         <Table>
           <TableHeader>
             <TableRow><TableHead>Title</TableHead><TableHead>Department</TableHead><TableHead>Type</TableHead><TableHead>Difficulty</TableHead><TableHead>Marks</TableHead><TableHead>Cases</TableHead><TableHead /></TableRow>
           </TableHeader>
           <TableBody>
-            {shown.map((q) => (
+            {rows.map((q) => (
               <TableRow key={q.id}>
                 <TableCell className="font-medium">{author ? <Link className="hover:underline" to={`/admin/questions/${q.id}`}>{q.title}</Link> : q.title}</TableCell>
                 <TableCell>{byId[q.department_id]?.name ?? "-"}</TableCell>
@@ -89,10 +85,11 @@ export default function Questions() {
                 </TableCell>
               </TableRow>
             ))}
-            {!shown.length && <TableRow><TableCell colSpan={7} className="text-muted-foreground">No questions found.</TableCell></TableRow>}
+            {!rows.length && <TableRow><TableCell colSpan={7} className="text-muted-foreground">No questions found.</TableCell></TableRow>}
           </TableBody>
         </Table>
       )}
+      <MoreRows paged={paged} what="questions" />
     </div>
   )
 }

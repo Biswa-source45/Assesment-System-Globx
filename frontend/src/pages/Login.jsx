@@ -68,7 +68,7 @@ export default function Login() {
               </div>
             )}
             {error && <p className="text-sm text-destructive">{error}</p>}
-            <Button type="submit" disabled={busy}>{busy ? "Signing in..." : "Sign in"}</Button>
+            <Button type="submit" disabled={busy} loading={busy}>{busy ? "Signing in..." : "Sign in"}</Button>
           </form>
         </CardContent>
       </Card>
