@@ -32,3 +32,6 @@ frontend/test-results/
 frontend/playwright-report/
 .pw-install.log
 frontend/e2e/.creds.json
+
+# a Cloudflare tunnel token left next to deploy.ps1 on the server must never be committed
+tunnel-token*
