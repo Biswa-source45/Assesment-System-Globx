@@ -42,19 +42,27 @@ set LT_HOST=http://127.0.0.1:8001 & set LT_ADMIN_EMAIL=orgadmin@globx.co.in & se
 then `start`, `submit` (use `--offset` to take candidates no earlier scenario used), `code`, `big`.
 
 ## Office PC run
-Nothing is installed on the office PC. The load comes from this computer over the office network.
+Nothing is installed on the office PC. The load comes from this computer over the office network (`--resolve` sends the site's name to the PC's address, so no hosts-file edit is needed and the HTTPS certificate still matches).
 
 1. **On the office PC** (UltraViewer), PowerShell in the folder with `docker-compose.yml` (`D:\oap`):
    1. Back up the database first: `docker compose exec -T db pg_dump -U oap oap > backup-before-loadtest.sql`
    2. Copy `monitor_host.ps1`, `snapshot_counts.py` and `cleanup.py` into `D:\oap`.
-   3. Start the monitor (as Administrator): `powershell -ExecutionPolicy Bypass -File .\monitor_host.ps1 -Token <long random word>` and leave it open.
-2. **On this computer**: map the site name to the office PC for the test (Administrator Notepad, `C:\Windows\System32\drivers\etc\hosts`):
-   `192.168.1.50 assessment.globx.co.in`, then run the scenarios with
-   `--host https://assessment.globx.co.in --status-url http://192.168.1.50:9100/status/<token>`. The admin password is typed into the environment variable
-   `LT_ADMIN_PASSWORD` for that terminal only.
-3. Ramp, storms, large data, soak, then the gentle internet test (remove the hosts line first, so the name goes through Cloudflare).
-4. **Cleanup** (office PC): `Get-Content -Raw cleanup.py | docker compose exec -T -e RUN=LT-... api python -` counts what it would erase; add `-e YES=1` to erase.
-   Then compare the counts taken before and after (`snapshot_counts.py` and `compare_counts.py`), stop the monitor (Ctrl+C), remove the hosts line, change the Super Admin password.
+   3. Start the monitor (as Administrator): `powershell -ExecutionPolicy Bypass -File .\monitor_host.ps1 -Token <a long random word>` and leave it open.
+   4. Take the "before" counts: `Get-Content -Raw snapshot_counts.py | docker compose exec -T api python - > before.json`
+2. **On this computer** (`loadtest` folder; the admin password is typed into the terminal's environment only):
+   ```
+   set LT_ADMIN_EMAIL=...  &  set LT_ADMIN_PASSWORD=...
+   set LT_HOST=https://assessment.globx.co.in  &  set LT_RESOLVE=assessment.globx.co.in=192.168.1.50
+   .\.venv\Scripts\python.exe setup_data.py create --candidates 600 --browser-exam 6 --run-id LT-office-1
+   .\.venv\Scripts\python.exe run_load.py ramp --run LT-office-1 --label ramp --steps 10,25,50,100,150,200,300 --hold 180 --ramp 45 --staff 3 \
+        --resolve assessment.globx.co.in=192.168.1.50 --status-url http://192.168.1.50:9100/status/<token>
+   ```
+   then the storms, the large data (`bigdata.py` runs on the PC: `Get-Content -Raw bigdata.py | docker compose exec -T -e RUN=LT-office-1 api python -`),
+   the soak, and the real browsers (`node browsers.mjs candidates`, `node browsers.mjs staff`).
+3. The gentle **internet-path** test: the same command without `--resolve`, up to 100 candidates.
+4. **Cleanup** (office PC): `Get-Content -Raw cleanup.py | docker compose exec -T -e RUN=LT-office-1 api python -` counts what it would erase; add `-e YES=1` (and `-e FULL=1` in
+   quiet hours) to erase. Take the "after" counts and compare: `python compare_counts.py before.json after.json`. Stop the monitor (Ctrl+C), delete the copied files and
+   `backup-before-loadtest.sql` once you are satisfied, and **change the Super Admin password**.
 
 ## Report
 ```

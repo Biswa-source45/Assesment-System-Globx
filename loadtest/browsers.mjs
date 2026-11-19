@@ -74,7 +74,8 @@ async function staff(browser) {
   return t
 }
 
-const browser = await chromium.launch()
+const resolve = process.env.LT_RESOLVE ? process.env.LT_RESOLVE.split("=") : null
+const browser = await chromium.launch(resolve ? { args: [`--host-resolver-rules=MAP ${resolve[0]} ${resolve[1]}`] } : {})
 const out = { at: new Date().toISOString(), host, mode }
 if (mode === "candidates") {
   const people = run.browser_exam.candidates

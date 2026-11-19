@@ -78,6 +78,7 @@ def main():
     p.add_argument("--staff", type=int, default=0)
     p.add_argument("--status-url", default="")
     p.add_argument("--static", default="1")
+    p.add_argument("--resolve", default="", help="name=address, e.g. assessment.globx.co.in=192.168.1.50: use the office PC directly, not through the internet")
     p.add_argument("--offset", type=int, default=0, help="skip this many candidate logins (used by an earlier scenario)")
     args = p.parse_args()
 
@@ -86,7 +87,7 @@ def main():
     out = RESULTS / run["run_id"] / label
     out.mkdir(parents=True, exist_ok=True)
     env = {**os.environ, "LT_RUN": run["run_id"], "LT_HOST": args.host or run["host"], "LT_WORKERS": str(args.workers), "LT_OUT": str(out),
-           "LT_STAFF": str(args.staff), "LT_STATIC": args.static, "LT_OFFSET": str(args.offset), "LT_STATUS_URL": args.status_url, "PYTHONUNBUFFERED": "1"}
+           "LT_STAFF": str(args.staff), "LT_STATIC": args.static, "LT_RESOLVE": args.resolve, "LT_OFFSET": str(args.offset), "LT_STATUS_URL": args.status_url, "PYTHONUNBUFFERED": "1"}
     if args.insecure:
         env["LT_INSECURE"] = "1"
     shaped = args.scenario in ("ramp", "soak")

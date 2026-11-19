@@ -12,6 +12,17 @@ import requests
 from PIL import Image, ImageDraw
 
 HERE = Path(__file__).resolve().parent
+
+_RESOLVE = os.environ.get("LT_RESOLVE", "")   # "name=address": reach the site by its real name (the certificate matches) through a chosen address, no hosts file edit
+if _RESOLVE and "=" in _RESOLVE:
+    import socket
+    _name, _addr = _RESOLVE.split("=", 1)
+    _real = socket.getaddrinfo
+
+    def _getaddrinfo(host, *a, **kw):
+        return _real(_addr if host == _name else host, *a, **kw)
+
+    socket.getaddrinfo = _getaddrinfo
 RESULTS = HERE / "results"
 
 
