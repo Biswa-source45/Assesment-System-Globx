@@ -1,0 +1,7 @@
+# Load-test tools only: never part of the server image (the server's own packages are in backend/requirements.txt).
+locust==2.32.5
+matplotlib>=3.9
+psutil>=6.0
+pillow>=11
+reportlab==5.1.0
+requests>=2.32

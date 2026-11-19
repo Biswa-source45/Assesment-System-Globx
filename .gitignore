@@ -35,3 +35,9 @@ frontend/e2e/.creds.json
 
 # a Cloudflare tunnel token left next to deploy.ps1 on the server must never be committed
 tunnel-token*
+
+# load tests: the tool environment, every result and report, anything that holds a login
+loadtest/.venv/
+loadtest/results/
+loadtest/reports/
+loadtest/__pycache__/
