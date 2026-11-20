@@ -36,6 +36,11 @@ Read at the start of every task; update after every change. Plan and decisions: 
 
 ## Log
 
+### 2026-11-20 (GitHub run #20: the tests job failed, drill green)
+- **Cause.** The process caps I added for the drill (Flask 24, SQL script 8) were applied everywhere. Without the judge's separate per-run user, the Linux limit counts **all** processes and threads of the user running the tests (the GitHub runner user already has dozens), so FastAPI's test client could not start its thread. Reproduced on Linux (Python 3.12, Postgres, a normal user with 60 other processes): `test_fastapi_works_without_any_extra_setup...` failed with the tight cap, passes without it.
+- **Fix (`sandbox/process.py`).** The per-language cap applies only when a run has its own user (the judge container); everywhere else it stays 256. The container drill is unaffected (it is that case).
+- **Checked.** On Linux with Postgres as a normal user: 234 passed; the 5 failures were only tests that need Java, C and Node, which the slim test image lacked (GitHub's runner has them). On the crowded user the sandbox and script/API tests pass (16, 5 skipped).
+
 ### 2026-11-20 (mail failed with "Connection unexpectedly closed")
 - **Seen.** Pressing Send logins: `SMTPServerDisconnected: Connection unexpectedly closed` in the server log. Tested each step against `smtp.gmail.com:587` from this PC: connect and STARTTLS work, the connection is dropped at sign-in. **Cause: `SMTP_PASSWORD=` is empty in the repo-root `.env`** (the user name is set), so Gmail hangs up. The value is the owner's secret: it has to be typed into `.env` by them (never in chat or git), then the server restarted.
 - **Code.** `services/mail.py` `_connect` now says what is wrong in plain words: an empty password, a refused sign-in (with the server's own words), or a connection dropped at sign-in; the reason shows beside the person ("Not delivered") and the person stays on the waiting list. Test added in `test_send_logins.py`.

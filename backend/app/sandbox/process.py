@@ -196,7 +196,7 @@ def run_limited(cmd: List[str], cwd: str, stdin_text: str = "", time_limit_ms: i
                 rlimit_as_mb: Optional[int] = None, nofile: int = 64, isolate_network: bool = True,
                 wall_factor: float = 2.0, nproc: int = 256) -> ProcResult:
     """Run `cmd` with limits. memory_mb is enforced on the RSS of the whole process tree."""
-    uid = None
+    uid = None  # without a separate user (a laptop, a CI runner) the process limit counts ALL of the host user's processes, so it stays loose there
     if not IS_WIN and get_settings().sandbox_uid_base:  # the judge container: never run as the service's own user
         uid = _run_uid(cwd)
         if uid is None:
@@ -215,7 +215,7 @@ def run_limited(cmd: List[str], cwd: str, stdin_text: str = "", time_limit_ms: i
     if IS_WIN:
         kwargs["creationflags"] = 0x00000200 | 0x08000000  # NEW_PROCESS_GROUP | NO_WINDOW
     else:
-        kwargs["preexec_fn"] = _posix_limits(cpu_s * 1.5 + 0.5, rlimit_as_mb, out_limit + 65536, nofile, uid, nproc)
+        kwargs["preexec_fn"] = _posix_limits(cpu_s * 1.5 + 0.5, rlimit_as_mb, out_limit + 65536, nofile, uid, nproc if uid is not None else 256)
     t0 = time.perf_counter()
     try:
         with open(fin, "rb") as si, open(fout, "wb") as so, open(ferr, "wb") as se:
