@@ -31,6 +31,7 @@ class LanguageSandbox:
     use_rlimit_as = False       # Linux address-space cap (not usable for JVM / V8)
     rlimit_as_factor = 1        # cap = memory * factor + overhead (C/C++ use a loose cap, RSS decides MLE)
     nofile = 64
+    api = False                 # a backend (API) language: the test input is a list of requests, not standard input; kept out of ordinary coding questions
 
     # ---- toolchain
     def executables(self) -> Dict[str, Optional[str]]:
@@ -46,7 +47,7 @@ class LanguageSandbox:
         exes = self.executables()
         missing = [k for k, v in exes.items() if not v]
         info = {"key": self.key, "name": self.name, "available": not missing, "executables": exes,
-                "missing": missing, "version": "", "time_multiplier": self.time_multiplier}
+                "missing": missing, "version": "", "time_multiplier": self.time_multiplier, "api": self.api}
         if not missing:
             try:
                 import tempfile
@@ -140,6 +141,23 @@ class PythonSandbox(LanguageSandbox):
 
     def run_cmd(self, workdir, source, memory_mb):
         return [self.executables()["python"], "-I", "-S", "-B", "main.py"]
+
+
+class FlaskSandbox(PythonSandbox):
+    """A backend question: the candidate's main.py defines `app` (Flask, or FastAPI). api_harness.py calls it in-process through the framework's own
+    test client (see there), so nothing listens on a port. Not started with -S: the framework must be importable."""
+    key, name, filename = "flask", "Flask / FastAPI (backend API)", "main.py"
+    api = True
+    memory_overhead_mb = 48   # the framework's own imports
+    nofile = 128
+
+    def executables(self):
+        import importlib.util
+        spec = importlib.util.find_spec("flask")
+        return {**super().executables(), "flask": spec.origin if spec else None}
+
+    def run_cmd(self, workdir, source, memory_mb):
+        return [self.executables()["python"], "-I", "-B", os.path.join(os.path.dirname(os.path.abspath(__file__)), "api_harness.py"), "main.py"]
 
 
 # ------------------------------------------------------------------ C / C++
@@ -245,6 +263,7 @@ SKELETON = {
     "cpp": "#include <bits/stdc++.h>\nusing namespace std;\n\nint main() {\n    // read the input with cin, print the answer with cout\n    // write your code here\n    return 0;\n}\n",
     "c": "#include <stdio.h>\n\nint main(void) {\n    /* read the input with scanf, print the answer with printf */\n    /* write your code here */\n    return 0;\n}\n",
     "javascript": "const input = require('fs').readFileSync(0, 'utf8').trim();  // the whole input\n\n// write your code here\n// print the answer with console.log(...)\n",
+    "flask": "from flask import Flask, jsonify, request\n\napp = Flask(__name__)  # the judge calls this variable: keep the name app, and do not call app.run()\n\n# write your routes here, for example:\n# @app.route(\"/api/hello\")\n# def hello():\n#     return jsonify({\"message\": \"hello\"})\n",
 }
 
 # A worked starter (the "sum of two numbers" question): the prompt for the AI shows it, and the seed uses it.
@@ -257,7 +276,7 @@ STARTER_SUM = {
 }
 
 REGISTRY: Dict[str, LanguageSandbox] = {s.key: s for s in
-                                         (PythonSandbox(), CSandbox(), CppSandbox(), JavaSandbox(), JavaScriptSandbox())}
+                                         (PythonSandbox(), CSandbox(), CppSandbox(), JavaSandbox(), JavaScriptSandbox(), FlaskSandbox())}
 ALIASES = {"py": "python", "python3": "python", "js": "javascript", "node": "javascript", "c++": "cpp",
            "java17": "java"}
 

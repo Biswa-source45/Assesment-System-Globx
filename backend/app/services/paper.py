@@ -377,11 +377,11 @@ def _page_lines(tp) -> List[Line]:
 
 def _running_lines(pages: List[List[Line]], heights: List[float]) -> set:
     """Header and footer lines: the same text (digits ignored) near the top or bottom edge of at least three pages."""
-    count: Dict[str, int] = {}
-    for lines, h in zip(pages, heights):
-        for key in {re.sub(r"\d+", "#", t.strip()) for y, _, t in lines if y > 0.9 * h or y < 0.1 * h}:
+    count: Dict[Tuple[str, int], int] = {}
+    for lines, h in zip(pages, heights):  # a real header or footer sits at the same height on every page; a line that merely repeats (a marks note) does not
+        for key in {(re.sub(r"\d+", "#", t.strip()), round(y / 4)) for y, _, t in lines if y > 0.9 * h or y < 0.1 * h}:
             count[key] = count.get(key, 0) + 1
-    return {k for k, v in count.items() if v >= 3 and k}
+    return {k[0] for k, v in count.items() if v >= max(3, 0.6 * len(pages)) and k[0]}  # (and on most pages: a marks note that starts three of twelve pages is not one)
 
 
 def _read_pdf(data: bytes, pics: _Collector) -> Tuple[str, Optional[int]]:

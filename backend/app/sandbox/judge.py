@@ -8,7 +8,7 @@ from app.domain.scoring import compare_output, cross_verification_flags, r2
 from app.sandbox import remote
 from app.sandbox.languages import get_language
 from app.sandbox.process import new_workdir, remove_workdir
-from app.sandbox.sql import SQL_ENGINES, compare_results
+from app.sandbox.sql import SQL_ENGINES, compare_results, run_script
 
 OPEN_LIMIT = 4096
 
@@ -115,11 +115,20 @@ def local_judge_sql(cfg: Dict, cases: List[Dict], engine: str, query: str, kind:
         return {"status": "error", "error": f"{eng.name} is not allowed for this question"}
     if not eng.available():
         return {"status": "error", "error": f"{eng.name} is not configured on this server"}
-    ordered = bool(cfg.get("ordered"))
+    script = bool(cfg.get("checks"))  # a script question: the candidate's statements change the database, then the checks are compared
+    if script and eng.key != "sqlite":
+        return {"status": "error", "error": "A script question runs on SQLite only"}
+    ordered = True if script else bool(cfg.get("ordered"))  # the checks come in a fixed order
+
+    def run(dataset: str):
+        if script:
+            return run_script(cfg.get("schema", ""), cfg.get("seed", ""), dataset, query, cfg["checks"])
+        return eng.run(cfg.get("schema", ""), cfg.get("seed", ""), dataset, query)
+
     out: Dict = {"status": "done", "language": "sql", "engine": eng.key, "cases": []}
     selected = [c for c in cases if kind != "run" or c["visibility"] == "open"]
     for c in selected:
-        r = eng.run(cfg.get("schema", ""), cfg.get("seed", ""), c["input"], query)
+        r = run(c["input"])
         if r.get("ok"):
             try:
                 exp = json.loads(c["expected"] or "{}")
@@ -136,8 +145,7 @@ def local_judge_sql(cfg: Dict, cases: List[Dict], engine: str, query: str, kind:
                                                  if isinstance(exp, dict) and exp else None),
                              "stderr": r.get("error", "")})
     if kind == "run" and not selected:
-        r = eng.run(cfg.get("schema", ""), cfg.get("seed", ""), "", query)
-        out["custom"] = r
+        out["custom"] = run("")
     out["score"] = r2(sum(c["weight"] for c in out["cases"] if c["passed"]))
     out["max_score"] = r2(sum(c["weight"] for c in out["cases"]))
     out["passed"] = sum(1 for c in out["cases"] if c["passed"])
@@ -147,9 +155,12 @@ def local_judge_sql(cfg: Dict, cases: List[Dict], engine: str, query: str, kind:
 
 
 def local_sql_expected_for(cfg: Dict, dataset: str, engine: str = "sqlite") -> Dict:
-    """Compute expected result JSON for a dataset by running the reference query."""
-    eng = SQL_ENGINES.get(engine) or SQL_ENGINES["sqlite"]
-    r = eng.run(cfg.get("schema", ""), cfg.get("seed", ""), dataset, cfg.get("reference_sql", ""))
+    """Compute expected result JSON for a dataset by running the reference query (or, for a script question, the reference script and then the checks)."""
+    if cfg.get("checks"):
+        r = run_script(cfg.get("schema", ""), cfg.get("seed", ""), dataset, cfg.get("reference_sql", ""), cfg["checks"])
+    else:
+        eng = SQL_ENGINES.get(engine) or SQL_ENGINES["sqlite"]
+        r = eng.run(cfg.get("schema", ""), cfg.get("seed", ""), dataset, cfg.get("reference_sql", ""))
     if not r.get("ok"):
         raise ValueError(f"Reference query failed: {r.get('error')}")
     return {"columns": r["columns"], "rows": r["rows"]}

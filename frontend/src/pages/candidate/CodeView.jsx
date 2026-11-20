@@ -61,16 +61,16 @@ export function SqlSamples({ q }) {
           {(c.tables ?? []).map((t) => (
             <div key={t.name} className="grid gap-1"><span className="text-xs font-medium">{t.name}</span><DataTable data={t} /></div>
           ))}
-          <div className="text-xs text-muted-foreground">Expected output</div>
+          <div className="text-xs text-muted-foreground">{q.script ? "Expected result of the checks, after the right statements" : "Expected output"}</div>
           <DataTable data={c.expected} />
         </div>
       ))}
-      <p className="text-xs text-muted-foreground">{q.ordered ? "Row order matters." : "Row order does not matter."} Column names are checked.</p>
+      <p className="text-xs text-muted-foreground">{q.script ? "Your statements change a copy of the tables; then each check is read from them, in this order." : `${q.ordered ? "Row order matters." : "Row order does not matter."} Column names are checked.`}</p>
     </div>
   )
 }
 
-const EXT = { python, java, javascript, c: cpp, cpp }
+const EXT = { python, flask: python, java, javascript, c: cpp, cpp }
 const DIALECT = { sqlite: SQLite, postgresql: PostgreSQL, mysql: MySQL }
 // For SQL questions `lang` is the engine key (sqlite, postgresql, mysql), so the language comes from the dialect, not from EXT.
 export const languageFor = (lang, isSql) => (isSql ? sql({ dialect: DIALECT[lang] }) : EXT[lang]?.() ?? [])
@@ -93,7 +93,8 @@ export function CodeView({ q, r, onChange, attemptId, closed, blockPaste }) {
   const isSql = q.type === "sql"
   const langs = isSql ? q.engines : q.languages
   const lang = langs.some((l) => l.key === r.language) ? r.language : langs[0]?.key
-  const blank = (k) => q.starter?.[k] ?? (isSql ? "-- Write one SQL query\n" : "")
+  const api = langs.find((l) => l.key === lang)?.api  // a backend question: the examples are requests and responses, not input and output
+  const blank = (k) => q.starter?.[k] ?? (isSql ? (q.script ? "-- Write your statements here, each one ending with ;\n" : "-- Write one SQL query\n") : "")
   const [sources, setSources] = useState({ [lang]: r.source ?? blank(lang) })
   const [custom, setCustom] = useState(isSql ? "" : q.open_cases[0]?.input ?? "")
   const [busy, setBusy] = useState("")
@@ -142,6 +143,7 @@ export function CodeView({ q, r, onChange, attemptId, closed, blockPaste }) {
           <SelectContent>{langs.map((l) => <SelectItem key={l.key} value={l.key}>{l.name}</SelectItem>)}</SelectContent>
         </Select>
         {!isSql && <span className="text-xs text-muted-foreground">Time limit {q.time_limit_ms / 1000}s per case, memory {q.memory_mb} MB</span>}
+        {isSql && q.script && <span className="text-xs text-muted-foreground" data-testid="script-note">Your statements run on a copy of the tables, then the checks run.</span>}
         <Button variant="outline" size="sm" className="ml-auto" onClick={toggleTheme} aria-label="Switch editor theme" data-testid="editor-theme">
           {dark ? <Sun /> : <Moon />} {dark ? "Light editor" : "Dark editor"}
         </Button>
@@ -153,8 +155,8 @@ export function CodeView({ q, r, onChange, attemptId, closed, blockPaste }) {
             {q.open_cases.map((c) => (
               <div key={c.ordinal} className="grid gap-1 rounded-md border p-2 text-xs">
                 <span className="font-medium">Example {c.ordinal}</span>
-                <span className="text-muted-foreground">Input</span><pre className="max-h-24 overflow-auto whitespace-pre-wrap rounded bg-muted p-1.5">{c.input.slice(0, 600)}</pre>
-                <span className="text-muted-foreground">Output</span><pre className="max-h-24 overflow-auto whitespace-pre-wrap rounded bg-muted p-1.5">{c.expected.slice(0, 600)}</pre>
+                <span className="text-muted-foreground">{api ? "Requests" : "Input"}</span><pre className="max-h-24 overflow-auto whitespace-pre-wrap rounded bg-muted p-1.5">{c.input.slice(0, 600)}</pre>
+                <span className="text-muted-foreground">{api ? "Expected responses" : "Output"}</span><pre className="max-h-24 overflow-auto whitespace-pre-wrap rounded bg-muted p-1.5">{c.expected.slice(0, 600)}</pre>
               </div>
             ))}
           </div>
@@ -172,11 +174,11 @@ export function CodeView({ q, r, onChange, attemptId, closed, blockPaste }) {
       <Tabs defaultValue="results">
         <TabsList>
           <TabsTrigger value="results">Test results</TabsTrigger>
-          {!isSql && <TabsTrigger value="input">Custom input</TabsTrigger>}
+          {!isSql && <TabsTrigger value="input">{api ? "Custom requests" : "Custom input"}</TabsTrigger>}
         </TabsList>
         {!isSql && (
           <TabsContent value="input" className="grid gap-2">
-            <Label htmlFor={`custom-${q.id}`} className="text-xs text-muted-foreground">Input for "Run on samples" (optional)</Label>
+            <Label htmlFor={`custom-${q.id}`} className="text-xs text-muted-foreground">{api ? "Requests for " : "Input for "}"Run on samples" (optional)</Label>
             <Textarea id={`custom-${q.id}`} className="font-mono text-xs" value={custom} onChange={(e) => setCustom(e.target.value)} />
             {result?.custom && <pre className="whitespace-pre-wrap rounded-md bg-muted p-2 text-xs">{result.custom.verdict}: {result.custom.stdout}{result.custom.stderr}</pre>}
           </TabsContent>
@@ -198,7 +200,7 @@ export function CodeView({ q, r, onChange, attemptId, closed, blockPaste }) {
                 </div>
               ) : (
                 <div className="mt-2 grid gap-2 text-xs md:grid-cols-3">
-                  {[["Input", c.input], ["Expected", c.expected], ["Your output", c.stdout]].map(([label, v]) => (
+                  {[[api ? "Requests" : "Input", c.input], [api ? "Expected responses" : "Expected", c.expected], [api ? "Your responses" : "Your output", c.stdout]].map(([label, v]) => (
                     <div key={label}><div className="text-muted-foreground">{label}</div><pre className="max-h-32 overflow-auto whitespace-pre-wrap rounded bg-muted p-1.5">{(v ?? "").slice(0, 1500)}</pre></div>
                   ))}
                 </div>

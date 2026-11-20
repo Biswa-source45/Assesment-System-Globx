@@ -126,7 +126,7 @@ export const TOPICS = [
         ["Choose the file", "PDF, Word, Excel, Notepad or a photo"], ["Wait", "Three steps show what is happening"],
         ["Review", "Every question, its answer and its pictures"], ["Import", "The ticked questions go into the Question bank and the exam"],
       ]} />
-      <Tip>A paper written in the standard format is read <b>exactly</b>, without guessing: the questions, options, marks, pictures and answers come straight from the text, and the AI is used only for coding, SQL and written questions. Download the format as <PaperFormatLinks />. In it: numbered questions (Q1.), marks at the end of the line ([1 mark]), a picture on a line that starts with "Image:" right under its question, picture options written "(a) Image:", options as (a) (b) (c) (d), and <b>the answer right under each question</b> ("Answer: (b)"). A coding question gives its "Sample answer (Python):" and "Test cases:" under it, an SQL question its "Tables:", "Sample data:" and "Answer:". The notes at the top of the file are ignored automatically: you do not have to delete them, and the first line is just your exam title. If you prefer, all answers can instead be listed together at the end under "Answer Key and Solutions".</Tip>
+      <Tip>A paper written in the standard format is read <b>exactly</b>, without guessing: the questions, options, marks, pictures and answers come straight from the text, and the AI is used only for coding, SQL and written questions. Download the format as <PaperFormatLinks />. In it: numbered questions (Q1.), marks at the end of the line ([1 mark]), a picture on a line that starts with "Image:" right under its question, picture options written "(a) Image:", options as (a) (b) (c) (d), and <b>the answer right under each question</b> ("Answer: (b)"). A coding question gives its "Sample answer (Python):" and "Test cases:" under it (each case as "open:" or "hidden:" with its input on the same line or on the lines below, so a case can have several lines), an SQL question its "Tables:", "Sample data:" and "Answer:". Tables and rows written <b>once above</b> the questions of a section are used for each of them. A <b>script question</b> adds its "Checks:" lines, and a <b>backend API question</b> gives "Sample answer (Flask):" and request lists as its test cases. Marks may carry the penalty: "[1 mark; 0.5 off for a wrong answer]". "Model answer:" works like "Answer:", and options may be written side by side. The notes at the top of the file are ignored automatically: you do not have to delete them, and the first line is just your exam title. If you prefer, all answers can instead be listed together at the end under "Answer Key and Solutions".</Tip>
       <p className="font-medium">What can be uploaded</p>
       <List items={[
         <><b>PDF</b> (up to 50 pages). Typed PDFs are best. A scanned page is read as a picture, which is slower and less exact.</>,
@@ -257,6 +257,27 @@ export const TOPICS = [
       ]} />
       <SampleOf type="sql" />
       <Tip>Try it in <b>Try an SQL question</b> below.</Tip>
+    </div>) },
+  { id: "script-api", group: "questions", title: "SQL script questions and backend API questions", body: (
+    <div className="grid gap-3">
+      <p className="font-medium">SQL script question (ALTER, INSERT, UPDATE, DELETE, DROP, CREATE TABLE)</p>
+      <p>An ordinary SQL question compares what one SELECT returns. In a <b>script question</b> the candidate writes <b>several statements that change the data or the tables</b>, and the platform then <b>reads the result with your check statements</b>. In the question editor tick <b>The candidate writes several statements that change the data</b>; the solution box becomes the <b>Reference script</b> and a <b>Check statements</b> box appears (one statement per line, in the order they are read).</p>
+      <List items={[
+        <>A <b>SELECT</b> check compares the rows it returns (add ORDER BY). To test a table's columns use <code>SELECT name FROM pragma_table_info('courses') ORDER BY cid</code>.</>,
+        <>Any <b>other</b> check, for example an INSERT that must break a primary key, a foreign key or a NOT NULL rule, compares only <b>ok</b> or the <b>kind of error</b> (for example <code>error: NOT NULL constraint failed</code>). Foreign keys are enforced.</>,
+        "The expected result of every check comes from running your reference script on each dataset, so it is right by construction. Datasets are written as for any SQL question (sample ones are shown, hidden ones decide the marks).",
+        "The candidate sees the check lines when they press Run on a sample, so say in the question text what is checked. Hidden datasets show only a verdict.",
+        "The script runs in a throw-away SQLite database in a process of its own: ATTACH and PRAGMA are refused, a script that runs too long, grows too big or reads outside is stopped. SQLite only.",
+      ]} />
+      <p className="font-medium">Backend API question (Flask or FastAPI)</p>
+      <p>The candidate writes the <b>back end only</b>, in one file, as a Flask or FastAPI application held in a variable named <code>app</code> (no <code>app.run()</code>, no HTML). The judge calls the application <b>in-process</b>, with no network and no server to start. In the question editor make it a <b>coding</b> question and choose the language <b>Flask / FastAPI (backend API)</b> on its own.</p>
+      <List items={[
+        <>A <b>test case</b> is a list of requests, one per line: <code>METHOD /path</code> or <code>METHOD /path {"{"}json body{"}"}</code>. Every test case starts a <b>fresh copy</b> of the app, so give the starting data in the question text.</>,
+        "The expected output is made by running your reference app.py on the same requests: one line per request, the status code and the JSON body (keys sorted, no spaces), for example 400 {\"error\":\"course full\"}. The candidate's app must give the same status and body for every request.",
+        "Describe every endpoint, status code and JSON shape in the question text (the left side of the candidate's screen). Use a time limit of 5000 ms.",
+        "The candidate sees the requests and the expected responses of the sample cases; hidden cases show only a verdict.",
+      ]} />
+      <Tip>Both kinds work in an uploaded paper too: see <b>Upload your question paper</b>.</Tip>
     </div>) },
   { id: "json-mistakes", group: "questions", title: "Common mistakes and what the messages mean", body: (
     <div className="grid gap-3">

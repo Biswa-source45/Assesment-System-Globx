@@ -100,6 +100,16 @@ def language_names() -> Dict[str, str]:
     return {x["key"]: x["name"] for x in catalog()["languages"] if x["available"]}
 
 
+def api_keys() -> List[str]:
+    """The backend (API) languages: their test input is a list of requests."""
+    return [x["key"] for x in catalog()["languages"] if x.get("api")]
+
+
+def default_languages() -> List[str]:
+    """What a new coding question allows when its author names no language: every ordinary language, never a backend (API) one."""
+    return [x["key"] for x in catalog()["languages"] if x["available"] and not x.get("api")]
+
+
 def engine_names() -> Dict[str, str]:
     return {x["key"]: x["name"] for x in catalog()["sql"] if x["available"]}
 

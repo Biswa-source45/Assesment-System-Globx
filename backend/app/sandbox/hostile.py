@@ -64,6 +64,33 @@ def sql_attack(name: str, query: str, expect_not_ok: bool = True, check: Optiona
     results.append({"name": name, "ok": problem is None, "detail": problem or f"{verdict}, memory +{grown:.0f} MB", "seconds": round(time.time() - t, 1)})
 
 
+def script_attack(name: str, script: str, check: Optional[Callable[[], Optional[str]]] = None) -> None:
+    """A SQL-script question: the candidate's script must NOT be accepted (it would be AC only if it left the checks as the right answer expects)."""
+    t = time.time()
+    cfg = {"schema": "CREATE TABLE t (x INTEGER);", "seed": "", "engines": ["sqlite"], "ordered": True, "checks": ["SELECT x FROM t"]}
+    case = [{"id": "1", "ordinal": 1, "visibility": "hidden", "input": "INSERT INTO t VALUES (1);", "expected": json.dumps({"columns": ["check", "result"], "rows": [["SELECT x FROM t", "[[1]]"]]}), "weight": 1}]
+    rss = psutil.Process().memory_info().rss
+    res = local_judge_sql(cfg, case, "sqlite", script, "submit")
+    verdict = res["cases"][0]["verdict"] if res.get("cases") else res.get("status")
+    problem = f"the script was accepted (verdict {verdict})" if verdict == OK else None
+    grown = (psutil.Process().memory_info().rss - rss) / 1048576
+    if problem is None and grown > 200:
+        problem = f"the judge grew by {grown:.0f} MB"  # the script runs in its own process: this service must not grow at all
+    if problem is None and check:
+        problem = check()
+    results.append({"name": name, "ok": problem is None, "detail": problem or f"{verdict}, memory +{grown:.0f} MB", "seconds": round(time.time() - t, 1)})
+
+
+def api_attack(name: str, source: str, requests: str = "GET /x", expect: Optional[Set[str]] = None) -> None:
+    """A backend (API) question: the route answers "BLOCKED" unless the attack worked. expect None: the answer must be exactly the honest one (AC); otherwise one of the verdicts."""
+    t = time.time()
+    case = [{"id": "1", "ordinal": 1, "visibility": "hidden", "input": requests + "\n", "expected": '200 "BLOCKED"', "weight": 1}]
+    res = local_judge_code({"time_limit_ms": 4000, "memory_mb": 256}, case, "flask", source, "validate")
+    verdict = res["cases"][0]["verdict"] if res.get("cases") else res.get("status")
+    ok = verdict == OK if expect is None else verdict in expect
+    results.append({"name": name, "ok": ok, "detail": verdict if ok else f"verdict {verdict}, the attack was not stopped", "seconds": round(time.time() - t, 1)})
+
+
 def refuse_outside_the_container() -> None:
     s = get_settings()
     problems = []
@@ -153,6 +180,33 @@ def main() -> int:
     sql_attack("SQL: open another database file", "ATTACH DATABASE '/tmp/oap-attached.db' AS z", check=lambda: "a database file was created" if os.path.exists("/tmp/oap-attached.db") else None)
     sql_attack("SQL: change the read-only setting", "PRAGMA query_only = OFF")
     sql_attack("SQL: load an extension", "SELECT load_extension('/tmp/x')")
+
+    # --- SQL scripts (the candidate's statements run in a process of their own)
+    script_attack("script: open another database file", "ATTACH DATABASE '/tmp/oap-attached.db' AS z;", check=lambda: "a database file was created" if os.path.exists("/tmp/oap-attached.db") else None)
+    script_attack("script: copy the database to a file", "VACUUM INTO '/tmp/oap-vacuum.db';", check=lambda: "a database file was created" if os.path.exists("/tmp/oap-vacuum.db") else None)
+    script_attack("script: change a setting", "PRAGMA foreign_keys = OFF;")
+    script_attack("script: load an extension", "SELECT load_extension('/tmp/x');")
+    script_attack("script: a huge value", "SELECT zeroblob(900000000);")
+    script_attack("script: fill the database", "CREATE TABLE b(x); WITH RECURSIVE r(n) AS (SELECT 1 UNION ALL SELECT n+1 FROM r LIMIT 5000000) INSERT INTO b SELECT randomblob(1000) FROM r;")
+    script_attack("script: a query that never ends", "WITH RECURSIVE c(x) AS (SELECT 1 UNION ALL SELECT x + 1 FROM c) SELECT x FROM c ORDER BY x DESC;")
+    honest = local_judge_sql({"schema": "CREATE TABLE t (x INTEGER);", "seed": "", "engines": ["sqlite"], "ordered": True, "checks": ["SELECT x FROM t"]},
+                             [{"id": "1", "ordinal": 1, "visibility": "hidden", "input": "INSERT INTO t VALUES (1);", "expected": json.dumps({"columns": ["check", "result"], "rows": [["SELECT x FROM t", "[[1]]"]]}), "weight": 1}],
+                             "sqlite", "DELETE FROM t WHERE x = 2;", "submit")
+    results.append({"name": "script: an honest script still passes", "ok": honest["cases"][0]["verdict"] == OK, "detail": honest["cases"][0]["verdict"], "seconds": 0})
+
+    # --- backend (API) questions: the candidate's app runs in a process of its own and is called in-process
+    app_with = lambda body: f"import os, socket, ctypes\nfrom flask import Flask, jsonify\napp = Flask(__name__)\n@app.route('/x')\ndef x():\n    r = 'BLOCKED'\n    try:\n{chr(10).join('        ' + ln for ln in body.strip().splitlines())}\n    except BaseException:\n        pass\n    return jsonify(r)\n"  # noqa: E731
+    api_attack("API: an honest app passes", app_with("pass"))
+    api_attack("API: read a root-only file", app_with(f"open('{SECRET_FILE}').read(); r = 'LEAK'"))
+    api_attack("API: read the judge service's environment", app_with(f"open('/proc/{pid}/environ').read(); r = 'LEAK'"))
+    api_attack("API: reach the internet", app_with("socket.create_connection(('1.1.1.1', 80), timeout=2); r = 'LEAK'"))
+    api_attack("API: reach the judge's own socket", app_with("c = socket.socket(socket.AF_UNIX); c.connect('/run/judge/judge.sock'); r = 'LEAK'"))
+    api_attack("API: list the folder that holds every run", app_with(f"os.listdir('{work}'); r = 'LEAK'"))
+    api_attack("API: a route that never answers", app_with("import time; time.sleep(100)"), expect={"TLE"})
+    api_attack("API: an endless loop while loading", "while True:\n    pass\n", expect={"TLE"})
+    api_attack("API: a fork bomb", app_with("while True:\n    os.fork()"), expect=STOPPED | {"WA"})
+    api_attack("API: an endless answer", app_with("r = 'x' * (10 ** 8)"), expect={"OLE", "MLE", "WA", "RE"})
+    api_attack("API: write its own answer to the real output", "import sys\nsys.__stdout__.write('200 \"BLOCKED\"\\n')\n" + app_with("pass"), expect={"WA"})  # forged lines never make it a pass
 
     # --- afterwards the judge is as it was
     time.sleep(1)

@@ -56,7 +56,7 @@ export default function SqlBuilder({ f, set }) {
     setBusy(true)
     try {
       const out = await post("/questions/sql-preview", {
-        ddl: buildSchema(f.tables), reference_sql: f.reference_sql, datasets: f.datasets.map((d) => buildInserts(f.tables, d.rows)),
+        ddl: buildSchema(f.tables), reference_sql: f.reference_sql, datasets: f.datasets.map((d) => buildInserts(f.tables, d.rows)), checks: f.script ? f.checks.split("\n") : [],
       })
       set("preview", out.results)
       toast.success("Expected output updated")
@@ -100,16 +100,31 @@ export default function SqlBuilder({ f, set }) {
 
       <Card>
         <CardHeader>
-          <CardTitle>Solution query</CardTitle>
-          <CardDescription>The one place you write SQL. Its result on each dataset becomes the expected output the candidate has to match.</CardDescription>
+          <CardTitle>{f.script ? "Reference script" : "Solution query"}</CardTitle>
+          <CardDescription>{f.script
+            ? "The statements a correct answer runs. After them the check statements below are read from the changed tables; what they return on each dataset becomes the expected result."
+            : "The one place you write SQL. Its result on each dataset becomes the expected output the candidate has to match."}</CardDescription>
         </CardHeader>
         <CardContent className="grid gap-3">
-          <Textarea aria-label="Solution query" className="min-h-24 font-mono text-xs" placeholder="SELECT ..." value={f.reference_sql}
-            onChange={(e) => { set("reference_sql", e.target.value); stale() }} />
           <Label className="flex items-center gap-2 font-normal">
-            <Checkbox checked={f.ordered} onCheckedChange={(v) => set("ordered", v === true)} /> Row order matters (the candidate's rows must come in the same order)
+            <Checkbox checked={f.script} onCheckedChange={(v) => { set("script", v === true); stale() }} data-testid="sql-script-switch" />
+            The candidate writes several statements that change the data (ALTER, INSERT, UPDATE, DELETE, DROP, CREATE TABLE)
           </Label>
-          <div><Button variant="outline" size="sm" disabled={busy || !f.reference_sql.trim() || !f.datasets.length} onClick={run}><Play /> {busy ? "Running..." : "Run solution query on all datasets"}</Button></div>
+          <Textarea aria-label={f.script ? "Reference script" : "Solution query"} className={`${f.script ? "min-h-40" : "min-h-24"} font-mono text-xs`} placeholder={f.script ? "ALTER TABLE ...;\nDELETE FROM ...;" : "SELECT ..."} value={f.reference_sql}
+            onChange={(e) => { set("reference_sql", e.target.value); stale() }} />
+          {f.script ? (
+            <div className="grid gap-1.5">
+              <Label htmlFor="sql-checks">Check statements, one per line</Label>
+              <Textarea id="sql-checks" className="min-h-28 font-mono text-xs" placeholder={"SELECT name FROM pragma_table_info('courses') ORDER BY cid\nSELECT COUNT(*) FROM registrations\nINSERT INTO loan VALUES (1, 99, 1, '2024-01-01', '2024-02-01')"} value={f.checks}
+                onChange={(e) => { set("checks", e.target.value); stale() }} />
+              <p className="text-xs text-muted-foreground">Each line is read after the candidate's script, in this order. A SELECT compares the rows it returns (add ORDER BY). Any other statement, for example an INSERT that must break a key or a NOT NULL rule, compares only "ok" or the kind of error. Say in the question text what is checked: the candidate sees these lines when they run their script on a sample dataset.</p>
+            </div>
+          ) : (
+            <Label className="flex items-center gap-2 font-normal">
+              <Checkbox checked={f.ordered} onCheckedChange={(v) => set("ordered", v === true)} /> Row order matters (the candidate's rows must come in the same order)
+            </Label>
+          )}
+          <div><Button variant="outline" size="sm" disabled={busy || !f.reference_sql.trim() || !f.datasets.length || (f.script && !f.checks.trim())} onClick={run}><Play /> {busy ? "Running..." : f.script ? "Run script and checks on all datasets" : "Run solution query on all datasets"}</Button></div>
         </CardContent>
       </Card>
 

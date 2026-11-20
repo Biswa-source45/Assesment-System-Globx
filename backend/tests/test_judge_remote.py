@@ -83,7 +83,7 @@ def test_the_judge_gives_the_same_answers_as_running_locally(judge_url, settings
         run_reference({"time_limit_ms": 2000}, "python", PROGRAMS["does not compile"], ["1\n"])
 
     cat = remote.catalog(refresh=True)
-    assert cat["isolated"] and cat["reachable"] and {l["key"] for l in cat["languages"]} == {"python", "c", "cpp", "java", "javascript"}
+    assert cat["isolated"] and cat["reachable"] and {l["key"] for l in cat["languages"]} == {"python", "c", "cpp", "java", "javascript", "flask"}
     assert remote.language_names().get("python") == "Python 3"
 
 

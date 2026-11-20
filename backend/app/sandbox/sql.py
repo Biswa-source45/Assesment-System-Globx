@@ -5,6 +5,8 @@ from __future__ import annotations
 
 import datetime as _dt
 import decimal
+import json
+import os
 import re
 import secrets
 import sqlite3
@@ -95,6 +97,39 @@ def describe_tables(schema: str, seed: str, dataset: str, limit: int = 20) -> Li
         return remote.call("describe_tables", schema=schema, seed=seed, dataset=dataset, limit=limit)
     except (remote.Unavailable, ValueError):
         return []
+
+
+HARNESS = os.path.join(os.path.dirname(os.path.abspath(__file__)), "sql_script_harness.py")
+
+
+def run_script(schema: str, seed: str, dataset: str, script: str, checks: List[str], timeout_s: float = 5.0) -> Dict:
+    """A SQL-script question: the candidate's statements (ALTER, INSERT, DELETE, CREATE TABLE...) change a throw-away SQLite database, then the author's
+    checks are read from it. Runs in its own process (own user, memory and time limits, killed afterwards) through sql_script_harness.py.
+    Returns what SqlEngine.run returns: {ok, columns, rows} (one row per check: the check and its outcome) or {ok: False, verdict, error}."""
+    from app.sandbox.languages import get_language  # (lazy: languages.py imports process.py, not this file)
+    from app.sandbox.process import clean_env, new_workdir, remove_workdir, run_limited
+    if not (script or "").strip():
+        return {"ok": False, "verdict": "RE", "error": "Empty script"}
+    if len(script) > 64 * 1024:
+        return {"ok": False, "verdict": "RE", "error": "The script is longer than 64 KB"}
+    python = get_language("python").executables()["python"]
+    wd = new_workdir()
+    try:
+        p = run_limited([python, "-I", "-S", "-B", HARNESS], cwd=wd, time_limit_ms=int(timeout_s * 1000), memory_mb=128, output_limit_kb=256,
+                        stdin_text=json.dumps({"schema": schema, "seed": seed, "dataset": dataset, "script": script, "checks": checks}),
+                        env=clean_env(wd, [os.path.dirname(python)]), rlimit_as_mb=320, nofile=32)
+    finally:
+        remove_workdir(wd)
+    for bad, verdict, why in ((p.error, "IE", p.error), (p.timed_out, "TLE", "Time limit exceeded"), (p.mem_exceeded, "MLE", "Memory limit exceeded"),
+                              (p.output_exceeded, "OLE", "Too much output"), (p.exit_code not in (0, None), "RE", (p.stderr or "The script stopped")[-300:])):
+        if bad:
+            return {"ok": False, "verdict": verdict, "error": why}
+    try:
+        out = json.loads(p.stdout)
+    except ValueError:
+        return {"ok": False, "verdict": "RE", "error": "The script produced no result"}
+    out["time_ms"] = p.cpu_ms
+    return out
 
 
 class SqlEngine:

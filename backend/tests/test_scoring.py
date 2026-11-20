@@ -30,9 +30,9 @@ def test_multiple_answer_is_strict():
     assert [g(["a", "b", "c"]), g(["a", "b"]), g(["a", "b", "c", "d"])] == [3.0, 0.0, 0.0]
 
 
-def test_the_question_s_own_negative_marks_do_not_change_multiple_answer():
+def test_a_multiple_answer_wrong_tick_costs_the_questions_own_negative_marks_or_a_quarter():
     f = lambda neg: score_mcq(["a", "d"], ["a", "b"], OPTS, 2, neg, True, True)
-    assert f(0) == f(2) == 0.75
+    assert f(0) == 0.75 and f(0.5) == 0.5 and f(2) == 0.0   # one right option (1 mark) minus one wrong tick: 0.25 when the question names none; never below 0
 
 
 def test_short_answer():

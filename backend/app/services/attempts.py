@@ -136,7 +136,8 @@ def candidate_question(aq: AttemptQuestion, db: Session) -> Dict:
     elif q.type == "coding":
         names = remote.language_names()  # what the judge can run now
         langs = [k for k in (c.get("languages") or []) if k in names]
-        out.update({"languages": [{"key": k, "name": names[k]} for k in langs],
+        api = remote.api_keys()
+        out.update({"languages": [{"key": k, "name": names[k], "api": k in api} for k in langs],
                     "starter": {k: (c.get("starter") or {}).get(k) or SKELETON[k] for k in langs},  # never an empty editor
                     "time_limit_ms": c.get("time_limit_ms", 2000), "memory_mb": c.get("memory_mb", 256),
                     "open_cases": [{"ordinal": t.ordinal, "input": t.input, "expected": t.expected, "weight": t.weight}
@@ -146,7 +147,7 @@ def candidate_question(aq: AttemptQuestion, db: Session) -> Dict:
         import json
         names = remote.engine_names()
         engines = [e for e in (c.get("engines") or ["sqlite"]) if e in names]
-        out.update({"schema": c.get("schema", ""), "seed": c.get("seed", ""), "ordered": bool(c.get("ordered")),
+        out.update({"schema": c.get("schema", ""), "seed": c.get("seed", ""), "ordered": bool(c.get("ordered")), "script": bool(c.get("checks")),
                     "engines": [{"key": e, "name": names[e]} for e in engines],
                     "open_cases": [{"ordinal": t.ordinal, "input": t.input,
                                     "expected": json.loads(t.expected or "{}"), "weight": t.weight,

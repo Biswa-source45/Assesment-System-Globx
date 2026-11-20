@@ -16,8 +16,9 @@ _Q = re.compile(r"(?m)^[ \t*#]*(?:Q|Question)\.?[ \t]*(\d{1,3})[ \t]*[.):]")
 _OPTION = re.compile(r"^[ \t]*\(?([A-Za-z])[).:][ \t]*(.*)$")
 _MARKER = re.compile(r"\[\[(IMAGE \d+)\]\]")
 _LABEL = re.compile(r"(?i)\b(?:image|picture|figure|diagram)\s*:\s*")
-_MARKS = re.compile(r"(?i)[\[(]\s*(\d+(?:\.\d+)?)\s*marks?\s*[\])]")
-_ANSWER = re.compile(r"(?i)^[ \t*]*(?:correct\s+)?(?:answer|ans)\.?[ \t]*[:\-][ \t]*(.*)$")
+_MARKS = re.compile(r"(?i)[\[(]\s*(\d+(?:\.\d+)?)\s*marks?\b([^\])]{0,80})[\])]")  # "[1 mark]" and "[1 mark; 0.5 off for a wrong answer]"
+_NEG = re.compile(r"(?i)(\d+(?:\.\d+)?)\s*(?:marks?\s*)?(?:off|deducted|deduction|negative)")
+_ANSWER = re.compile(r"(?i)^[ \t*]*(?:(?:correct|model)\s+)?(?:answer|ans)\.?[ \t]*[:\-][ \t]*(.*)$")
 _NUMBER_WORDS = {"two": 2, "three": 3, "four": 4, "five": 5, "six": 6, "seven": 7, "2": 2, "3": 3, "4": 4, "5": 5, "6": 6, "7": 7}
 _SAME = re.compile(r"(?i)\b(?:same|above|previous|given|earlier|preceding)\s+(?:\w+\s+){0,2}(?:chart|graph|figure|diagram|table|image|picture|map|tree|illustration)\b"
                    r"|\b(?:chart|graph|figure|diagram|table|image|picture|map|tree)\s+(?:above|given above|shown above)\b")
@@ -149,6 +150,9 @@ def _read_block(number: int, text: str, key: Dict[int, List[str]]) -> Tuple[Opti
                          "correct": answers, "read_from_paper": True}
     if marks:
         q["marks"] = marks
+    neg = _NEG.search(m.group(2)) if m else None
+    if neg and float(neg.group(1)) > 0:
+        q["negative_marks"] = float(neg.group(1))
     if images:
         q["images"] = list(dict.fromkeys(images))
     q["_tail"] = "\n".join(_plain_lines(passage))
@@ -162,6 +166,43 @@ def _read_block(number: int, text: str, key: Dict[int, List[str]]) -> Tuple[Opti
     return q, ""
 
 
+_RUN_END = re.compile(r"(?i)^[ \t*]*$|^[ \t*#]*(?:(?:Q|Question)\.?[ \t]*[A-Za-z]?\d{1,3}|\d{1,3})[ \t]*[.):]|^[ \t*#]*(?:section|part)[ \t]+\w+[ \t]*[:.\-–—]"
+                      r"|^[ \t*]*(?:(?:correct|model)\s+)?(?:answer|ans|explanation|solution)\b"
+                      r"|^[ \t*]*(?:read the (?:following )?(?:passage|paragraph|text|extract)|directions?\b|passage\s*[:\-]|comprehension\b)")
+
+
+def _split_options(text: str) -> str:
+    """Options written side by side ("(a) x (b) y (c) z", or wrapped over lines) get a line each: the reader needs them on lines of their own.
+    A run of options that is already one per line is left exactly as it is."""
+    lines, out, i = text.split("\n"), [], 0
+    while i < len(lines):
+        if not re.match(r"[ \t]*\(?a[).][ \t]", lines[i]):
+            out.append(lines[i])
+            i += 1
+            continue
+        j = i + 1
+        while j < len(lines) and not _RUN_END.match(lines[j]):
+            j += 1
+        run = lines[i:j]
+        wrapped = any(not re.match(r"[ \t]*\(?[a-h][).][ \t]?", ln) for ln in run[1:])  # an option's text that carries on over the next line
+        if wrapped or any(re.search(r"[ \t]\(?[b-h][).][ \t]", ln) for ln in run):  # or more than one option on a line
+            joined, parts, letter = " ".join(x.strip() for x in run), [], "b"
+            while (m := re.search(rf"[ \t]+(?=\(?{letter}[).][ \t])", joined)):
+                parts.append(joined[:m.start()])
+                joined, letter = joined[m.end():], chr(ord(letter) + 1)
+            run = parts + [joined]
+        out += run
+        i = j
+    return "\n".join(out)
+
+
+def tidy_paper(text: str) -> str:
+    """Layouts the rules cannot read, put into one they can: a marks note that wrapped over two lines is one line again, and side-by-side options are split."""
+    for _ in range(2):
+        text = re.sub(r"(\[\s*\d+(?:\.\d+)?\s*marks?\b[^\]\n]*)\n([^\]\n]*\])", r"\1 \2", text, flags=re.I)
+    return _split_options(text)
+
+
 def parse_paper(body: str, key: str, spans: List[Tuple[int, str]]) -> Dict[str, Any]:
     """{sections: [{title, items: [{kind: "mcq", question} | {kind: "block", text, number}]}], exact: number of questions read by rules}.
     `spans` are (offset, title) of the section headings in `body`. Papers without numbered questions give no items."""
@@ -171,16 +212,19 @@ def parse_paper(body: str, key: str, spans: List[Tuple[int, str]]) -> Dict[str, 
     cuts = sorted([(o, "q", n) for o, n in starts] + [(o, "h", t) for o, t in spans])
     answers = parse_key(key)
     sections: List[Dict[str, Any]] = [{"title": "", "items": []}]
+    shared = ""  # the tables and rows a section's introduction gives once for all its questions (a shared schema)
     for k, (offset, kind, value) in enumerate(cuts):
+        end = next((c[0] for c in cuts[k + 1:]), len(body))
         if kind == "h":
             sections.append({"title": value, "items": []})
+            shared = "\n".join(re.findall(r"(?is)\bCREATE\s+TABLE\b.*?;|\bINSERT\s+INTO\b.*?;", body[offset:end]))
             continue
-        end = next((c[0] for c in cuts[k + 1:]), len(body))
         text = body[offset:end].rstrip()
         q, why = _read_block(value, text, answers)
-        code = None if q else read_code_block(value, text, key_for(key, value))
+        own = bool(re.search(r"(?i)\bCREATE\s+TABLE\b", text))
+        code = None if q else read_code_block(value, text if own or not shared else text + "\n\n" + shared, key_for(key, value))
         sections[-1]["items"].append({"kind": "mcq", "question": q, "number": value} if q else {"kind": "code", "question": code, "number": value, "text": text} if code
-                                     else {"kind": "block", "text": text, "number": value, "why": why})
+                                     else {"kind": "block", "text": text, "number": value, "why": why, **({"context": shared} if shared and not re.search(r"(?im)^[ \t]*sample data", text) else {})})  # (a script question's own CREATE TABLE and INSERT lines are its answer and its checks, not its schema)
     # text after the last option of a question that is really a passage for the questions after it
     for sec in sections:
         items = sec["items"]
@@ -224,9 +268,9 @@ def share_pictures(questions: List[Dict[str, Any]]) -> None:
 
 
 # ---- coding and SQL questions: the code in them is copied, never written by an AI
-_LANG = {"python": "python", "python3": "python", "py": "python", "java": "java", "c++": "cpp", "cpp": "cpp", "c": "c", "javascript": "javascript", "js": "javascript", "node": "javascript"}
-_NOISE = re.compile(r"(?m)^[ \t]*(?:\[the whole page is also shown[^\n]*\]|--- Page \d+ ---|\[\[IMAGE \d+\]\])[ \t]*\n?")
-_HEAD_STOP = re.compile(r"(?i)^\s*(?:sample answer|sample solution|reference (?:solution|answer|program|code)|test cases?|sample(?: input| output| cases?| data)?|tables?|answer|hidden data)\b[^\n]{0,40}$")
+_LANG = {"python": "python", "python3": "python", "py": "python", "java": "java", "c++": "cpp", "cpp": "cpp", "c": "c", "javascript": "javascript", "js": "javascript", "node": "javascript", "flask": "flask", "fastapi": "flask"}
+_NOISE =re.compile(r"(?m)^[ \t]*(?:\[the whole page is also shown[^\n]*\]|--- Page \d+ ---|\[\[IMAGE \d+\]\])[ \t]*\n?")
+_HEAD_STOP = re.compile(r"(?i)^\s*(?:sample answer|model answer|sample solution|reference (?:solution|answer|program|code)|test cases?|sample(?: input| output| cases?| data)?|tables?|answer|hidden data)\b[^\n]{0,40}$")
 
 
 def key_for(key: str, number: Optional[int]) -> str:
@@ -242,13 +286,17 @@ def key_for(key: str, number: Optional[int]) -> str:
 
 def _reference_code(text: str) -> Optional[Tuple[str, str]]:
     """(language, program) after a line "Reference solution (Python)" / "Sample answer (Java):", up to the test-case table or the next heading."""
-    m = re.search(r"(?im)^[ \t]*(?:reference|sample) (?:solution|answer|program|code)[ \t]*(?:\(([^)\n]*)\))?[ \t]*:?[ \t]*$", text)
+    m = re.search(r"(?im)^[ \t]*(?:reference|sample|model) (?:solution|answer|program|code)[ \t]*(?:\(([^)\n]*)\))?[ \t]*:?[ \t]*$", text)
     if not m:
         return None
-    lang = _LANG.get((m.group(1) or "python").strip().lower().split()[0], "python")
+    first = (m.group(1) or "").strip().lower().split()
+    if m.group(0).strip().lower().startswith("model") and not (first and first[0] in _LANG):
+        return None  # "Model answer (indicative):" or a bare "Model answer:" is a written answer, not a program
+    lang = _LANG.get(first[0], "python") if first else "python"
     code: List[str] = []
     for ln in text[m.end():].split("\n")[1:] if text[m.end():].startswith("\n") else text[m.end():].split("\n"):
-        if re.match(r"^#\s*Type\b|^\d+\s+(?:open|hidden)\b|^[ \t]*Q\s*\d+\s*[.:\-]|^[ \t]*(?:Detailed solutions?|Test cases?)\b", ln, re.I):
+        # the code ends at the test cases, the next question, or another solution (a paper may give the same answer in two languages)
+        if re.match(r"^#\s*Type\b|^\d+\s+(?:open|hidden)\b|^[ \t]*Q\s*\d+\s*[.:\-]|^[ \t]*(?:Detailed solutions?|Test cases?|Tests?\b|(?:reference|sample|model) (?:solution|answer|program|code)\b)", ln, re.I):
             break
         code.append(ln.rstrip())
     while code and not code[-1].strip():
@@ -258,14 +306,20 @@ def _reference_code(text: str) -> Optional[Tuple[str, str]]:
 
 
 def _inline_cases(text: str) -> List[Dict[str, str]]:
-    """Cases written under a "Test cases:" line as "open: <input>" / "hidden: <input>" (the paper format)."""
+    """Cases written under a "Test cases:" line: "open: <input>" / "hidden: <input>" on one line, or the label alone (or numbered, "open 2:") with the input on the
+    lines below it, up to the next label (an input of several lines, or a list of requests for an API question). A line that describes a case
+    ("... -> result") is not an input: then nothing is read here and the AI is asked."""
     m = re.search(r"(?im)^[ \t]*test cases?[ \t]*:?[ \t]*$", text)
-    out = []
+    out, many = [], False
     for ln in (text[m.end():].split("\n") if m else []):
-        c = re.match(r"(?i)^[ \t]*(open|hidden|sample|private)[ \t]*:[ \t]?(.*)$", ln)
-        if c and c.group(2).strip():
+        c = re.match(r"(?i)^[ \t]*(open|hidden|sample|private)(?:[ \t]*\d+)?[ \t]*:[ \t]?(.*)$", ln)
+        if c:
             out.append({"input": c.group(2).rstrip(), "visibility": "hidden" if c.group(1).lower() in ("hidden", "private") else "open", "purpose": ""})
-    return out
+            many = not c.group(2).strip()
+        elif many and ln.strip():
+            out[-1]["input"] = (out[-1]["input"] + "\n" + ln.rstrip()).lstrip("\n")
+    out = [c for c in out if c["input"].strip()]
+    return [] if any(" -> " in c["input"] for c in out) else out
 
 
 def read_code_block(number: int, text: str, key_snippet: str) -> Optional[Dict[str, Any]]:
@@ -273,7 +327,7 @@ def read_code_block(number: int, text: str, key_snippet: str) -> Optional[Dict[s
     (in the question, or in the answer key); test cases are read when written "open: ..." / "hidden: ...", otherwise left to the AI (`_cases_key`)."""
     lines = text.split("\n")
     head = re.sub(r"^[ \t*#]*(?:Q|Question)\.?[ \t]*\d{1,3}[ \t]*[.):][ \t]*", "", lines[0])
-    marks = _MARKS.search(lines[0])
+    marks = next((m for m in (_MARKS.search(ln) for ln in lines[:6]) if m), None)  # the question's first line, or a later one when the line wrapped
     title = _MARKS.sub("", head).strip(" -:\t")
     body = lines[1:]
     if len(title) > 90 or title.endswith(("?", ".")) or not body:  # the first line is the question itself, not a title
@@ -288,7 +342,9 @@ def read_code_block(number: int, text: str, key_snippet: str) -> Optional[Dict[s
             continue
         if _HEAD_STOP.match(ln) and (len(statement) >= 1) or re.match(r"(?i)^\s*(?:create\s+table|insert\s+into)\b", ln):
             break
-        statement.append(_MARKER.sub("", ln))
+        shown = _MARKS.sub("", _MARKER.sub("", ln))
+        if shown.strip() or not ln.strip():  # (a line that was only the marks note is not part of the question)
+            statement.append(shown)
     stmt = "\n".join(join_wrapped(statement)).strip()
     if not stmt:
         return None
@@ -301,7 +357,7 @@ def read_code_block(number: int, text: str, key_snippet: str) -> Optional[Dict[s
         schema = "\n".join(re.findall(r"(?is)\bCREATE\s+TABLE\b.*?;", text))
         data = "\n".join(re.findall(r"(?is)\bINSERT\s+INTO\b.*?;", text))
         sel = None
-        a = re.search(r"(?im)^[ \t]*(?:answer|reference query)[ \t]*:?[ \t]*$", text)  # the format: "Answer:" and the query under it
+        a = re.search(r"(?im)^[ \t]*(?:(?:model )?answer|reference query)[ \t]*:?[ \t]*$", text)  # the format: "Answer:" and the query under it
         if a:
             q_lines = []
             for ln in text[a.end():].strip("\n").split("\n"):
@@ -315,7 +371,7 @@ def read_code_block(number: int, text: str, key_snippet: str) -> Optional[Dict[s
             m = (re.search(r"(?is)\bSELECT\b.*?;", clean_key) or re.search(r"(?is)\bSELECT\b.*?;", _NOISE.sub("", text[text.lower().find("reference query"):]) if "reference query" in text.lower() else "")
                  or re.search(r"(?is)\bSELECT\b.*?;", after_data))
             sel = m.group(0).rstrip(";") if m else None
-        if not sel or not data:
+        if not sel or not data or not re.match(r"(?is)\s*(?:select|with)\b", sel):  # ALTER, DELETE, CREATE...: not a one-query question: the AI makes it a script question
             return None
         q.update({"type": "sql", "schema": schema, "reference_sql": sel.strip(), "datasets": [{"data": data, "visibility": "open"}]})
         hint = re.search(r"(?im)^[ \t]*hidden data[ \t]*:[ \t]*(.+)$", text)
@@ -328,9 +384,13 @@ def read_code_block(number: int, text: str, key_snippet: str) -> Optional[Dict[s
     if ref is None:
         return None
     q.update({"type": "coding", "reference": {"language": ref[0], "source": ref[1]}})
+    if ref[0] == "flask":  # a backend (API) question: only that language, and its time limit allows the framework to load
+        q.update({"languages": ["flask"], "time_limit_ms": 5000})
     cases = _inline_cases(_NOISE.sub("", text))
     if cases:
         q["test_cases"] = cases
+    elif re.search(r"(?im)^[ \t]*(?:open|hidden)[ \t]*\d*[ \t]*:", text):  # tests that are only described: the AI reads the whole question
+        return None
     else:
         q["test_cases"] = []
         q["_cases_key"] = clean_key

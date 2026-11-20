@@ -4,7 +4,7 @@ import pytest
 
 from app.sandbox.judge import judge_code, judge_sql, sql_expected_for
 from app.sandbox.languages import REGISTRY
-from app.sandbox.selftest import CASES, PROGRAMS
+from app.sandbox.selftest import API_CASES, CASES, PROGRAMS
 
 CFG = {"time_limit_ms": 2000, "memory_mb": 256}
 
@@ -13,7 +13,7 @@ CFG = {"time_limit_ms": 2000, "memory_mb": 256}
 def test_each_language_accepts_correct_program(lang):
     if not REGISTRY[lang].available():
         pytest.skip(f"{lang} toolchain not installed")
-    r = judge_code(CFG, CASES, lang, PROGRAMS[lang], "submit")
+    r = judge_code(CFG, API_CASES if REGISTRY[lang].api else CASES, lang, PROGRAMS[lang], "submit")
     assert r["status"] == "done", r
     assert [c["verdict"] for c in r["cases"]] == ["AC", "AC"]
     assert r["score"] == 2

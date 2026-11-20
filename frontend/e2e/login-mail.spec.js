@@ -194,7 +194,7 @@ test("the link in the mail opens the login page and carries on to the exam; an e
   await x.page.getByLabel("Password", { exact: true }).fill(taker.password)
   await x.page.getByRole("button", { name: "Sign in" }).click()
   await expect(x.page.getByRole("heading", { name: "Your exams" })).toBeVisible()
-  await expect(x.page.getByText("That exam is not on your list")).toBeVisible()
+  await expect(x.page.getByText("That exam is not on your list").first()).toBeVisible()
   await x.ctx.close()
 })
 

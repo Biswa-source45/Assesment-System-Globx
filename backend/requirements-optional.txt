@@ -2,3 +2,4 @@
 #   pip install -r requirements-optional.txt
 PyMySQL==1.1.1                  # MySQL SQL sandbox
 opencv-python-headless==4.10.0.84   # server-side face counting on webcam snapshots
+Flask==3.1.3                    # backend (API) coding questions: the judge image installs it too (Dockerfile.judge)

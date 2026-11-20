@@ -16,6 +16,9 @@ PROGRAMS = {
     "java": "import java.util.*;\npublic class Main { public static void main(String[] x){ Scanner s=new Scanner(System.in); long a=s.nextLong(), b=s.nextLong(); System.out.println(a+b);} }\n",
     "javascript": "const [a,b]=require('fs').readFileSync(0,'utf8').trim().split(/\\s+/).map(Number);\nconsole.log(a+b);\n",
 }
+PROGRAMS["flask"] = "from flask import Flask, jsonify\napp = Flask(__name__)\n@app.route('/add/<int:a>/<int:b>')\ndef add(a, b):\n    return jsonify({'sum': a + b})\n"
+API_CASES = [{"ordinal": 1, "visibility": "open", "input": "GET /add/2/3\n", "expected": '200 {"sum":5}', "weight": 1},  # a backend language is tested with requests
+             {"ordinal": 2, "visibility": "hidden", "input": "GET /add/40/2\nGET /add/1/1\n", "expected": '200 {"sum":42}\n200 {"sum":2}', "weight": 1}]
 CASES = [{"ordinal": 1, "visibility": "open", "input": "2 3\n", "expected": "5", "weight": 1},
          {"ordinal": 2, "visibility": "hidden", "input": "40 2\n", "expected": "42", "weight": 1}]
 
@@ -28,7 +31,7 @@ def run_selftest() -> Dict:
                "missing": info["missing"], "ok": False, "detail": ""}
         if info["available"]:
             t = time.time()
-            r = judge_code({"time_limit_ms": 3000, "memory_mb": 256}, CASES, key, PROGRAMS[key], "validate")
+            r = judge_code({"time_limit_ms": 3000, "memory_mb": 256}, API_CASES if sb.api else CASES, key, PROGRAMS[key], "validate")
             row["ok"] = r.get("status") == "done" and r.get("passed") == 2
             row["detail"] = (r.get("error") or (r.get("compile") or {}).get("message") or
                              ", ".join(c["verdict"] for c in r.get("cases", [])))

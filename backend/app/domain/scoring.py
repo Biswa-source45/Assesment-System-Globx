@@ -15,7 +15,7 @@ def quarter(x: float) -> float:
 
 
 # ---------------------------------------------------------------- MCQ / Linked MCQ
-WRONG_TICK = 0.25  # multiple answer: every wrong option ticked takes this much off, whatever the question's own negative marks say
+WRONG_TICK = 0.25  # multiple answer: every wrong option ticked takes this much off, unless the question has negative marks of its own (then that much)
 
 
 def score_mcq(selected: Iterable[str], correct: Sequence[str], all_options: Sequence[str],
@@ -25,7 +25,7 @@ def score_mcq(selected: Iterable[str], correct: Sequence[str], all_options: Sequ
     * blank -> 0
     * single: correct -> marks, wrong -> -negative (the question's own negative marks, 0 unless set)
     * multi: every option ticked while not every option is right -> 0 (ticking everything cannot win)
-    * multi + partial: each right option earns marks/k, each wrong option ticked takes WRONG_TICK off; never below 0
+    * multi + partial: each right option earns marks/k, each wrong option ticked takes the question's negative marks off (WRONG_TICK when it has none); never below 0
     * multi without partial: exactly the right set -> marks, anything else -> 0
     """
     sel = {s for s in (selected or []) if s in set(all_options)}
@@ -38,7 +38,7 @@ def score_mcq(selected: Iterable[str], correct: Sequence[str], all_options: Sequ
         return 0.0
     if not partial:
         return r2(marks) if sel == cor else 0.0
-    return r2(max(0.0, len(sel & cor) * marks / max(1, len(cor)) - len(sel - cor) * WRONG_TICK))
+    return r2(max(0.0, len(sel & cor) * marks / max(1, len(cor)) - len(sel - cor) * (negative if negative > 0 else WRONG_TICK)))
 
 
 # ---------------------------------------------------------------- Short answer keywords

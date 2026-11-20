@@ -123,6 +123,12 @@ def validate_question(body: QuestionIn, strict: bool) -> List[str]:
             errs.append("SQL schema (CREATE TABLE ...) is required")
         if not (c.get("reference_sql") or "").strip():
             errs.append("Reference query is required")
+        checks = c.get("checks")
+        if checks is not None:  # a script question: the candidate's statements change the data, then these are compared (see sandbox/sql_script_harness.py)
+            if not (isinstance(checks, list) and 1 <= len(checks) <= 20 and all(isinstance(x, str) and x.strip() and len(x) <= 500 for x in checks)):
+                errs.append("Check statements: give 1 to 20, each up to 500 characters")
+            if (c.get("engines") or ["sqlite"]) != ["sqlite"]:
+                errs.append("A script question runs on SQLite only")
     return errs
 
 
@@ -382,12 +388,13 @@ class SqlPreviewIn(BaseModel):
     ddl: str
     reference_sql: str
     datasets: List[str]
+    checks: List[str] = []  # a script question: reference_sql is the whole script and these are read from the database it leaves
 
 
 @router.post("/questions/sql-preview")
 def sql_preview(body: SqlPreviewIn, user: User = Depends(AUTHOR)):
     """Run the reference query on each dataset of the unsaved form; the result is the expected output the candidate must match."""
-    cfg = {"schema": body.ddl, "seed": "", "reference_sql": body.reference_sql}
+    cfg = {"schema": body.ddl, "seed": "", "reference_sql": body.reference_sql, "checks": [c for c in body.checks if c.strip()]}
     results = []
     for ds in body.datasets:
         try:

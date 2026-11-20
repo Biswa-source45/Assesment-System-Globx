@@ -24,7 +24,7 @@ import { Textarea } from "@/components/ui/textarea"
 
 const TYPES = ["mcq_single", "mcq_multi", "short", "long", "coding", "sql"]
 const DEFAULT_MARKS = { mcq_single: 1, mcq_multi: 1, short: 2, long: 5, coding: 10, sql: 10 }
-const LANGS = [["python", "Python"], ["java", "Java"], ["javascript", "JavaScript"], ["cpp", "C++"], ["c", "C"]]
+const LANGS = [["python", "Python"], ["java", "Java"], ["javascript", "JavaScript"], ["cpp", "C++"], ["c", "C"], ["flask", "Flask / FastAPI (backend API)"]]
 const rid = () => Math.random().toString(36).slice(2, 8)
 const blankOptions = () => Array.from({ length: 4 }, () => ({ id: rid(), text: "", image: "", correct: false }))
 
@@ -33,7 +33,7 @@ const blank = () => ({
   department_id: "", group_id: null, type: "mcq_single", title: "", body: "", images: [], difficulty: "medium", marks: 1, negative_marks: 0, skills: "",
   options: blankOptions(), model_answer: "", keywords: "", max_words: 150,
   languages: ["python"], time_limit_ms: 2000, memory_mb: 256, constraints: "", ref_lang: "python", ref_source: "", starter: {}, cases: [],
-  tables: [], datasets: [], reference_sql: "", ordered: false, preview: null,  // SQL questions
+  tables: [], datasets: [], reference_sql: "", ordered: false, preview: null, script: false, checks: "",  // SQL questions (script: the candidate changes the data, then the checks are read)
 })
 
 function fromQuestion(q) {
@@ -59,7 +59,8 @@ function withSql(f, q) {
     rows: tables.map((_, ti) => (q.sql_tables[i]?.[ti]?.rows ?? []).map((r) => r.map((v) => (v === null ? "" : String(v))))),
   }))
   const preview = q.cases.map((c) => (c.expected ? { ok: true, ...JSON.parse(c.expected) } : null))
-  return { ...f, tables, datasets, preview, reference_sql: q.config?.reference_sql ?? "", ordered: !!q.config?.ordered }
+  const checks = q.config?.checks ?? []
+  return { ...f, tables, datasets, preview, reference_sql: q.config?.reference_sql ?? "", ordered: !!q.config?.ordered, script: checks.length > 0, checks: checks.join("\n") }
 }
 
 // The bank's page: saving goes back to the bank.
@@ -121,7 +122,7 @@ export default function QuestionEditor({ id, onSaved, embedded = false }) {
     return {
       department_id: f.department_id, group_id: f.group_id, type: "sql", title: f.title, body: joinImages(toHtml(f.body), f.images), difficulty: f.difficulty, marks: Number(f.marks), negative_marks: 0,
       skills: f.skills.split(",").map((s) => s.trim()).filter(Boolean), status: "approved",
-      config: { schema: buildSchema(f.tables), seed: "", engines: ["sqlite"], ordered: f.ordered, reference_sql: f.reference_sql },
+      config: { schema: buildSchema(f.tables), seed: "", engines: ["sqlite"], ordered: f.ordered, reference_sql: f.reference_sql, ...(f.script ? { checks: f.checks.split("\n").map((s) => s.trim()).filter(Boolean) } : {}) },
       cases: f.datasets.map((d, i) => ({ ordinal: i + 1, visibility: d.visibility, input: buildInserts(f.tables, d.rows), expected: "", weight: Number(d.weight) || 1, purpose: d.purpose })),
     }
   }
@@ -303,6 +304,11 @@ export default function QuestionEditor({ id, onSaved, embedded = false }) {
                     <Label key={k} className="flex items-center gap-2 font-normal"><Checkbox checked={f.languages.includes(k)} onCheckedChange={() => toggleLang(k)} /> {name}</Label>
                   ))}
                 </div>
+                {f.languages.includes("flask") && (
+                  <p className="text-xs text-muted-foreground" data-testid="api-hint">
+                    A backend API question: the candidate writes a Flask or FastAPI app (a variable named <code>app</code>) and the judge calls it in-process, with no network. Each test case input is a list of requests, one per line: <code>METHOD /path</code> or <code>METHOD /path {"{"}json body{"}"}</code>. The expected output (status and JSON of each answer) is made by running your reference app. Every test case starts a fresh app, so give the starting data in the question text. Use this language on its own, with a time limit of 5000 ms.
+                  </p>
+                )}
               </div>
               <div className="grid gap-4 md:grid-cols-2">
                 <div className="grid gap-2"><Label htmlFor="tl">Time limit per case (ms)</Label><Input id="tl" type="number" min="100" max="10000" value={f.time_limit_ms} onChange={(e) => set("time_limit_ms", e.target.value)} /></div>
