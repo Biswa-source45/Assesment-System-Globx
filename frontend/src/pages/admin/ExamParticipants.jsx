@@ -48,6 +48,7 @@ function MailCell({ mail }) {
   if (mail.state === "not_sent") return <Badge variant="outline">Not sent</Badge>
   if (mail.state === "queued") return <div className="grid gap-0.5"><Badge variant="secondary">Sending...</Badge><span className={small}>to {mail.to}</span></div>
   if (mail.state === "sent") return <div className="grid gap-0.5"><Badge className={GREEN}>Sent</Badge><span className={small}>to {mail.to}</span><span className={small}>{fmtDate(mail.at)}</span></div>
+  if (mail.state === "password_changed") return <div className="grid max-w-60 gap-0.5"><Badge className={AMBER}>New password: not mailed</Badge><span className={small}>The mail to {mail.to} ({fmtDate(mail.at)}) holds an old password. Press Email login.</span></div>
   if (mail.state === "failed") return <div className="grid max-w-60 gap-0.5"><Badge variant="destructive">Not delivered</Badge><span className={small}>to {mail.to}</span><span className="text-xs text-destructive">{mail.error}</span></div>
   return (
     <div className="grid max-w-60 gap-0.5"><Badge className={AMBER}>Email changed: not sent</Badge>
@@ -128,6 +129,7 @@ export default function ExamParticipants({ test }) {
       const out = await post(`/tests/${test.id}/passwords`)
       setCreated((old) => merge(old, out.participants))
       toast.success(out.participants.length ? `${out.participants.length} new password(s) are on the sheet above` : "Nobody is waiting to start")
+      load()  // their mailed passwords are out of date now: the list and the Send button must say so
     } catch (err) {
       toast.error(err.message)
     }

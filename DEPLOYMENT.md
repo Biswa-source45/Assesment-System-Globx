@@ -47,8 +47,8 @@ It has **no network at all**, a read-only filesystem, no `.env`, database client
 container has process, memory and CPU limits. The api reaches it only through a Unix socket in the shared `judge-sock` volume (the api container joins group 3000).
 `JUDGE_URL` empty = candidate code runs inside the api process: development only. With `ENVIRONMENT=production` and no judge, code runs are **refused** and the
 admin screens show a red warning; the server never runs candidate code itself.
-Safety is proven, not assumed: `docker compose run --rm --no-deps judge python -m app.sandbox.hostile` runs 39 attacks inside the real container (secret
-theft, network, writes, root, kill, fork/thread/memory/disk/output bombs, compile-time tricks, SQL attacks) and must print `39 of 39 checks passed`.
+Safety is proven, not assumed: `docker compose run --rm --no-deps judge python -m app.sandbox.hostile` runs 58 attacks inside the real container (secret
+theft, network, writes, root, kill, fork/thread/memory/disk/output bombs, compile-time tricks, SQL attacks) and must print `58 of 58 checks passed`.
 Run it after every change to the judge or the compose file, and once on the office server before the first exam.
 To check the api's side of the channel: `python -m app.sandbox.probe` inside the api container (group 3000, `JUDGE_URL` set) must print `AC`; the same command as any user outside group 3000 must print that the judge is not available.
 Optional later upgrade: run the judge under gVisor (`runsc`) on a Linux host for a stronger wall against kernel exploits.
@@ -101,7 +101,7 @@ Local development uses the repo-root `.env` (git-ignored). See `.env.example`; `
 
 ## 7. Deploy steps (GitHub builds the images, the server pulls them)
 
-**How it flows.** A push to `main` runs `.github/workflows/ci.yml`: backend tests (Postgres service), the judge's 39-attack drill, and only if both pass it builds `oap-api`, `oap-judge`, `oap-caddy` and publishes them to `ghcr.io/biswa-source45/` (tags `latest` and the commit). GitHub cannot reach the office PC, so the **server pulls**: you run `deploy.ps1` there when you choose (never in an exam). The server holds only `docker-compose.yml`, `deploy.ps1` and `.env`, no source code.
+**How it flows.** A push to `main` runs `.github/workflows/ci.yml`: backend tests (Postgres service), the judge's 58-attack drill, and only if both pass it builds `oap-api`, `oap-judge`, `oap-caddy` and publishes them to `ghcr.io/biswa-source45/` (tags `latest` and the commit). GitHub cannot reach the office PC, so the **server pulls**: you run `deploy.ps1` there when you choose (never in an exam). The server holds only `docker-compose.yml`, `deploy.ps1` and `.env`, no source code.
 
 **Once, from your PC (browser):**
 1. Push the code to GitHub. Watch the *Actions* tab: `tests`, `judge-drill` and `publish` must turn green. The repository stays private; the images are private too and belong to the repository.
@@ -112,7 +112,7 @@ Local development uses the repo-root `.env` (git-ignored). See `.env.example`; `
 **Once, on the server (UltraViewer, then PowerShell as Administrator):**
 5. Make a folder, for example `C:\oap`, and copy into it only `docker-compose.yml` and `deploy.ps1` from the repository. Docker Desktop must be running and no exam must be running.
 6. `cd C:\oap`, then `docker login ghcr.io -u Biswa-source45` and paste the token from step 2 as the password.
-7. `powershell -ExecutionPolicy Bypass -File .\deploy.ps1 -Seed -Drill`. It asks for the address (Enter keeps `assessment.globx.co.in`) and the Cloudflare token (hidden), writes `.env` with random passwords, opens port 443 for the office network, pulls the images, starts everything, creates the first accounts (the passwords are shown once: note them, sign in, make real users, change the passwords) and runs the drill, which must end with `39 of 39 checks passed`. The first start also gets the certificate through GoDaddy (`docker compose logs caddy`).
+7. `powershell -ExecutionPolicy Bypass -File .\deploy.ps1 -Seed -Drill`. It asks for the address (Enter keeps `assessment.globx.co.in`) and the Cloudflare token (hidden), writes `.env` with random passwords, opens port 443 for the office network, pulls the images, starts everything, creates the first accounts (the passwords are shown once: note them, sign in, make real users, change the passwords) and runs the drill, which must end with `58 of 58 checks passed`. The first start also gets the certificate through GoDaddy (`docker compose logs caddy`).
 8. From another office computer open `https://assessment.globx.co.in`; check sign-in, the camera, screen sharing, the live view and a coding question.
 
 **After the 3 November fixes, check on the real laptops:** (1) candidate presses **Accept and start exam**, keeps *Entire screen* selected in Chrome's box and presses Share; the exam opens in full screen; (2) the office PC's live view shows camera and screen and the badge says **Live**; if it says **Cannot connect**, send the text and a screenshot of `chrome://webrtc-internals` (the next step would be a TURN relay); (3) a blank submission shows **Did not attempt** in red, never Passed; an exam with pass mark 0 shows scores and "No pass mark set".
@@ -180,7 +180,7 @@ Every event is stored with a timestamp, plus when and why the exam ended. Browse
 - [done] Frontend screens: question bank, candidate check-in (camera + face gate), exam runner, proctoring client; Playwright suite (12 tests)
 - [done] Frontend screens: exam setup, participants and credentials sheet, live monitor (extend, end exam, re-open, new password)
 - [done] Frontend screens: results and review (declare, accept AI marks, review per candidate)
-- [done] Docker judge container: image, locked-down compose service, per-run users, 39-attack drill passing (run it again on the office server)
+- [done] Docker judge container: image, locked-down compose service, per-run users, 58-attack drill passing (run again 2026-11-20 with the script and API attacks) (run it again on the office server)
 - [done] Docker compose with db, api, Caddy and the judge, run end to end locally with a test certificate; Playwright through HTTPS passes
 - [done] GitHub Actions (`.github/workflows/ci.yml`): tests on Linux (Postgres service), judge drill, then publish the three images to ghcr.io; `deploy.ps1` pulls and starts them on the server; tried locally against a local registry in a simulated server folder
 - [done] First real exam fixes (2026-11-07): written answers show in the review, strict multiple-answer marking, live view with the camera off, submit box without the coding line. **After deploying this, press Calculate again on the exam that already ran** (marks are redone; answers an admin marked by hand are kept)

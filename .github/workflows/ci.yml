@@ -50,7 +50,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: docker compose build judge
-      - name: Attack drill, must end with "39 of 39 checks passed"
+      - name: Attack drill, must end with "58 of 58 checks passed"
         run: docker compose run --rm --no-deps judge python -m app.sandbox.hostile
 
   publish:

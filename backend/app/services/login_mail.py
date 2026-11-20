@@ -14,7 +14,8 @@ from app.services.attempts import proctoring_config
 from app.services.report_card import COMPANY, _when, is_real_email
 
 KIND = "exam_login"
-WAITING = ("not_sent", "failed", "email_changed")  # people the "Send logins" button mails; queued and sent ones are left alone
+STALE = "password_changed"  # kept in the mail record's error column when a new password was made after the mail: the one in the mail no longer works
+WAITING = ("not_sent", "failed", "email_changed", STALE)  # people the "Send logins" button mails; queued and sent ones are left alone
 NO_SMTP = "E-mail is not set up on this server, so nothing was sent."
 
 
@@ -134,7 +135,16 @@ def mail_state(email: str, mails: List[MailOutbox]) -> Dict:
     out = {"state": status, "to": m.to, "at": _iso(m.sent_at or m.created_at), "error": why}
     if m.to.strip().lower() != email.strip().lower():
         out["state"] = "email_changed"
+    elif m.error == STALE and status in ("queued", "sent"):
+        out["state"] = STALE
     return out
+
+
+def outdate(db: Session, assignment_ids: List[str]) -> None:
+    """A new password was just made for these people (not by mailing it): the password in their newest login mail no longer works, so they wait to be mailed again."""
+    for mails in mails_of(db, assignment_ids).values():
+        if mails[0].status in ("queued", "sent"):
+            mails[0].error = STALE
 
 
 def history(mails: List[MailOutbox]) -> List[Dict]:

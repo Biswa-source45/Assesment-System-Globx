@@ -378,3 +378,28 @@ def test_only_those_who_manage_participants_may_send_or_edit_but_staff_may_read_
     cand = _login(client, p["username"], p["password"])
     assert client.get(f"{API}/assignments/{aid}/login-mails", headers=cand).status_code == 403
     assert client.put(f"{API}/assignments/{aid}/participant", headers=cand, json={"name": "X", "email": "x@mail.test"}).status_code == 403
+
+
+def test_a_new_password_made_after_a_mail_puts_the_person_back_on_the_waiting_list(client, smtp):
+    creator, recruiter = _creator(client), _recruiter(client)
+    tid, _ = _published_exam(client, creator, "Stale mail exam")
+    people = _people(client, recruiter, tid, "Asha Stale, asha.stale@mail.test", "Ben Stale, ben.stale@mail.test")
+    client.post(f"{API}/tests/{tid}/send-logins", headers=recruiter, json={})
+    _deliver()
+    table = _table(client, recruiter, tid)
+    assert table["logins"]["sent"] == 2 and table["logins"]["waiting"] == 0
+
+    sheet = client.post(f"{API}/tests/{tid}/passwords", headers=recruiter).json()["participants"]          # a fresh login sheet: the mailed passwords stop working
+    assert len(sheet) == 2
+    table = _table(client, recruiter, tid)
+    assert _row(table, "Asha Stale")["login_mail"]["state"] == "password_changed" and table["logins"]["waiting"] == 2
+    out = client.post(f"{API}/tests/{tid}/send-logins", headers=recruiter, json={}).json()                  # so Send logins works again, with no "again" needed
+    assert out["queued"] == 2
+    _deliver()
+    assert _table(client, recruiter, tid)["logins"] == {"waiting": 0, "queued": 0, "sent": 2, "failed": 0, "changed": 0, "no_email": 0}
+
+    client.post(f"{API}/assignments/{people['Ben Stale']['assignment_id']}/password", headers=recruiter)   # one person's new password
+    table = _table(client, recruiter, tid)
+    assert _row(table, "Ben Stale")["login_mail"]["state"] == "password_changed" and _row(table, "Asha Stale")["login_mail"]["state"] == "sent"
+    assert table["logins"]["waiting"] == 1
+    assert client.post(f"{API}/tests/{tid}/send-logins", headers=recruiter, json={}).json()["queued"] == 1

@@ -117,7 +117,7 @@ def run_script(schema: str, seed: str, dataset: str, script: str, checks: List[s
     try:
         p = run_limited([python, "-I", "-S", "-B", HARNESS], cwd=wd, time_limit_ms=int(timeout_s * 1000), memory_mb=128, output_limit_kb=256,
                         stdin_text=json.dumps({"schema": schema, "seed": seed, "dataset": dataset, "script": script, "checks": checks}),
-                        env=clean_env(wd, [os.path.dirname(python)]), rlimit_as_mb=320, nofile=32)
+                        env=clean_env(wd, [os.path.dirname(python)]), rlimit_as_mb=320, nofile=32, nproc=8)
     finally:
         remove_workdir(wd)
     for bad, verdict, why in ((p.error, "IE", p.error), (p.timed_out, "TLE", "Time limit exceeded"), (p.mem_exceeded, "MLE", "Memory limit exceeded"),

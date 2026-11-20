@@ -153,6 +153,17 @@ test("logins are mailed after publishing: the mail, the record beside each perso
   await expect(page.getByTestId("mail-history")).toContainText("mail.ben@mail.test")
   await page.keyboard.press("Escape")
 
+  // a fresh login sheet makes every mailed password out of date: the people are waiting again and the button works (it used to stay grey)
+  await page.getByRole("button", { name: "Get a fresh login sheet" }).click()
+  await confirmDialog(page, "Get new passwords")
+  await expect(row(page, "Mail Asha").getByTestId("login-mail")).toContainText("New password: not mailed")
+  await expect(page.getByRole("button", { name: /Send logins by email \(2 waiting\)/ })).toBeEnabled()
+  await page.getByRole("button", { name: /Send logins by email/ }).click()
+  await confirmDialog(page, "Send logins")
+  await expect(row(page, "Mail Asha").getByTestId("login-mail")).toContainText("Sent", { timeout: 45_000 })
+  await expect(page.getByRole("button", { name: /Send logins by email/ })).toBeDisabled()          // nobody is waiting now
+  expect(loginMails("mail.asha@mail.test")).toHaveLength(2)
+
   // an exam with dates says from when to when, in India time
   const dated = await publishedExam(api, "E2E Dated Mail Exam", { starts_at: "2030-01-15T04:30:00Z", ends_at: "2030-01-15T08:30:00Z" })
   await api.post(`/tests/${dated.id}/participants`, { names: ["Dated Dev, dated.dev@mail.test"], email_required: true })

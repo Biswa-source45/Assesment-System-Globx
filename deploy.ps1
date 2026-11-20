@@ -1,7 +1,7 @@
 # Sets up or updates the exam system on the server. Open PowerShell in the folder that holds docker-compose.yml and run:
 #   .\deploy.ps1            first time (asks two questions, then starts everything) and every later update
 #   .\deploy.ps1 -Seed      also creates the first accounts (only for an empty database; the passwords are shown once)
-#   .\deploy.ps1 -Drill     also runs the safety drill against the judge (must end with: 39 of 39 checks passed)
+#   .\deploy.ps1 -Drill     also runs the safety drill against the judge (must end with: 58 of 58 checks passed)
 #   .\deploy.ps1 -Tunnel    reads the Cloudflare Tunnel token from tunnel-token.txt (once) so people outside the office can open the site
 # It never touches any other app on this server. To go back to an earlier version put OAP_TAG=<version> in .env and run it again.
 param([switch]$Seed, [switch]$Drill, [switch]$Tunnel)

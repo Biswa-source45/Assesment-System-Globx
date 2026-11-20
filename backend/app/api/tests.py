@@ -622,6 +622,7 @@ def reset_password(aid: str, request: Request, user: User = Depends(RECRUIT), db
         raise HTTPException(404, "Assignment not found")
     _test(db, a.test_id, user)
     out = _fresh_login(a)
+    login_mail.outdate(db, [a.id])
     audit(db, user, "password_reset", "assignment", a.id, request=request)
     db.commit()
     return out
@@ -632,6 +633,7 @@ def fresh_login_sheet(tid: str, request: Request, user: User = Depends(RECRUIT),
     """The whole login sheet again: new passwords for everyone who has not started yet (people already taking or finished keep theirs)."""
     t = _test(db, tid, user)
     rows = [_fresh_login(a) for a in db.scalars(select(Assignment).where(Assignment.test_id == t.id, Assignment.status == "invited")).all() if a.candidate.username]
+    login_mail.outdate(db, [r["assignment_id"] for r in rows])
     audit(db, user, "passwords_reset_all", "test", t.id, {"count": len(rows)}, request)
     db.commit()
     return {"participants": rows}

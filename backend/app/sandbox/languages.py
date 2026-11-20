@@ -31,6 +31,7 @@ class LanguageSandbox:
     use_rlimit_as = False       # Linux address-space cap (not usable for JVM / V8)
     rlimit_as_factor = 1        # cap = memory * factor + overhead (C/C++ use a loose cap, RSS decides MLE)
     nofile = 64
+    nproc = 256                 # most processes (and threads) one run may have: a fork bomb stops here
     api = False                 # a backend (API) language: the test input is a list of requests, not standard input; kept out of ordinary coding questions
 
     # ---- toolchain
@@ -92,7 +93,7 @@ class LanguageSandbox:
         return run_limited(self.run_cmd(workdir, source, memory_mb), cwd=workdir, stdin_text=stdin,
                            time_limit_ms=int(time_limit_ms * self.time_multiplier),
                            memory_mb=memory_mb + self.memory_overhead_mb, output_limit_kb=output_limit_kb,
-                           env=self.env(workdir), rlimit_as_mb=rl, nofile=self.nofile)
+                           env=self.env(workdir), rlimit_as_mb=rl, nofile=self.nofile, nproc=self.nproc)
 
     def _compile_with(self, workdir: str, cmd: List[str], timeout_ms: int = 30000) -> CompileResult:
         r = run_limited(cmd, cwd=workdir, time_limit_ms=timeout_ms, memory_mb=1536, output_limit_kb=256,
@@ -150,6 +151,7 @@ class FlaskSandbox(PythonSandbox):
     api = True
     memory_overhead_mb = 48   # the framework's own imports
     nofile = 128
+    nproc = 24   # each process holds the framework in memory, so a fork bomb must stop early (FastAPI's test client needs a few threads)
 
     def executables(self):
         import importlib.util
