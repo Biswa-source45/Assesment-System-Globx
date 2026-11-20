@@ -36,7 +36,7 @@ test("Create logins and Calculate ask first; Cancel does nothing", async ({ page
   await loginStaff(page)
   await page.goto(`/admin/exams/${exam.id}`)
   await page.getByRole("tab", { name: "Participants" }).click()
-  await page.getByLabel("Participant names").fill("Asha Rao\nVikram Das")
+  await page.getByLabel("Participant names").fill("Asha Rao, asha.confirm@mail.test\nVikram Das, vikram.confirm@mail.test")
   await page.getByRole("button", { name: "Create logins" }).click()
   const dialog = page.getByRole("dialog")
   await expect(dialog).toContainText("Create 2 logins?")

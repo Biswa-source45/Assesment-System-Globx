@@ -10,6 +10,7 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.core.config import get_settings
 from app.core.deps import AUTHOR, RECRUIT, SUPER, VIEW, audit, same_org
 from app.core.paging import limit_q, offset_q, page_rows
 from app.core.security import hash_password
@@ -18,8 +19,10 @@ from app.api.library import q_out
 from app.models import (Assignment, Attempt, Department, PlagiarismMatch, Question, QuestionGroup, Section, SectionItem, Test,
                         User, AttemptQuestion, CodeSubmission, Answer, aware, now, uid)
 from app.services import invites as inv
-from app.services import reports
+from app.services import login_mail, reports
 from app.services.analytics import exam_analytics
+from app.services.mail import queue_mail
+from app.services.report_card import is_real_email
 from app.services.attempts import retime_open_attempts
 from app.services.populate import pick_questions
 from app.services.sanitize import sanitize_html
@@ -478,8 +481,18 @@ def invite(tid: str, body: InviteIn, request: Request, user: User = Depends(RECR
     return res
 
 
+class ParticipantEditIn(BaseModel):
+    name: str
+    email: str
+
+
+class SendLoginsIn(BaseModel):
+    again: bool = False  # also mail people who already got a mail (their earlier password then stops working)
+
+
 class ParticipantsIn(BaseModel):
     names: List[str]
+    email_required: bool = False  # the screen always asks for "Name, email"; scripts may still send a name alone
 
 
 @router.post("/tests/{tid}/participants")
@@ -491,10 +504,108 @@ def add_participants(tid: str, body: ParticipantsIn, request: Request, user: Use
         raise HTTPException(422, "This test is archived")
     if not 0 < sum(1 for x in body.names if x.strip()) <= 200:
         raise HTTPException(422, "Give between 1 and 200 names")
-    res = inv.create_participants(db, t, inv.parse_participants(db, t.org_id, body.names))  # each line: "Name" or "Name, email"
+    res = inv.create_participants(db, t, inv.parse_participants(db, t.org_id, body.names, body.email_required, t))  # each line: "Name" or "Name, email"
     audit(db, user, "participants_create", "test", t.id, {"count": len(res)}, request)
     db.commit()
     return {"participants": res}
+
+
+@router.post("/tests/{tid}/participants/sheet")
+async def read_participants_sheet(tid: str, file: UploadFile = File(...), user: User = Depends(RECRUIT), db: Session = Depends(get_db)):
+    """Read a student sheet (CSV or Excel: Full name, Email) into lines for the participants box. Nothing is created: the examiner reviews the lines first."""
+    _test(db, tid, user)
+    data = await file.read(2_000_001)
+    if len(data) > 2_000_000:
+        raise HTTPException(422, "The sheet is too large (the limit is 2 MB)")
+    return inv.parse_sheet(data, file.filename or "")
+
+
+@router.put("/assignments/{aid}/participant")
+def edit_participant(aid: str, body: ParticipantEditIn, request: Request, user: User = Depends(RECRUIT), db: Session = Depends(get_db)):
+    """Correct a participant's name and email. Nothing is mailed: the examiner sends the login when they choose."""
+    a = db.get(Assignment, aid)
+    if not a:
+        raise HTTPException(404, "Assignment not found")
+    t = _test(db, a.test_id, user)
+    if t.status == "archived":
+        raise HTTPException(422, "This test is archived")
+    old = a.candidate.email
+    inv.edit_participant(db, a, body.name, body.email)
+    audit(db, user, "participant_edit", "assignment", a.id, {"old_email": old, "new_email": a.candidate.email}, request)
+    db.commit()
+    return {"name": a.candidate.name, "email": a.candidate.email}
+
+
+@router.get("/assignments/{aid}/login-mails")
+def login_mail_history(aid: str, user: User = Depends(VIEW), db: Session = Depends(get_db)):
+    """Every login mail sent to this person, newest first: the address, when, whether the mail server accepted it, and the reason when not."""
+    a = db.get(Assignment, aid)
+    if not a:
+        raise HTTPException(404, "Assignment not found")
+    _test(db, a.test_id, user)
+    return {"email": a.candidate.email if is_real_email(a.candidate.email) else "", "mails": login_mail.history(login_mail.mails_of(db, [a.id]).get(a.id, []))}
+
+
+def _can_mail(t: Test) -> None:
+    """Logins are mailed only for a published exam and only when the server can send mail; otherwise nothing at all is changed (no password either)."""
+    if t.status != "published":
+        raise HTTPException(422, "Publish the exam first. Logins can be e-mailed only for a published exam.")
+    if not get_settings().smtp_host:
+        raise HTTPException(422, "E-mail is not set up on this server (the mail server setting is empty). Nothing was sent and no password was changed. Ask IT to set it up.")
+
+
+def _mail_login(db: Session, t: Test, a: Assignment) -> dict:
+    """A new password for this person, mailed to them with the exam details. Returns the login row (the one time the password is shown here)."""
+    row = _fresh_login(a)
+    subject, text, page = login_mail.exam_login_mail(t, a.candidate.name, row["username"], row["password"])
+    queue_mail(db, a.candidate.email, subject, text, login_mail.KIND, t.org_id, html=page).attach = a.id
+    return row
+
+
+def _busy(db: Session, asgs: List[Assignment]) -> set:
+    """The people among these who are taking an exam right now (a new password could lock them out)."""
+    ids = [a.candidate_id for a in asgs]
+    return set(db.scalars(select(Attempt.candidate_id).where(Attempt.status == "in_progress", Attempt.candidate_id.in_(ids)))) if ids else set()
+
+
+@router.post("/tests/{tid}/send-logins")
+def send_logins(tid: str, body: SendLoginsIn, request: Request, user: User = Depends(RECRUIT), db: Session = Depends(get_db)):
+    """E-mail every waiting participant a fresh login (and the exam details). Waiting = has not started, has an email, and has not been mailed at
+    that address (or the mail failed). People already mailed keep their password unless `again` is set."""
+    t = _test(db, tid, user)
+    _can_mail(t)
+    asgs = [a for a in db.scalars(select(Assignment).where(Assignment.test_id == t.id, Assignment.status == "invited")).all() if a.candidate.username]
+    mails = login_mail.mails_of(db, [a.id for a in asgs])
+    states = {a.id: login_mail.mail_state(a.candidate.email, mails.get(a.id, []))["state"] for a in asgs}
+    no_email = sum(1 for s in states.values() if s == "no_email")
+    wanted = [a for a in asgs if states[a.id] != "no_email" and (body.again or states[a.id] in login_mail.WAITING)]
+    busy = _busy(db, wanted)
+    todo = [a for a in wanted if a.candidate_id not in busy]
+    batch = todo[:200]  # the password check takes a moment each: a click does at most 200, the screen says how many are left
+    rows = [_mail_login(db, t, a) for a in batch]
+    audit(db, user, "logins_sent", "test", t.id, {"count": len(rows), "again": body.again}, request)
+    db.commit()
+    return {"queued": len(rows), "no_email": no_email, "busy": len(wanted) - len(todo), "remaining": len(todo) - len(batch), "participants": rows}
+
+
+@router.post("/assignments/{aid}/send-login")
+def send_login(aid: str, request: Request, user: User = Depends(RECRUIT), db: Session = Depends(get_db)):
+    """E-mail one person a fresh login (a failed mail, or an email that was corrected)."""
+    a = db.get(Assignment, aid)
+    if not a:
+        raise HTTPException(404, "Assignment not found")
+    t = _test(db, a.test_id, user)
+    _can_mail(t)
+    if a.status != "invited" or not a.candidate.username:
+        raise HTTPException(422, "A login can be mailed only to a person who has not started the exam")
+    if not is_real_email(a.candidate.email):
+        raise HTTPException(422, "This person has no email. Open Edit details and add one first")
+    if _busy(db, [a]):
+        raise HTTPException(409, "This person is taking another exam right now. Try again after it ends")
+    row = _mail_login(db, t, a)
+    audit(db, user, "login_sent", "assignment", a.id, request=request)
+    db.commit()
+    return {"participant": row}
 
 
 def _fresh_login(a: Assignment) -> dict:
@@ -532,13 +643,21 @@ def candidates(tid: str, status: str = "", q: Optional[str] = None, limit: Optio
     """The people of an exam. `counts` always covers everyone; `rows` is the whole table, or with ?limit=&offset= (and q to search) one page, `total` the rows that match."""
     t = _test(db, tid, user)
     rows = reports.candidates_table(db, t)
+    mails = login_mail.mails_of(db, [r["assignment_id"] for r in rows])  # one query for everyone
     counts: Dict[str, int] = {}
+    logins = {"waiting": 0, "queued": 0, "sent": 0, "failed": 0, "changed": 0, "no_email": 0}
     for r in rows:
         counts[r["status"]] = counts.get(r["status"], 0) + 1
+        r["login_mail"] = lm = login_mail.mail_state(r["email"], mails.get(r["assignment_id"], []))
+        key = "changed" if lm["state"] == "email_changed" else lm["state"]
+        if key in logins:
+            logins[key] += 1
+        if r["status"] == "invited" and lm["state"] in login_mail.WAITING:
+            logins["waiting"] += 1
     if status:
         rows = [r for r in rows if r["status"] == status]
     page, total = page_rows(rows, q, limit, offset)
-    return {"rows": page, "counts": counts, "total": total}
+    return {"rows": page, "counts": counts, "total": total, "logins": logins}
 
 
 @router.get("/tests/{tid}/monitor")

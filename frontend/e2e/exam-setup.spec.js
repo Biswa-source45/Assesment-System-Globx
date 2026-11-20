@@ -59,7 +59,7 @@ test("admin builds an exam, adds people, publishes it; a candidate then takes it
   await page.keyboard.press("Escape")
 
   await page.getByRole("tab", { name: "Participants" }).click()
-  await page.getByLabel("Participant names").fill("Asha Rao\nVikram Das")
+  await page.getByLabel("Participant names").fill("Asha Rao, asha.setup@mail.test\nVikram Das, vikram.setup@mail.test")
   await page.getByRole("button", { name: "Create logins" }).click()
   await confirmDialog(page, "Create")
   const sheet = page.getByTestId("credentials")

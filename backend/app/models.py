@@ -419,6 +419,7 @@ class MailOutbox(Base):
     to: Mapped[str] = mapped_column(String(255))
     subject: Mapped[str] = mapped_column(String(255))
     body: Mapped[str] = mapped_column(Text)
+    body_html: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # the formatted version of the same mail (sent beside the plain text)
     kind: Mapped[str] = mapped_column(String(20), default="general")
     attach: Mapped[str] = mapped_column(String(64), default="", server_default="")  # "report_card" mails: the attempt whose PDF is made when the mail is sent
     status: Mapped[str] = mapped_column(String(12), default="queued")  # queued|sent|logged|failed

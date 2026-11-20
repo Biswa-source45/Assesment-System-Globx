@@ -28,9 +28,9 @@ test("the login sheet keeps every batch, downloads them all, and can be had agai
   }
   const status = (u, p) => request.post("/api/v1/auth/login", { data: { email: u, password: p } }).then((r) => r.status())
 
-  await add("Ila One")
+  await add("Ila One, ila.one.e2e@mail.test")
   await expect(usernames).toHaveCount(1)
-  await add("Jai Two\nKia Three")                                  // a second batch no longer wipes the first one
+  await add("Jai Two, jai.two.e2e@mail.test\nKia Three, kia.three.e2e@mail.test")                                // a second batch no longer wipes the first one
   await expect(usernames).toHaveCount(3)
   await expect(page.getByTestId("credentials")).toContainText("Ila One")
   const ids = await usernames.allInnerTexts()

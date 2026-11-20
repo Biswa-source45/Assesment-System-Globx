@@ -290,8 +290,9 @@ export const TOPICS = [
       <Num items={[
         <>Open <b>Exams</b>, press <b>New exam</b>, fill in the Details and press <b>Create exam</b>.</>,
         <>On the <b>Questions</b> tab press <b>Add section</b>, then <b>Add questions</b> (from the bank), <b>Auto populate</b> (random pick) or <b>Build with AI</b>.</>,
-        <>On the <b>Participants</b> tab type the names and press <b>Create logins</b>.</>,
+        <>On the <b>Participants</b> tab type each person as <code>Full name, email</code> (or upload a sheet) and press <b>Create logins</b>.</>,
         <>Press <b>Publish</b>. The platform refuses to publish an exam that is incomplete and tells you what is missing.</>,
+        <>Back on the <b>Participants</b> tab press <b>Send logins by email</b>: every person gets their username, password and the exam link.</>,
       ]} />
     </div>) },
   { id: "exam-details", group: "exams", title: "Every field on the exam's Details tab", body: (
@@ -327,12 +328,15 @@ export const TOPICS = [
   { id: "participants", group: "exams", title: "Participants and the login sheet", body: (
     <div className="grid gap-3">
       <Num items={[
-        <>On the <b>Participants</b> tab type <b>one person per line</b>. A line can be a name, or <code>Name, email</code>. The email is optional.</>,
-        <>Press <b>Create logins</b> and confirm. Each person gets a username and a password.</>,
+        <>On the <b>Participants</b> tab type <b>one person per line</b>: <code>Full name, email</code> (for example <code>Asha Rao, asha.rao@gmail.com</code>). The email is needed so the login can be mailed. Or press <b>Download sample sheet</b>, fill in the two columns <b>Full name</b> and <b>Email</b> (CSV or Excel) and press <b>Upload a sheet</b>: the people appear in the box so you can check and correct them. Rows with an <code>@example.com</code> address are the sample rows and are skipped.</>,
+        <>Press <b>Create logins</b> and confirm. Each person gets a username and a password (the first three letters of the first name, <code>@globx</code> and three digits, for example <code>ash@globx472</code>). Nobody is e-mailed yet. A person who already has a login from another exam keeps the same username and gets a new password.</>,
         <>The passwords are shown <b>once</b>. Press <b>Download all as CSV</b> or Print before you leave the page.</>,
-        <>Lost a password? Use <b>Get a fresh login sheet</b> (everyone who has not started gets a new password) or <b>New password</b> for one person.</>,
+        <><b>Publish</b> the exam, then press <b>Send logins by email</b>. Each person who has not started gets a <b>new password</b> (the old one is only stored scrambled, so it cannot be mailed) in a mail with the exam details, their username and password, and a link. The link opens the login page and, after signing in, goes straight to the exam. The mail says from when to when the exam can be taken, or that it can be taken at a suitable time when the exam has no dates. The button does nothing for a draft exam or when the server cannot send mail, and then no password is changed.</>,
+        <>Lost a password? Use <b>Email login</b> or <b>New password</b> for one person, or <b>Get a fresh login sheet</b> (everyone who has not started gets a new password, and nobody is mailed).</>,
       ]} />
-      <p>Per participant you can: <b>Extend time</b>, <b>End exam now</b> (submits what they have), <b>Re-open exam</b> (a fresh attempt after a technical problem or an unfair lock), <b>Cancel invitation</b>, <b>New password</b>. Most of them ask for a reason.</p>
+      <p><b>Edit details</b> (the three dots on a person) corrects the name or the email. Saving never sends a mail: the screen shows <b>Email changed: not sent</b> until you press <b>Email login</b> for that person or <b>Send logins by email</b>.</p>
+      <p>The <b>Login mail</b> column shows, for every person, whether the mail is <b>Sending</b>, <b>Sent</b> (with the address and time) or <b>Not delivered</b> (with the reason, for example the address was refused). <b>Mail details</b> lists every mail sent to that person. <b>Sent</b> means the mail server accepted the mail; a mail that bounces later is not visible here.</p>
+      <p>Per participant you can also: <b>Extend time</b>, <b>End exam now</b> (submits what they have), <b>Re-open exam</b> (a fresh attempt after a technical problem or an unfair lock), <b>Cancel invitation</b>, <b>New password</b>. Most of them ask for a reason.</p>
     </div>) },
   { id: "exam-day", group: "exams", title: "On the day: the Live monitor", body: (
     <div className="grid gap-3">

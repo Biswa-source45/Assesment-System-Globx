@@ -17,9 +17,12 @@ from app.models import MailOutbox, aware, now
 log = logging.getLogger("oap.mail")
 
 
+SCRUBBED = "The login details were sent (or could not be sent) and have been removed from this record."
+
+
 def queue_mail(db: Session, to: str, subject: str, body: str, kind: str = "general",
-               org_id: Optional[str] = None, send_after: Optional[datetime] = None) -> MailOutbox:
-    m = MailOutbox(to=to, subject=subject, body=body, kind=kind, org_id=org_id, send_after=send_after)
+               org_id: Optional[str] = None, send_after: Optional[datetime] = None, html: Optional[str] = None) -> MailOutbox:
+    m = MailOutbox(to=to, subject=subject, body=body, body_html=html, kind=kind, org_id=org_id, send_after=send_after)
     db.add(m)
     return m
 
@@ -28,6 +31,8 @@ def _message(db: Session, m: MailOutbox, sender: str) -> EmailMessage:
     msg = EmailMessage()
     msg["From"], msg["To"], msg["Subject"] = sender, m.to, m.subject
     msg.set_content(m.body)
+    if m.body_html:  # the plain text stays as the fallback for mail programs that show only text
+        msg.add_alternative(m.body_html, subtype="html")
     if m.kind == "report_card" and m.attach:  # the PDF is made now, from the current marks; ValueError when the result is no longer shared
         from app.services.report_card import report_attachment
         name, pdf = report_attachment(db, m.attach)
@@ -79,6 +84,9 @@ def deliver_pending(db: Session) -> int:
                 smtp = None
                 break
     finally:
+        for m in rows:  # a login mail holds a password: once it has been tried it is not kept (the address, times and reason stay as the record)
+            if m.kind == "exam_login" and m.status != "queued":
+                m.body, m.body_html = SCRUBBED, None
         if smtp is not None:
             try:
                 smtp.quit()

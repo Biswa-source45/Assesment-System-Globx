@@ -60,12 +60,12 @@ test("logins made from the name work from the downloaded sheet, by username or b
   }
 
   // a bad email stops the whole list: a clear message, nobody is made
-  await add("Zelda Quill\nYara Bad, not-an-email")
+  await add("Zelda Quill, zelda.e2e@mail.test\nYara Bad, not-an-email")
   await expect(page.getByText("Line 2: 'not-an-email' is not a valid email")).toBeVisible()
   await expect(page.getByTestId("credentials")).toHaveCount(0)
   expect((await api.get(`/tests/${exam.id}/candidates`)).rows).toHaveLength(0)
 
-  await add("Zelda Quill\nYara Vance, yara.e2e@example.com")
+  await add("Zelda Quill, zelda.e2e@mail.test\nYara Vance, yara.e2e@example.com")
   await expect(page.getByTestId("cred-username")).toHaveCount(2)
   const [zelda, yara] = await page.getByTestId("cred-username").allInnerTexts()
   const [zeldaPw, yaraPw] = await page.getByTestId("cred-password").allInnerTexts()

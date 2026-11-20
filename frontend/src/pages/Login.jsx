@@ -1,5 +1,5 @@
 import { useState } from "react"
-import { Navigate, useNavigate } from "react-router-dom"
+import { Navigate, useNavigate, useSearchParams } from "react-router-dom"
 import { Eye, EyeOff } from "lucide-react"
 import { useAuth } from "@/lib/auth"
 import Brand from "@/components/Brand"
@@ -14,6 +14,8 @@ const PLAIN = { autoCapitalize: "none", autoCorrect: "off", spellCheck: false }
 export default function Login() {
   const { user, login } = useAuth()
   const navigate = useNavigate()
+  const exam = useSearchParams()[0].get("exam")  // the link in the login mail: /login?exam=<id> carries on to that exam after sign-in
+  const home = (u) => (u.is_staff ? "/admin" : exam ? `/exam?open=${encodeURIComponent(exam)}` : "/exam")
   const [shown, setShown] = useState(false)
   const [identifier, setIdentifier] = useState("")
   const [password, setPassword] = useState("")
@@ -22,7 +24,7 @@ export default function Login() {
   const [error, setError] = useState("")
   const [busy, setBusy] = useState(false)
 
-  if (user) return <Navigate to={user.is_staff ? "/admin" : "/exam"} replace />
+  if (user) return <Navigate to={home(user)} replace />
 
   async function submit(e) {
     e.preventDefault()
@@ -30,7 +32,7 @@ export default function Login() {
     setError("")
     try {
       const u = await login(identifier.trim(), password, totp)
-      navigate(u.is_staff ? "/admin" : "/exam", { replace: true })
+      navigate(home(u), { replace: true })
     } catch (err) {
       if (err.detail?.mfa_required) setNeedTotp(true)
       else setError(err.message)
@@ -44,7 +46,7 @@ export default function Login() {
       <Card className="w-full max-w-sm">
         <CardHeader>
           <Brand lg />
-          <CardDescription className="pt-2 text-center text-balance">Assess capabilities. Identify excellence.<br />Sign in with the username and password you were given.</CardDescription>
+          <CardDescription className="pt-2 text-center text-balance">Assess capabilities. Identify excellence.<br />Sign in with the username and password you were given.{exam && <><br />Your exam opens as soon as you are signed in.</>}</CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={submit} className="grid gap-4">

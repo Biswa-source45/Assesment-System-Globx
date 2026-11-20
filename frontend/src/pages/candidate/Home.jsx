@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react"
-import { Link } from "react-router-dom"
+import { Link, useNavigate, useSearchParams } from "react-router-dom"
 import { BarChart3, FileText } from "lucide-react"
+import { toast } from "sonner"
 import { get } from "@/lib/api"
 import { useAuth } from "@/lib/auth"
 import { ENDED } from "@/lib/labels"
@@ -22,11 +23,22 @@ export default function CandidateHome() {
   const [items, setItems] = useState(null)
   const [error, setError] = useState("")
   const [progress, setProgress] = useState([])
+  const navigate = useNavigate()
+  const [params, setParams] = useSearchParams()
+  const open = params.get("open")  // the exam link in the login mail: go straight to that exam when it can be started
 
   useEffect(() => {
     get("/me/assignments").then(setItems).catch((e) => setError(e.message))
     get("/me/progress").then(setProgress).catch(() => {})   // the strip is a bonus: nothing is shown when it cannot be loaded
   }, [])
+
+  useEffect(() => {
+    if (!open || items === null) return
+    setParams({}, { replace: true })
+    const a = items.find((x) => x.test.id === open)
+    if (!a) toast.error("That exam is not on your list. Check that you signed in with the login from the mail.")
+    else if (a.can_start) navigate(`/exam/${a.assignment_id}/start`, { replace: true })  // otherwise the list shows why it cannot be started yet
+  }, [open, items, navigate, setParams])
 
   return (
     <div className="min-h-svh bg-muted/40">
