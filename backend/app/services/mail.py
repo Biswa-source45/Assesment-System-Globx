@@ -41,12 +41,21 @@ def _message(db: Session, m: MailOutbox, sender: str) -> EmailMessage:
 
 
 def _connect(s):
+    if s.smtp_user and not s.smtp_password:  # a mail server drops the connection at sign-in when there is no password: say so plainly
+        raise RuntimeError("SMTP_PASSWORD is empty in the server settings (.env). Put the mail account's password there (for Gmail, the 16-letter app password) and restart the server.")
     smtp = smtplib.SMTP(s.smtp_host, s.smtp_port, timeout=30)
     try:
         if s.smtp_tls:
             smtp.starttls()
         if s.smtp_user:
             smtp.login(s.smtp_user, s.smtp_password)
+    except smtplib.SMTPAuthenticationError as e:
+        smtp.close()
+        said = e.smtp_error.decode("utf8", "replace") if isinstance(e.smtp_error, bytes) else str(e.smtp_error)
+        raise RuntimeError(f"The mail server did not accept the user name and password (SMTP_USER, SMTP_PASSWORD). For Gmail use a 16-letter app password, typed without spaces. It said: {said}")
+    except smtplib.SMTPServerDisconnected:
+        smtp.close()
+        raise RuntimeError("The mail server closed the connection while signing in. Check SMTP_USER and SMTP_PASSWORD (for Gmail, the 16-letter app password) and that this computer may reach smtp.gmail.com on port 587.")
     except Exception:
         smtp.close()
         raise
@@ -77,7 +86,7 @@ def deliver_pending(db: Session) -> int:
             except (ValueError, smtplib.SMTPRecipientsRefused, smtplib.SMTPDataError) as e:  # this mail only: no attachment can be made, or the address is refused
                 m.status, m.error = "failed", (str(e) if isinstance(e, ValueError) else f"The mail server refused it: {e}")[:500]
             except Exception as e:
-                reason = f"{type(e).__name__}: {e}"[:500]
+                reason = (str(e) if isinstance(e, RuntimeError) else f"{type(e).__name__}: {e}")[:500]  # RuntimeError: our own plain-language reason
                 log.warning("mail to %s failed: %s", m.to, reason)
                 for later in rows[rows.index(m):]:  # the server or the login is the problem: every mail waiting now fails with it
                     later.status, later.error = "failed", reason

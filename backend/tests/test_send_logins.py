@@ -403,3 +403,18 @@ def test_a_new_password_made_after_a_mail_puts_the_person_back_on_the_waiting_li
     assert _row(table, "Ben Stale")["login_mail"]["state"] == "password_changed" and _row(table, "Asha Stale")["login_mail"]["state"] == "sent"
     assert table["logins"]["waiting"] == 1
     assert client.post(f"{API}/tests/{tid}/send-logins", headers=recruiter, json={}).json()["queued"] == 1
+
+
+def test_a_mail_account_without_a_password_fails_with_a_plain_reason_instead_of_a_dropped_connection(client, monkeypatch):
+    creator, recruiter = _creator(client), _recruiter(client)
+    tid, _ = _published_exam(client, creator, "No password exam")
+    _people(client, recruiter, tid, "Dev Nopass, dev.nopass@mail.test")
+    cfg = lambda: SimpleNamespace(smtp_host="smtp.test", smtp_port=587, smtp_user="support@globx.co.in", smtp_password="", smtp_from="K <k@globx.co.in>",  # noqa: E731
+                                  smtp_tls=True, public_base_url="https://exam.test")
+    for module in (mail, tests_api, login_mail):
+        monkeypatch.setattr(module, "get_settings", cfg)
+    assert client.post(f"{API}/tests/{tid}/send-logins", headers=recruiter, json={}).json()["queued"] == 1
+    _deliver()
+    row = _row(_table(client, recruiter, tid), "Dev Nopass")["login_mail"]
+    assert row["state"] == "failed" and "SMTP_PASSWORD is empty" in row["error"]
+    assert client.post(f"{API}/tests/{tid}/send-logins", headers=recruiter, json={}).json()["queued"] == 1   # a failed mail is waiting again: fix the setting, press the button
