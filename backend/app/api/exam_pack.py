@@ -292,6 +292,8 @@ def _body(item: Any, dept_id: str, errs: List[str]) -> Optional[QuestionIn]:
             cfg["keywords"] = _texts(item, "keywords", errs)
         else:
             rub = item.get("rubric")
+            if not rub:  # the AI left it out: one criterion worth all the marks, described by the model answer (the examiner can refine it)
+                rub = [{"name": "Answer is correct and clear", "max": _num(item, "marks", DEFAULT_MARKS[t], []), "descriptor": str(answer or "")[:500]}]
             if not (isinstance(rub, list) and rub and all(isinstance(r, dict) and str(r.get("name") or "").strip() for r in rub)):
                 errs.append("'rubric' must be a list of {name, max, descriptor}")
             else:
@@ -896,12 +898,13 @@ def _place_pictures(pack: Dict[str, Any], body_text: str) -> None:
     """The AI is told where each picture sits, but with many pictures a small model attaches them to the wrong questions. So the places are decided here:
     each question is found in the paper (by its first words), and a picture goes to the question whose text it follows. A picture right after an option
     label ("A)", "(b)") is that option's picture, any other is a picture of the question text. A question that cannot be found keeps what the AI said."""
-    qs = [q for sec in pack["sections"] if isinstance(sec, dict) for q in (sec.get("questions") or []) if isinstance(q, dict) and not q.get("read_from_paper")]
+    qs = [q for sec in pack["sections"] if isinstance(sec, dict) for q in (sec.get("questions") or []) if isinstance(q, dict)]   # every question, in the paper's order
     for q in qs:
-        _markers_to_fields(q)
+        if not q.get("read_from_paper"):
+            _markers_to_fields(q)
     marks = [(m.start(), m.group(1)) for m in re.finditer(r"\[\[(IMAGE \d+)\]\]", body_text)]
     starts, cursor = [], 0
-    for q in qs:
+    for q in qs:   # a question read exactly from the paper is a boundary too: its pictures are its own and never go to the written question before it
         words = re.findall(r"\w+", re.sub(r"^\s*(?:Q|Question)?\s*\d+\s*[.):]?\s*", "", _plain(str(q.get("statement") or ""))))
         at = None
         for n in (8, 5, 3):
@@ -922,6 +925,8 @@ def _place_pictures(pack: Dict[str, Any], body_text: str) -> None:
             own.setdefault(before[-1], []).append((pos, iid))
     for _, i in found:
         q = qs[i]
+        if q.get("read_from_paper"):
+            continue
         q.pop("images", None)
         opts = [{"text": o, "image": ""} if isinstance(o, str) else {**o, "image": ""} for o in (q.get("options") if isinstance(q.get("options"), list) else []) if isinstance(o, (str, dict))]
         on_question = []

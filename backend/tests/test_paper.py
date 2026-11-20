@@ -844,3 +844,23 @@ def test_the_users_second_real_pdf_answers_inline_explanations_apart_passage_cle
         assert "collocation" not in plain(n) and mcq[n]["statement"].count("<b>") == 1                                              # one bold part: the question
     assert mcq[25]["title"].startswith("In the passage, the word steady") and mcq[23]["title"] == "What is the main idea of the passage?"
     assert "<blockquote>" not in mcq[22]["statement"]
+
+
+def test_pictures_of_a_question_read_from_the_paper_never_go_to_the_written_question_before_it():
+    body = ("Q1. What is an index in a database? Explain in 2 lines.\nAnswer: A structure for fast search.\n"
+            "Q2. You are given a list of sorted integers and a target number. Find the position of the target.\n[[IMAGE 1]]\nInput format\nOne line.\n"
+            "Q3. The database has two tables. Write one query for the names.\n[[IMAGE 2]]\n")
+    ai = {"type": "long", "title": "Index", "statement": "What is an index in a database? Explain in 2 lines."}
+    coding = {"type": "coding", "title": "Binary Search", "statement": "You are given a list of sorted integers and a target number. Find the position of the target.",
+              "read_from_paper": True, "images": ["IMAGE 1"]}
+    sql = {"type": "sql", "title": "Names", "statement": "The database has two tables. Write one query for the names.", "read_from_paper": True, "images": ["IMAGE 2"]}
+    pack = {"sections": [{"title": "S", "questions": [ai, coding, sql]}]}
+    exam_pack._place_pictures(pack, body)
+    assert "images" not in ai and coding["images"] == ["IMAGE 1"] and sql["images"] == ["IMAGE 2"]
+
+
+def test_an_explained_answer_without_a_rubric_gets_one_worth_all_its_marks():
+    errs = []
+    q = exam_pack._body({"type": "long", "title": "Index", "statement": "What is an index?", "model_answer": "A structure for fast search.", "marks": 2}, "d1", errs)
+    assert errs == [] and q is not None
+    assert [(r["name"], r["max"]) for r in q.config["rubric"]] == [("Answer is correct and clear", 2)] and q.config["rubric"][0]["descriptor"].startswith("A structure")
