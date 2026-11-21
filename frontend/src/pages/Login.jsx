@@ -46,7 +46,7 @@ export default function Login() {
       <Card className="w-full max-w-sm">
         <CardHeader>
           <Brand lg />
-          <CardDescription className="pt-2 text-center text-balance">Assess capabilities. Identify excellence.<br />Sign in with the username and password you were given.{exam && <><br />Your exam opens as soon as you are signed in.</>}</CardDescription>
+          <CardDescription className="pt-2 text-center text-balance">Assess capabilities. Identify excellence.<br />Sign in with the username and password you were given.<br />Use Google Chrome or Microsoft Edge.{exam && <><br />Your exam opens as soon as you are signed in.</>}</CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={submit} className="grid gap-4">

@@ -9,7 +9,7 @@ from datetime import datetime, timezone
 from typing import Optional
 
 from sqlalchemy import (JSON, Boolean, DateTime, Float, ForeignKey, Integer, Numeric, String, Text,
-                        UniqueConstraint, Index)
+                        UniqueConstraint, Index, select)
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db import Base
@@ -243,6 +243,7 @@ class Assignment(Base):
     extra_time_min: Mapped[int] = mapped_column(Integer, default=0)
     reminders_sent: Mapped[int] = mapped_column(Integer, default=0)
     tag: Mapped[str] = mapped_column(String(64), default="")
+    deleted_at: Mapped[Optional[datetime]] = mapped_column(TS, nullable=True)  # in the participants' bin since then; the person stays out of every list and count
     candidate: Mapped[User] = relationship(lazy="joined")
 
 
@@ -276,6 +277,10 @@ class Attempt(Base):
     plagiarism_level: Mapped[str] = mapped_column(String(10), default="clear")
     plagiarism_max: Mapped[float] = mapped_column(Float, default=0)
     feedback: Mapped[dict] = mapped_column(JSON, default=dict)
+
+
+# An attempt of somebody in the participants' bin counts nowhere (ranks, averages, results, report cards, queues): add it as .where(NOT_BINNED).
+NOT_BINNED = Attempt.assignment_id.not_in(select(Assignment.id).where(Assignment.deleted_at.is_not(None)))
 
 
 class AttemptQuestion(Base):

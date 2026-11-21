@@ -17,7 +17,7 @@ from app.core.paging import like, limit_q, offset_q, page_sql
 from app.core.security import hash_password, password_policy_error
 from app.db import get_db
 from app.domain import scoring
-from app.models import (ROLES, Answer, Assignment, Attempt, AttemptQuestion, AuditLog, CodeSubmission, Evaluation,
+from app.models import (NOT_BINNED, ROLES, Answer, Assignment, Attempt, AttemptQuestion, AuditLog, CodeSubmission, Evaluation,
                         MailOutbox, Organization, ProctorSnapshot, Question, RefreshToken, Test, User, UserRole, aware, now, uid)
 from app.sandbox import remote
 from app.services import ai
@@ -66,7 +66,7 @@ def _attempt(db: Session, atid: str, user: User) -> Attempt:
 @router.get("/evaluations/queue")
 def queue(test_id: Optional[str] = None, user: User = Depends(EVAL), db: Session = Depends(get_db)):
     stmt = (select(Answer, Attempt, Test).join(Attempt, Answer.attempt_id == Attempt.id).join(Test, Attempt.test_id == Test.id)
-            .where(Answer.status == "review", Test.org_id == user.org_id))
+            .where(Answer.status == "review", Test.org_id == user.org_id, NOT_BINNED))
     if test_id:
         stmt = stmt.where(Test.id == test_id)
     out = []
@@ -196,10 +196,10 @@ def dashboard(user: User = Depends(staff), db: Session = Depends(get_db)):
     org = user.org_id
     tests = db.scalars(select(Test).where(Test.org_id == org, Test.status != "archived")).all()
     tids = [t.id for t in tests]
-    asgs = db.scalars(select(Assignment).where(Assignment.test_id.in_(tids))).all() if tids else []
-    atts = db.scalars(select(Attempt).where(Attempt.test_id.in_(tids))).all() if tids else []
+    asgs = db.scalars(select(Assignment).where(Assignment.test_id.in_(tids), Assignment.deleted_at.is_(None))).all() if tids else []
+    atts = db.scalars(select(Attempt).where(Attempt.test_id.in_(tids), NOT_BINNED)).all() if tids else []
     review = db.scalar(select(func.count(Answer.id)).join(Attempt, Answer.attempt_id == Attempt.id)
-                       .where(Attempt.test_id.in_(tids), Answer.status == "review")) if tids else 0
+                       .where(Attempt.test_id.in_(tids), Answer.status == "review", NOT_BINNED)) if tids else 0
     return {"tests": len(tests), "live": sum(1 for t in tests if t.status == "published"),
             "invited": len(asgs), "attempted": len(atts),
             "in_progress": sum(1 for a in atts if a.status == "in_progress"),

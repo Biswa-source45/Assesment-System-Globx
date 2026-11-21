@@ -24,6 +24,9 @@ export function stopCamera() {
   media.screen = null
 }
 
+// The exam is supported in Google Chrome and Microsoft Edge only. Firefox, Opera and Safari give themselves away in the user agent; Brave hides it but has navigator.brave.
+export const wrongBrowser = () => !/Chrome\//.test(navigator.userAgent) || /OPR\/|Firefox\//.test(navigator.userAgent) || !!navigator.brave
+
 export const cameraLive = () => !!media.stream?.getVideoTracks().some((t) => t.readyState === "live")
 
 // The whole screen at a low frame rate (an exam is mostly still text). Chrome's own box always appears; the options below only make it open on

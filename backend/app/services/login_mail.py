@@ -35,6 +35,9 @@ def window_sentence(t: Test) -> str:
     return "There is no fixed date for this exam. You can take it at a time that suits you, as soon as you have this mail."
 
 
+BROWSER = "Open the link in Google Chrome or Microsoft Edge only. Do not use Firefox, Brave, Safari or any other browser: the exam may not start in them."
+
+
 def _timer_sentence(t: Test) -> str:
     extra = " Please start early enough to finish before the exam closes." if t.ends_at else ""
     return f"Once you press Start you have {t.duration_min} minutes. The timer cannot be paused, so start only when you can sit the whole exam without a break.{extra}"
@@ -42,7 +45,7 @@ def _timer_sentence(t: Test) -> str:
 
 def _prepare(t: Test) -> List[str]:
     p = proctoring_config(t)
-    out = ["A laptop or desktop computer with Google Chrome or Microsoft Edge, and a steady internet connection. Close other programs and tabs."]
+    out = ["A laptop or desktop computer with Google Chrome or Microsoft Edge (not Firefox, Brave or any other browser), and a steady internet connection. Close other programs and tabs."]
     if p.get("enabled") and p.get("webcam"):
         out.append("A working webcam and a quiet, well-lit room. Your face must stay in the camera view for the whole exam.")
     if p.get("enabled") and p.get("screen_share"):
@@ -63,7 +66,7 @@ def exam_login_mail(t: Test, name: str, username: str, password: str) -> Tuple[s
         f'You have been registered for the online exam "{t.title}" by {COMPANY}.', "",
         "EXAM DETAILS", f"Exam: {t.title}", *([desc] if desc else []), f"Time allowed: {t.duration_min} minutes", f"When: {window}", "",
         "YOUR LOGIN", f"Username: {username}", f"Password: {password}", "",
-        "HOW TO START", f"1. Open this link: {link}", "2. Sign in with the username and password above. You are taken to your exam.",
+        "HOW TO START", f"1. Open this link: {link}", f"   {BROWSER}", "2. Sign in with the username and password above. You are taken to your exam.",
         f"3. Read the instructions and press Start. {timer}", "",
         "BEFORE YOU START", *[f"- {x}" for x in prepare], "",
         "Keep this mail private: it holds your password. If you did not expect it, ignore it and tell the exam organiser.", "",
@@ -87,6 +90,7 @@ def exam_login_mail(t: Test, name: str, username: str, password: str) -> Tuple[s
 </td></tr></table>
 <table role="presentation" cellpadding="0" cellspacing="0" style="margin:20px 0 6px 0"><tr><td bgcolor="#1f4e8c" style="border-radius:6px"><a href="{e(link, quote=True)}" style="display:inline-block;padding:12px 26px;color:#ffffff;font-size:15px;font-weight:bold;text-decoration:none">Open your exam</a></td></tr></table>
 <p style="margin:0 0 18px 0;font-size:12px;color:#6b7280">Or copy this link into your browser: {e(link)}</p>
+<p style="margin:0 0 18px 0;font-size:14px;font-weight:bold;color:#b91c1c;line-height:21px">{e(BROWSER)}</p>
 <div style="font-size:12px;font-weight:bold;color:#1f4e8c;letter-spacing:1px;margin-bottom:6px">HOW TO START</div>
 <p style="margin:0 0 16px 0;font-size:14px;color:#1b2a41;line-height:21px">Sign in with the username and password above and you are taken to your exam. Read the instructions and press <b>Start</b>. {e(timer)}</p>
 <div style="font-size:12px;font-weight:bold;color:#1f4e8c;letter-spacing:1px;margin-bottom:6px">BEFORE YOU START</div>

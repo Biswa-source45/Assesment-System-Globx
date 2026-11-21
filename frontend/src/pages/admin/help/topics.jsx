@@ -313,7 +313,8 @@ export const TOPICS = [
         <>On the <b>Questions</b> tab press <b>Add section</b>, then <b>Add questions</b> (from the bank), <b>Auto populate</b> (random pick) or <b>Build with AI</b>.</>,
         <>On the <b>Participants</b> tab type each person as <code>Full name, email</code> (or upload a sheet) and press <b>Create logins</b>.</>,
         <>Press <b>Publish</b>. The platform refuses to publish an exam that is incomplete and tells you what is missing.</>,
-        <>Back on the <b>Participants</b> tab press <b>Send logins by email</b>: every person gets their username, password and the exam link.</>,
+        <>Back on the <b>Participants</b> tab press <b>Send logins by email</b>: every person gets their username, password and the exam link. The mail tells them to use <b>Google Chrome or Microsoft Edge only</b>: other browsers (Firefox, Brave) can fail when the exam starts.</>,
+        <>Added someone by mistake? Press the three dots on their row and choose <b>Delete participant</b>. They move to the <b>Bin</b> tab on the same page: they are in no list, result or Excel file. From the Bin you can <b>Restore</b> them, or <b>Delete for good</b> (their login, answers, pictures and recordings are removed and cannot come back). A person taking the exam right now cannot be deleted.</>,
       ]} />
     </div>) },
   { id: "exam-details", group: "exams", title: "Every field on the exam's Details tab", body: (
@@ -386,6 +387,10 @@ export const TOPICS = [
         <>When you <b>Declare results</b>, each candidate who has an e-mail address is sent the PDF automatically. The <b>Report card</b> column shows Emailed, Sending, Failed (with the reason above the table), Not sent or No e-mail. <b>E-mail report cards</b> sends to those who have not got it and tries failed ones again; nobody gets two.</>,
         "A candidate with no e-mail address (a login only) signs in, sees the exam under Your exams and presses View report card or Report card PDF (Preview or Download). The same goes for everyone: the card is always current, while a mail already sent keeps the marks it had.",
         "Withdrawing the results hides the report card again; a mail not yet sent is not sent.",
+      ]} />
+      <p className="font-medium">Compare</p>
+      <List items={[
+        <>The <b>Compare</b> tab shows every student in one table, like the Excel file: rank, score, percent, the marks in each section, minutes taken, result and risk. Click a heading to sort (for example by a section to see who was strongest in it). The last row is the average of the people who appeared. People in the participants' Bin are not shown.</>,
       ]} />
       <p className="font-medium">Analytics</p>
       <List items={[

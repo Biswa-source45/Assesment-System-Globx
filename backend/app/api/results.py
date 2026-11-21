@@ -16,12 +16,12 @@ from app.core.config import get_settings
 from app.core.deps import EVAL, ROLE_GROUPS, VIEW, audit, current_user, same_org
 from app.core.paging import limit_q, offset_q, page_rows
 from app.db import get_db
-from app.models import Answer, Attempt, Evaluation, Test, User, aware, now, uid
+from app.models import Answer, Assignment, Attempt, Evaluation, Test, User, aware, now, uid
 from app.services import jobs
 from app.services.analytics import attempt_analytics, progress
 from app.services.attempts import recompute_totals
 from app.services.report_card import card_data, card_pdf, file_name, is_real_email, mail_states, queue_report_cards, visible_to_candidate
-from app.services.reports import ENDED_EARLY, FINAL, candidates_table
+from app.services.reports import ENDED_EARLY, FINAL, NOT_BINNED, candidates_table
 
 router = APIRouter(tags=["results"])
 
@@ -33,7 +33,7 @@ def _active(db: Session, t: Test) -> int:
 def _review_by_attempt(db: Session, t: Test) -> dict:
     """Answers waiting for a person (AI unsure, AI failed, no AI, a file instead of text), per attempt."""
     q = (select(Answer.attempt_id, func.count(Answer.id)).join(Attempt, Answer.attempt_id == Attempt.id)
-         .where(Attempt.test_id == t.id, Attempt.status.in_(FINAL), Answer.status == "review").group_by(Answer.attempt_id))
+         .where(Attempt.test_id == t.id, Attempt.status.in_(FINAL), Answer.status == "review", NOT_BINNED).group_by(Answer.attempt_id))
     return dict(db.execute(q).all())
 
 
@@ -63,7 +63,7 @@ def results(tid: str, q: Optional[str] = None, limit: Optional[int] = Depends(li
         r["mail"] = "no_email" if not is_real_email(r["email"]) else states.get(r["attempt_id"], "")
     mail = {k: sum(1 for r in done if r.get("mail") == k) for k in ("sent", "queued", "failed", "logged", "no_email")}
     page, total = page_rows(rows, q, limit, offset)
-    return {"state": _state(t, attention), "attention": attention, "active": _active(db, t), "title": t.title, "cutoff": t.cutoff, "ends_at": aware(t.ends_at).isoformat() if t.ends_at else None,
+    return {"state": _state(t, attention), "attention": attention, "active": _active(db, t), "title": t.title, "cutoff": t.cutoff, "sections": [{"id": s.id, "title": s.title} for s in t.sections], "ends_at": aware(t.ends_at).isoformat() if t.ends_at else None,
             "calculated_at": aware(t.calculated_at).isoformat() if t.calculated_at else None,
             "declared_at": aware(t.results_declared_at).isoformat() if t.results_declared_at else None,
             "summary": {"assigned": len(rows), "appeared": len(done), "absent": sum(1 for r in rows if r["outcome"] == "absent"),
@@ -97,7 +97,7 @@ def accept_ai(tid: str, request: Request, user: User = Depends(EVAL), db: Sessio
     if not t.calculated_at:  # before the calculation the suggestion is only the keyword score, without the AI
         raise HTTPException(409, "The results are not calculated yet")
     rows = db.execute(select(Answer, Attempt).join(Attempt, Answer.attempt_id == Attempt.id)
-                      .where(Attempt.test_id == t.id, Attempt.status.in_(FINAL), Answer.status == "review")).all()
+                      .where(Attempt.test_id == t.id, Attempt.status.in_(FINAL), Answer.status == "review", NOT_BINNED)).all()
     touched, accepted = {}, 0
     for a, at in rows:
         suggested = a.ai_score if a.ai_score is not None else a.auto_score
@@ -160,7 +160,7 @@ def _card_attempt(db: Session, user: User, atid: str) -> Attempt:
         raise HTTPException(404, "Report card not found")
     t = db.get(Test, at.test_id)
     if at.candidate_id == user.id:
-        if t.status == "archived":
+        if t.status == "archived" or db.get(Assignment, at.assignment_id).deleted_at:  # taken out of use, or the person was deleted from the exam
             raise HTTPException(404, "Report card not found")
         if reason := visible_to_candidate(t, at):
             raise HTTPException(409, reason)
@@ -199,7 +199,7 @@ def my_progress(user: User = Depends(current_user), db: Session = Depends(get_db
 def report_cards_zip(tid: str, user: User = Depends(VIEW), db: Session = Depends(get_db)):
     """Every finished candidate's report card in one file (a preview before the results are declared, too)."""
     t = _test(db, tid, user)
-    attempts = db.scalars(select(Attempt).where(Attempt.test_id == t.id, Attempt.status.in_(FINAL)).order_by(Attempt.started_at)).all()
+    attempts = db.scalars(select(Attempt).where(Attempt.test_id == t.id, Attempt.status.in_(FINAL), NOT_BINNED).order_by(Attempt.started_at)).all()
     if not attempts:
         raise HTTPException(409, "No candidate has a result yet")
     buf = io.BytesIO()

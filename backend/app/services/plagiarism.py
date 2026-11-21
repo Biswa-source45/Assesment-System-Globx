@@ -10,7 +10,7 @@ from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from app.domain import plagiarism as P
-from app.models import (Answer, Attempt, AttemptQuestion, CodeSubmission, PlagiarismMatch, Question, uid)
+from app.models import (NOT_BINNED, Answer, Attempt, AttemptQuestion, CodeSubmission, PlagiarismMatch, Question, uid)
 
 log = logging.getLogger("oap.plagiarism")
 
@@ -18,7 +18,7 @@ log = logging.getLogger("oap.plagiarism")
 def _final_texts(db: Session, test_id: str) -> Dict[str, Dict[str, Dict]]:
     """question_id -> attempt_id -> {kind, lang, text}"""
     atts = db.scalars(select(Attempt).where(Attempt.test_id == test_id,
-                                            Attempt.status.in_(["review_pending", "evaluated", "submitted"]))).all()
+                                            Attempt.status.in_(["review_pending", "evaluated", "submitted"]), NOT_BINNED)).all()
     out: Dict[str, Dict[str, Dict]] = {}
     for at in atts:
         for a in db.scalars(select(Answer).where(Answer.attempt_id == at.id)).all():
@@ -65,7 +65,7 @@ def run_for_test(db: Session, test_id: str) -> Dict:
                                        similarity=sim, longest_run=run, level=lvl))
                 n += 1
     from app.services.proctoring import recompute
-    for at in db.scalars(select(Attempt).where(Attempt.test_id == test_id)).all():
+    for at in db.scalars(select(Attempt).where(Attempt.test_id == test_id, NOT_BINNED)).all():
         m = best.get(at.id, 0.0)
         confirmed_fp = db.scalars(select(PlagiarismMatch).where(
             PlagiarismMatch.test_id == test_id, PlagiarismMatch.decision == "false_positive",

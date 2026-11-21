@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 from app.models import (Answer, Assignment, Attempt, AttemptQuestion, CodeSubmission, Evaluation, ProctorEvent, Question, Test, User,
                         aware)
 from app.services.report_card import KIND, question_status, visible_to_candidate
-from app.services.reports import FINAL, RESULT_LABEL, has_answer, ranked_attempts, result_of, results_of
+from app.services.reports import FINAL, NOT_BINNED, RESULT_LABEL, has_answer, ranked_attempts, result_of, results_of
 
 EPS = 1e-9
 FEW = 5            # fewer answers than this say nothing about a question
@@ -141,8 +141,8 @@ def _minutes(a: Attempt) -> Optional[float]:
 
 # ---------------------------------------------------------------- the exam as a whole (staff)
 def exam_analytics(db: Session, test: Test) -> Dict[str, Any]:
-    asgs = db.scalars(select(Assignment).where(Assignment.test_id == test.id)).all()
-    atts = db.scalars(select(Attempt).where(Attempt.test_id == test.id, Attempt.status != "reset")).all()
+    asgs = db.scalars(select(Assignment).where(Assignment.test_id == test.id, Assignment.deleted_at.is_(None))).all()
+    atts = db.scalars(select(Attempt).where(Attempt.test_id == test.id, Attempt.status != "reset", NOT_BINNED)).all()
     done = [a for a in atts if a.status in FINAL]
     ids = [a.id for a in done]
     recs, qs = _load(db, done)
@@ -285,7 +285,7 @@ def attempt_analytics(db: Session, at: Attempt) -> Dict[str, Any]:
 # ---------------------------------------------------------------- a candidate's results over all their exams
 def progress(db: Session, user: User) -> List[Dict[str, Any]]:
     out = []
-    for at in db.scalars(select(Attempt).where(Attempt.candidate_id == user.id, Attempt.status == "evaluated").order_by(Attempt.submitted_at.desc()).limit(40)):
+    for at in db.scalars(select(Attempt).where(Attempt.candidate_id == user.id, Attempt.status == "evaluated", NOT_BINNED).order_by(Attempt.submitted_at.desc()).limit(40)):
         t = db.get(Test, at.test_id)
         if t.status == "archived" or visible_to_candidate(t, at):
             continue

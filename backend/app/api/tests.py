@@ -7,7 +7,7 @@ from typing import Any, Dict, List, Optional
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import Response
 from pydantic import BaseModel
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
@@ -16,7 +16,7 @@ from app.core.paging import limit_q, offset_q, page_rows
 from app.core.security import hash_password
 from app.db import get_db
 from app.api.library import q_out
-from app.models import (Assignment, Attempt, Department, PlagiarismMatch, Question, QuestionGroup, Section, SectionItem, Test,
+from app.models import (NOT_BINNED, Assignment, Attempt, Department, MailOutbox, PlagiarismMatch, Question, QuestionGroup, Section, SectionItem, Test,
                         User, AttemptQuestion, CodeSubmission, Answer, aware, now, uid)
 from app.services import invites as inv
 from app.services import login_mail, reports
@@ -88,6 +88,14 @@ def _test(db: Session, tid: str, user: User) -> Test:
     return t
 
 
+def _assignment(db: Session, aid: str, binned: Optional[bool] = False) -> Assignment:
+    """A person's place in an exam. A person in the bin is "not found" for everything except the bin's own actions (binned=None lets both through)."""
+    a = db.get(Assignment, aid)
+    if not a or (binned is not None and bool(a.deleted_at) != binned):
+        raise HTTPException(404, "Assignment not found")
+    return a
+
+
 def _draft(t: Test) -> None:
     """Sections and questions of a published exam are frozen: candidates may be taking it."""
     if t.status != "draft":
@@ -144,7 +152,7 @@ def test_out(db: Session, t: Test, full: bool = True) -> dict:
             secs.append({"id": s.id, "title": s.title, "order": s.order, "timer_min": s.timer_min, "shuffle": s.shuffle,
                          "lock_nav": s.lock_nav, "min_score": s.min_score, "allow_negative": s.allow_negative,
                          "question_count": sq, "marks": round(sm, 2), "items": [item_out(db, it) for it in s.items]})
-    asgs = db.scalars(select(Assignment).where(Assignment.test_id == t.id)).all()
+    asgs = db.scalars(select(Assignment).where(Assignment.test_id == t.id, Assignment.deleted_at.is_(None))).all()
     d = {"id": t.id, "department_id": t.department_id, "title": t.title, "status": t.status, "duration_min": t.duration_min,
          "starts_at": _iso(t.starts_at), "ends_at": _iso(t.ends_at), "cutoff": t.cutoff,
          "question_count": n_q, "total_marks": round(marks, 2), "section_count": len(t.sections),
@@ -523,9 +531,7 @@ async def read_participants_sheet(tid: str, file: UploadFile = File(...), user: 
 @router.put("/assignments/{aid}/participant")
 def edit_participant(aid: str, body: ParticipantEditIn, request: Request, user: User = Depends(RECRUIT), db: Session = Depends(get_db)):
     """Correct a participant's name and email. Nothing is mailed: the examiner sends the login when they choose."""
-    a = db.get(Assignment, aid)
-    if not a:
-        raise HTTPException(404, "Assignment not found")
+    a = _assignment(db, aid)
     t = _test(db, a.test_id, user)
     if t.status == "archived":
         raise HTTPException(422, "This test is archived")
@@ -539,9 +545,7 @@ def edit_participant(aid: str, body: ParticipantEditIn, request: Request, user: 
 @router.get("/assignments/{aid}/login-mails")
 def login_mail_history(aid: str, user: User = Depends(VIEW), db: Session = Depends(get_db)):
     """Every login mail sent to this person, newest first: the address, when, whether the mail server accepted it, and the reason when not."""
-    a = db.get(Assignment, aid)
-    if not a:
-        raise HTTPException(404, "Assignment not found")
+    a = _assignment(db, aid)
     _test(db, a.test_id, user)
     return {"email": a.candidate.email if is_real_email(a.candidate.email) else "", "mails": login_mail.history(login_mail.mails_of(db, [a.id]).get(a.id, []))}
 
@@ -574,7 +578,7 @@ def send_logins(tid: str, body: SendLoginsIn, request: Request, user: User = Dep
     that address (or the mail failed). People already mailed keep their password unless `again` is set."""
     t = _test(db, tid, user)
     _can_mail(t)
-    asgs = [a for a in db.scalars(select(Assignment).where(Assignment.test_id == t.id, Assignment.status == "invited")).all() if a.candidate.username]
+    asgs = [a for a in db.scalars(select(Assignment).where(Assignment.test_id == t.id, Assignment.status == "invited", Assignment.deleted_at.is_(None))).all() if a.candidate.username]
     mails = login_mail.mails_of(db, [a.id for a in asgs])
     states = {a.id: login_mail.mail_state(a.candidate.email, mails.get(a.id, []))["state"] for a in asgs}
     no_email = sum(1 for s in states.values() if s == "no_email")
@@ -591,9 +595,7 @@ def send_logins(tid: str, body: SendLoginsIn, request: Request, user: User = Dep
 @router.post("/assignments/{aid}/send-login")
 def send_login(aid: str, request: Request, user: User = Depends(RECRUIT), db: Session = Depends(get_db)):
     """E-mail one person a fresh login (a failed mail, or an email that was corrected)."""
-    a = db.get(Assignment, aid)
-    if not a:
-        raise HTTPException(404, "Assignment not found")
+    a = _assignment(db, aid)
     t = _test(db, a.test_id, user)
     _can_mail(t)
     if a.status != "invited" or not a.candidate.username:
@@ -617,9 +619,7 @@ def _fresh_login(a: Assignment) -> dict:
 
 @router.post("/assignments/{aid}/password")
 def reset_password(aid: str, request: Request, user: User = Depends(RECRUIT), db: Session = Depends(get_db)):
-    a = db.get(Assignment, aid)
-    if not a:
-        raise HTTPException(404, "Assignment not found")
+    a = _assignment(db, aid)
     _test(db, a.test_id, user)
     out = _fresh_login(a)
     login_mail.outdate(db, [a.id])
@@ -632,7 +632,7 @@ def reset_password(aid: str, request: Request, user: User = Depends(RECRUIT), db
 def fresh_login_sheet(tid: str, request: Request, user: User = Depends(RECRUIT), db: Session = Depends(get_db)):
     """The whole login sheet again: new passwords for everyone who has not started yet (people already taking or finished keep theirs)."""
     t = _test(db, tid, user)
-    rows = [_fresh_login(a) for a in db.scalars(select(Assignment).where(Assignment.test_id == t.id, Assignment.status == "invited")).all() if a.candidate.username]
+    rows = [_fresh_login(a) for a in db.scalars(select(Assignment).where(Assignment.test_id == t.id, Assignment.status == "invited", Assignment.deleted_at.is_(None))).all() if a.candidate.username]
     login_mail.outdate(db, [r["assignment_id"] for r in rows])
     audit(db, user, "passwords_reset_all", "test", t.id, {"count": len(rows)}, request)
     db.commit()
@@ -640,10 +640,16 @@ def fresh_login_sheet(tid: str, request: Request, user: User = Depends(RECRUIT),
 
 
 @router.get("/tests/{tid}/candidates")
-def candidates(tid: str, status: str = "", q: Optional[str] = None, limit: Optional[int] = Depends(limit_q), offset: int = Depends(offset_q),
+def candidates(tid: str, status: str = "", q: Optional[str] = None, deleted: bool = False, limit: Optional[int] = Depends(limit_q), offset: int = Depends(offset_q),
                user: User = Depends(VIEW), db: Session = Depends(get_db)):
-    """The people of an exam. `counts` always covers everyone; `rows` is the whole table, or with ?limit=&offset= (and q to search) one page, `total` the rows that match."""
+    """The people of an exam. `counts` always covers everyone; `rows` is the whole table, or with ?limit=&offset= (and q to search) one page, `total` the rows that match.
+    With ?deleted=true: the people in the bin instead (newest first); they are in no other list or count."""
     t = _test(db, tid, user)
+    if deleted:
+        rows = reports.candidates_table(db, t, binned=True)
+        rows.sort(key=lambda r: r["deleted_at"], reverse=True)
+        page, total = page_rows(rows, q, limit, offset)
+        return {"rows": page, "total": total}
     rows = reports.candidates_table(db, t)
     mails = login_mail.mails_of(db, [r["assignment_id"] for r in rows])  # one query for everyone
     counts: Dict[str, int] = {}
@@ -659,7 +665,52 @@ def candidates(tid: str, status: str = "", q: Optional[str] = None, limit: Optio
     if status:
         rows = [r for r in rows if r["status"] == status]
     page, total = page_rows(rows, q, limit, offset)
-    return {"rows": page, "counts": counts, "total": total, "logins": logins}
+    binned = db.scalar(select(func.count(Assignment.id)).where(Assignment.test_id == t.id, Assignment.deleted_at.is_not(None)))
+    return {"rows": page, "counts": counts, "total": total, "logins": logins, "binned": binned}
+
+
+@router.delete("/assignments/{aid}")
+def bin_participant(aid: str, request: Request, user: User = Depends(RECRUIT), db: Session = Depends(get_db)):
+    """Move a person to the bin: out of every list, count, rank and export until restored. Nothing is deleted. Not while they are taking the exam or being marked."""
+    from app.services import jobs
+    a = _assignment(db, aid)
+    t = _test(db, a.test_id, user)
+    if db.scalar(select(Attempt.id).where(Attempt.assignment_id == a.id, Attempt.status.in_(jobs.ACTIVE))):
+        raise HTTPException(409, f"{a.candidate.name} is taking the exam or is being marked right now. Try again when that is over")
+    a.deleted_at = now()
+    for m in db.scalars(select(MailOutbox).where(MailOutbox.attach == a.id, MailOutbox.kind == login_mail.KIND, MailOutbox.status == "queued")):
+        m.status, m.error = "failed", "The participant was deleted before this mail went out"  # nothing is mailed to a deleted person
+    audit(db, user, "participant_binned", "assignment", a.id, {"name": a.candidate.name}, request)
+    db.commit()
+    return {"ok": True}
+
+
+def _binned(db: Session, aid: str, user: User) -> Assignment:
+    a = _assignment(db, aid, binned=None)
+    _test(db, a.test_id, user)
+    if not a.deleted_at:
+        raise HTTPException(409, "This person is not in the bin")
+    return a
+
+
+@router.post("/assignments/{aid}/restore")
+def restore_participant(aid: str, request: Request, user: User = Depends(RECRUIT), db: Session = Depends(get_db)):
+    a = _binned(db, aid, user)
+    a.deleted_at = None
+    audit(db, user, "participant_restored", "assignment", a.id, {"name": a.candidate.name}, request)
+    db.commit()
+    return {"ok": True}
+
+
+@router.delete("/assignments/{aid}/permanent")
+def delete_participant_for_good(aid: str, request: Request, user: User = Depends(RECRUIT), db: Session = Depends(get_db)):
+    """From the bin only: the person, their answers, results, pictures and recordings are removed and cannot come back."""
+    a = _binned(db, aid, user)
+    name = a.candidate.name
+    audit(db, user, "participant_deleted", "assignment", a.id, {"name": name}, request)
+    inv.purge_assignment(db, a)
+    db.commit()
+    return {"ok": True}
 
 
 @router.get("/tests/{tid}/monitor")
@@ -670,9 +721,7 @@ def monitor(tid: str, user: User = Depends(VIEW), db: Session = Depends(get_db))
 @router.post("/assignments/{aid}/action")
 def assignment_action(aid: str, body: ActionIn, request: Request, user: User = Depends(RECRUIT), db: Session = Depends(get_db)):
     from app.services.mail import queue_mail
-    a = db.get(Assignment, aid)
-    if not a:
-        raise HTTPException(404, "Assignment not found")
+    a = _assignment(db, aid)
     t = _test(db, a.test_id, user)
     at = db.scalar(select(Attempt).where(Attempt.assignment_id == a.id).order_by(Attempt.started_at.desc()))
     act = body.action
@@ -757,7 +806,8 @@ def plagiarism_run(tid: str, user: User = Depends(VIEW), db: Session = Depends(g
 @router.get("/tests/{tid}/plagiarism")
 def plagiarism_list(tid: str, user: User = Depends(VIEW), db: Session = Depends(get_db)):
     t = _test(db, tid, user)
-    ms = db.scalars(select(PlagiarismMatch).where(PlagiarismMatch.test_id == t.id).order_by(PlagiarismMatch.similarity.desc())).all()
+    live = select(Attempt.id).where(NOT_BINNED)  # a match with somebody in the bin is not shown
+    ms = db.scalars(select(PlagiarismMatch).where(PlagiarismMatch.test_id == t.id, PlagiarismMatch.attempt_a.in_(live), PlagiarismMatch.attempt_b.in_(live)).order_by(PlagiarismMatch.similarity.desc())).all()
     names = {}
 
     def who(aid):

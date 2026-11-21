@@ -16,7 +16,9 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Textarea } from "@/components/ui/textarea"
+import ParticipantBin from "@/pages/admin/ParticipantBin"
 
 function saveFile(text, name) {
   const a = document.createElement("a")
@@ -68,6 +70,7 @@ export default function ExamParticipants({ test }) {
   const [skipped, setSkipped] = useState([])  // rows of an uploaded sheet that could not be used, with the reason
   const [note, setNote] = useState(null)  // what the last "Send logins" did
   const [search, setSearch] = useState("")
+  const [view, setView] = useState("list")  // "bin": the people deleted from this exam
   const fileRef = useRef(null)
   // 50 people now, the next 50 when the list is scrolled to its end; the server searches
   const paged = usePaged(`/tests/${test.id}/candidates`, { q: useDebounced(search.trim()) }, { idKey: "assignment_id" })
@@ -191,7 +194,7 @@ export default function ExamParticipants({ test }) {
         <Card className="print-area" data-testid="credentials">
           <CardHeader>
             <CardTitle>Logins for {test.title}</CardTitle>
-            <CardDescription>Sign in at {window.location.origin}. Passwords are shown only on this page, so this list keeps every login you create or send here. Print or download it before you leave. Lost one? Use Email login or New password for a person, or Get a fresh login sheet for everyone who has not started.</CardDescription>
+            <CardDescription>Sign in at {window.location.origin}, in Google Chrome or Microsoft Edge only (not Firefox or Brave). Passwords are shown only on this page, so this list keeps every login you create or send here. Print or download it before you leave. Lost one? Use Email login or New password for a person, or Get a fresh login sheet for everyone who has not started.</CardDescription>
           </CardHeader>
           <CardContent className="grid gap-3">
             <Table>
@@ -215,7 +218,13 @@ export default function ExamParticipants({ test }) {
         </Card>
       )}
 
-      <Card>
+      {recruit && (
+        <Tabs value={view} onValueChange={setView}>
+          <TabsList><TabsTrigger value="list" data-testid="list-tab">Participants</TabsTrigger><TabsTrigger value="bin" data-testid="bin-tab">Bin{paged.meta?.binned ? ` (${paged.meta.binned})` : ""}</TabsTrigger></TabsList>
+        </Tabs>
+      )}
+
+      {view === "bin" ? <Card><CardHeader><CardTitle>Bin</CardTitle></CardHeader><CardContent><ParticipantBin testId={test.id} onChange={load} /></CardContent></Card> : <Card>
         <CardHeader>
           <div className="flex flex-wrap items-center justify-between gap-2">
             <CardTitle>Participants</CardTitle>
@@ -275,7 +284,7 @@ export default function ExamParticipants({ test }) {
           )}
           <MoreRows paged={paged} what="people" />
         </CardContent>
-      </Card>
+      </Card>}
     </div>
   )
 }

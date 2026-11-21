@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 
 from app.domain.risk import BAND
 from app.domain.scoring import rank_key
-from app.models import (Answer, Assignment, Attempt, AttemptQuestion, CodeSubmission, ProctorEvent, ProctorSnapshot,
+from app.models import (NOT_BINNED, Answer, Assignment, Attempt, AttemptQuestion, CodeSubmission, ProctorEvent, ProctorSnapshot,
                         Question, Test, User, aware, now)
 from app.services.attempts import _text_of, proctoring_config
 from app.services.plagiarism import candidate_summary
@@ -49,7 +49,7 @@ def results_of(db: Session, test: Test, attempts: List[Attempt]) -> Dict[str, st
 
 
 def ranked_attempts(db: Session, test_id: str) -> List[Attempt]:
-    atts = db.scalars(select(Attempt).where(Attempt.test_id == test_id, Attempt.status.in_(FINAL))).all()
+    atts = db.scalars(select(Attempt).where(Attempt.test_id == test_id, Attempt.status.in_(FINAL), NOT_BINNED)).all()
 
     def key(a):
         took = ((aware(a.submitted_at) - aware(a.started_at)).total_seconds() if a.submitted_at else 1e9)
@@ -141,8 +141,9 @@ def attempt_report(db: Session, at: Attempt, staff_view: bool = True) -> Dict:
     return rep
 
 
-def candidates_table(db: Session, test: Test, status: str = "") -> List[Dict]:
-    asgs = db.scalars(select(Assignment).where(Assignment.test_id == test.id)).all()
+def candidates_table(db: Session, test: Test, status: str = "", binned: bool = False) -> List[Dict]:
+    """One row per person of the exam; binned=True gives the people in the bin instead of everyone else."""
+    asgs = db.scalars(select(Assignment).where(Assignment.test_id == test.id, Assignment.deleted_at.is_not(None) if binned else Assignment.deleted_at.is_(None))).all()
     ranked = ranked_attempts(db, test.id)
     rank = {a.id: i + 1 for i, a in enumerate(ranked)}
     latest: Dict[str, Attempt] = {}  # each person's newest attempt that was not reset: one query for everyone, not one per person
@@ -161,7 +162,7 @@ def candidates_table(db: Session, test: Test, status: str = "") -> List[Dict]:
             continue
         rows.append({"assignment_id": g.id, "attempt_id": at.id if at else None, "name": g.candidate.name,
                      "username": g.candidate.username or "", "email": g.candidate.email, "status": st, "tag": g.tag,
-                     "invited_at": aware(g.invited_at).isoformat(), "sent": bool(g.sent_at),
+                     "invited_at": aware(g.invited_at).isoformat(), "sent": bool(g.sent_at), "deleted_at": aware(g.deleted_at).isoformat() if g.deleted_at else None,
                      "expires_at": aware(g.expires_at).isoformat() if g.expires_at else None,
                      "rank": rank.get(at.id) if at else None, "outcome": outcome, "outcome_label": OUTCOME_LABEL.get(outcome, outcome),
                      "score": at.total_score if at else None, "max": at.max_score if at else None,
@@ -223,7 +224,7 @@ def monitor_rows(db: Session, test: Test) -> Dict:
     cfg = proctoring_config(test)
     t = now()
     rows = []
-    for g in db.scalars(select(Assignment).where(Assignment.test_id == test.id)).all():
+    for g in db.scalars(select(Assignment).where(Assignment.test_id == test.id, Assignment.deleted_at.is_(None))).all():
         at = db.scalar(select(Attempt).where(Attempt.assignment_id == g.id, Attempt.status != "reset")
                        .order_by(Attempt.started_at.desc()))
         row = {"assignment_id": g.id, "name": g.candidate.name, "username": g.candidate.username or g.candidate.email,

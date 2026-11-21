@@ -3,8 +3,10 @@ from __future__ import annotations
 
 import csv
 import io
+import os
 import re
 import secrets
+import shutil
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Tuple
 
@@ -14,7 +16,7 @@ from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
 from app.core.security import hash_password, new_token, sha256
-from app.models import Assignment, Attempt, Test, User, UserRole, aware, now, uid
+from app.models import Assignment, Attempt, MailOutbox, PlagiarismMatch, Test, User, UserRole, aware, now, uid
 from app.services.mail import queue_mail
 
 EMAIL = re.compile(r"^[^@\s]+@[^@\s]+\.[A-Za-z]{2,}$")
@@ -77,7 +79,7 @@ def send_invite_mail(db: Session, a: Assignment, token: Optional[str]) -> None:
                f"Dear {u.name or u.email},\n\nYou are invited to take the assessment '{test.title}' "
                f"({test.duration_min} minutes).\n\nStart here: {invite_link(token)}\n\n"
                f"The link is personal and valid until {exp}. You will sign in with a one-time code sent to this email.\n"
-               "Please use a laptop/desktop with Chrome, Edge or Firefox, a webcam and a microphone.\n\nKAUTILYA by GLOBX",
+               "Please use a laptop/desktop with Google Chrome or Microsoft Edge only (not Firefox, Brave or any other browser), a webcam and a microphone.\n\nKAUTILYA by GLOBX",
                "invite", test.org_id)
     a.sent_at = now()
 
@@ -130,8 +132,8 @@ def parse_participants(db: Session, org_id: str, lines: List[str], email_require
         elif email and (u := _login_account(db, org_id, email)):
             if not _is_exam_login(u):
                 problems.append(f"Line {i}: {email} belongs to a staff or e-mail login. Use a different email")
-            elif test and db.scalar(select(Assignment.id).where(Assignment.test_id == test.id, Assignment.candidate_id == u.id)):
-                problems.append(f"Line {i}: {email} is already in this exam")
+            elif test and (known := db.scalar(select(Assignment).where(Assignment.test_id == test.id, Assignment.candidate_id == u.id))):
+                problems.append(f"Line {i}: {email} is in this exam's bin. Restore them from the Bin tab" if known.deleted_at else f"Line {i}: {email} is already in this exam")
             elif db.scalar(select(Attempt.id).where(Attempt.candidate_id == u.id, Attempt.status == "in_progress")):
                 problems.append(f"Line {i}: {email} is taking another exam right now. Add them after it ends")
         seen.add(email)
@@ -166,6 +168,24 @@ def create_participants(db: Session, test: Test, people: List[Tuple[str, Optiona
         db.flush()
         out.append({"assignment_id": a.id, "name": name, "username": username, "password": password, "existing": reused})
     return out
+
+
+def purge_assignment(db: Session, a: Assignment) -> None:
+    """Delete a person from an exam for good: their attempts with every answer, picture and recording (rows and files), their mails and plagiarism
+    matches, and their exam login too when this was their only exam. The database removes the attempt rows with the assignment; the rest has no link to it."""
+    ids = list(db.scalars(select(Attempt.id).where(Attempt.assignment_id == a.id)))
+    root = os.path.realpath(get_settings().storage_dir)
+    for i in ids:  # camera pictures, videos and uploaded answer files each live in a folder named after the attempt
+        for sub in ("proctor", "recordings", "uploads"):
+            shutil.rmtree(os.path.join(root, sub, i), ignore_errors=True)
+    if ids:
+        db.query(PlagiarismMatch).filter((PlagiarismMatch.attempt_a.in_(ids)) | (PlagiarismMatch.attempt_b.in_(ids))).delete(synchronize_session=False)
+    db.query(MailOutbox).filter(MailOutbox.attach.in_([a.id, *ids])).delete(synchronize_session=False)
+    u = a.candidate
+    db.delete(a)
+    db.flush()
+    if _is_exam_login(u) and not db.scalar(select(Assignment.id).where(Assignment.candidate_id == u.id)) and not db.scalar(select(Attempt.id).where(Attempt.candidate_id == u.id)):
+        db.delete(u)
 
 
 def edit_participant(db: Session, a: Assignment, name: str, email: str) -> None:
@@ -289,7 +309,7 @@ def create_invites(db: Session, test: Test, rows: List[Dict], expires_at: Option
         a = db.scalar(select(Assignment).where(Assignment.test_id == test.id, Assignment.candidate_id == u.id))
         token = new_token(32)
         if a:
-            if a.status not in ("invited", "expired", "cancelled"):
+            if a.deleted_at or a.status not in ("invited", "expired", "cancelled"):
                 skipped += 1
                 continue
             a.status = "invited"

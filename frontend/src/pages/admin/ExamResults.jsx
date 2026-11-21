@@ -19,6 +19,7 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import ExamAnalytics from "@/pages/admin/ExamAnalytics"
+import ResultsCompare from "@/pages/admin/ResultsCompare"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 
 const POLL_MS = 5000
@@ -123,6 +124,7 @@ export default function ExamResults() {
       <Tabs value={params.get("tab") ?? "results"} onValueChange={(v) => setParams({ tab: v }, { replace: true })}>
         <TabsList>
           <TabsTrigger value="results">Results</TabsTrigger>
+          <TabsTrigger value="compare">Compare</TabsTrigger>
           <TabsTrigger value="analytics">Analytics</TabsTrigger>
         </TabsList>
         <TabsContent value="results" className="grid gap-4 pt-2">
@@ -177,6 +179,7 @@ export default function ExamResults() {
           </Table>
           <MoreRows paged={paged} what="people" />
         </TabsContent>
+        <TabsContent value="compare" className="pt-2"><ResultsCompare testId={testId} /></TabsContent>
         <TabsContent value="analytics" className="pt-2"><ExamAnalytics testId={testId} /></TabsContent>
       </Tabs>
     </div>

@@ -74,7 +74,7 @@ def my_assignments(user: User = Depends(current_user), db: Session = Depends(get
     out = []
     for a in db.scalars(select(Assignment).where(Assignment.candidate_id == user.id).order_by(Assignment.invited_at.desc())).all():
         t = db.get(Test, a.test_id)
-        if t.status == "archived":  # taken out of use by the Super Admin: the candidate no longer sees it
+        if t.status == "archived" or a.deleted_at:  # taken out of use by the Super Admin, or the person was deleted from the exam: the candidate no longer sees it
             continue
         at = db.scalar(select(Attempt).where(Attempt.assignment_id == a.id, Attempt.status != "reset").order_by(Attempt.started_at.desc()))
         publish_result = bool((t.settings or {}).get("show_result_to_candidate", True))
@@ -98,7 +98,7 @@ def my_assignments(user: User = Depends(current_user), db: Session = Depends(get
 @router.post("/assignments/{aid}/start")
 def start(aid: str, body: StartIn, request: Request, user: User = Depends(current_user), db: Session = Depends(get_db)):
     a = db.get(Assignment, aid)
-    if not a or a.candidate_id != user.id:
+    if not a or a.candidate_id != user.id or a.deleted_at:
         raise HTTPException(404, "Assignment not found")
     t = db.get(Test, a.test_id)
     existing = db.scalar(select(Attempt).where(Attempt.assignment_id == a.id, Attempt.status == "in_progress"))

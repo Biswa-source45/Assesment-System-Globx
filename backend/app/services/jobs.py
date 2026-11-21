@@ -169,13 +169,13 @@ def sweep_once() -> None:
             from app.services.proctoring import purge_recordings
             purge_recordings(db)
         # 2. scheduled invites
-        for a in db.scalars(select(Assignment).where(Assignment.sent_at.is_(None),
+        for a in db.scalars(select(Assignment).where(Assignment.sent_at.is_(None), Assignment.deleted_at.is_(None),
                                                      Assignment.scheduled_at.is_not(None))).all():
             if aware(a.scheduled_at) <= t:
                 from app.services.invites import send_invite_mail
                 send_invite_mail(db, a, token=None)
         # 3. expiries and reminders
-        for a in db.scalars(select(Assignment).where(Assignment.status == "invited",
+        for a in db.scalars(select(Assignment).where(Assignment.status == "invited", Assignment.deleted_at.is_(None),
                                                      Assignment.expires_at.is_not(None))).all():
             exp = aware(a.expires_at)
             if exp < t:

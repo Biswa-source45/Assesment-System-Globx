@@ -158,7 +158,7 @@ def mfa_enable(body: dict, request: Request, user: User = Depends(current_user),
 # ------------------------------------------------------------------ candidates
 def _assignment_by_token(db: Session, token: str) -> Assignment:
     a = db.scalar(select(Assignment).where(Assignment.token_hash == sha256(token or "")))
-    if not a:
+    if not a or a.deleted_at:
         raise HTTPException(404, "This invitation link is invalid or has been replaced by a newer one")
     return a
 

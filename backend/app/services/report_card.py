@@ -24,7 +24,7 @@ from sqlalchemy.orm import Session
 from app.core.config import get_settings
 from app.models import Assignment, Attempt, Department, MailOutbox, Test, User, aware, now
 from app.services.mail import queue_mail
-from app.services.reports import OUTCOME_LABEL, RESULT_LABEL, attempt_report, ranked_attempts
+from app.services.reports import NOT_BINNED, OUTCOME_LABEL, RESULT_LABEL, attempt_report, ranked_attempts
 
 IST = timezone(timedelta(hours=5, minutes=30))  # ponytail: one fixed zone (the company's); a setting if another zone is ever needed
 ASSETS = Path(__file__).resolve().parents[1] / "assets"
@@ -471,7 +471,7 @@ def queue_report_cards(db: Session, t: Test) -> Dict[str, int]:
     out = {"queued": 0, "requeued": 0, "already": 0, "no_email": 0}
     if not (t.settings or {}).get("show_result_to_candidate", True):
         return out
-    ats = db.scalars(select(Attempt).where(Attempt.test_id == t.id, Attempt.status == "evaluated")).all()
+    ats = db.scalars(select(Attempt).where(Attempt.test_id == t.id, Attempt.status == "evaluated", NOT_BINNED)).all()
     have = {m.attach: m for m in db.scalars(select(MailOutbox).where(MailOutbox.kind == "report_card", MailOutbox.attach.in_([a.id for a in ats] or [""])))}
     for at in ats:
         u = db.get(User, at.candidate_id)

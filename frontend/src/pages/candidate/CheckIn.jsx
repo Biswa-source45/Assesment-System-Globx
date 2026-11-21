@@ -4,7 +4,7 @@ import { Camera } from "lucide-react"
 import { get, post } from "@/lib/api"
 import { detectFaces, faceState, loadFaceDetector, loadLandmarker, meanPose, setNeutral, usesPose } from "@/lib/faces"
 import FaceGuide from "@/components/FaceGuide"
-import { getCamera, getScreen, screenLive, stopCamera, systemCheck } from "@/lib/media"
+import { getCamera, getScreen, screenLive, stopCamera, systemCheck, wrongBrowser } from "@/lib/media"
 import { Alert } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -127,6 +127,9 @@ export default function CheckIn() {
             <CardDescription>{item.test.duration_min} minutes</CardDescription>
           </CardHeader>
           <CardContent className="grid gap-4 text-sm">
+            <Alert variant={wrongBrowser() ? "destructive" : undefined} className="p-3" data-testid="browser-note">
+              {wrongBrowser() ? "You are not using Google Chrome or Microsoft Edge. Please open this exam in one of them: in other browsers (Firefox, Brave and the like) it may not start." : "Use Google Chrome or Microsoft Edge for this exam. Other browsers (Firefox, Brave and the like) may not work."}
+            </Alert>
             {item.test.instructions && <div className="prose-sm" dangerouslySetInnerHTML={{ __html: item.test.instructions }} />}
             {item.test.min_question_seconds > 0 && <p>Each question stays on screen for at least <b>{item.test.min_question_seconds} seconds</b> before you can move on, so please read it.</p>}
             {cfg.enabled ? (

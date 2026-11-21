@@ -1,7 +1,7 @@
 import { useState } from "react"
 import { toast } from "sonner"
 import { MoreHorizontal } from "lucide-react"
-import { get, post, put } from "@/lib/api"
+import { del, get, post, put } from "@/lib/api"
 import { useAuth } from "@/lib/auth"
 import { fmtDate } from "@/lib/labels"
 import { useConfirm } from "@/components/ConfirmDialog"
@@ -23,6 +23,7 @@ const ACTIONS = {
   edit: { label: "Edit details" },
   email: { label: "Email login" },
   mails: { label: "Mail details" },
+  delete: { label: "Delete participant" },
 }
 const OWN_DIALOG = ["password", "edit", "mails"]  // these have a dialog of their own below
 
@@ -37,7 +38,7 @@ function available(status, assignmentStatus) {
 // On the participants list a person can also be corrected and mailed; Email login needs a published exam, an email, and a person who has not started.
 function participantActions(row) {
   if (!row.participant || !row.mail) return []
-  return ["edit", ...(row.published && row.assignmentStatus === "invited" && row.email ? ["email"] : []), "mails"]
+  return ["edit", ...(row.published && row.assignmentStatus === "invited" && row.email ? ["email"] : []), "mails", ...(row.status === "in_progress" ? [] : ["delete"])]
 }
 
 // row: { id, name, username, status, assignmentStatus } and, on the participants list, { participant, email, published, mail }. onDone runs after anything
@@ -63,6 +64,12 @@ function Actions({ row, onDone, onSheet }) {
     } catch (e) { toast.error(e.message) }
   }
 
+  async function remove() {
+    const yes = await confirm({ title: `Delete ${row.name}?`, description: "They move to the Bin: they disappear from the participants list, the results and the Excel file, and cannot sign in. Nothing is lost yet: you can restore them, or delete them for good, from the Bin tab.", action: "Move to the bin", destructive: true })
+    if (!yes) return
+    try { await del(`/assignments/${row.id}`); toast.success(`${row.name} is in the bin`); onDone?.() } catch (e) { toast.error(e.message) }
+  }
+
   async function saveEdit(e) {
     e.preventDefault()
     setBusy(true)
@@ -82,6 +89,7 @@ function Actions({ row, onDone, onSheet }) {
 
   async function choose(kind) {
     if (kind === "email") return emailLogin()
+    if (kind === "delete") return remove()
     if (kind === "edit") { setForm({ name: row.name, email: row.email }); setError(""); return setDialog({ kind }) }
     if (kind === "mails") {
       try { return setDialog({ kind, history: await get(`/assignments/${row.id}/login-mails`) }) } catch (e) { return toast.error(e.message) }
