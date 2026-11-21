@@ -256,10 +256,10 @@ export default function Exam() {
   const faceText = !face ? "Camera starting" : { ok: "Face OK", off: "Move to the centre", none: "No face!", many: `${n} faces!`, hand: "Face covered!", left: "Looking left!", right: "Looking right!", up: "Looking up!", down: "Looking down!" }[face.state]
 
   return (
-    <div className="min-h-svh bg-muted/40 pb-32">
+    <div className="min-h-svh bg-muted/40 pb-32 lg:flex lg:h-svh lg:flex-col lg:overflow-hidden lg:pb-0">
       <video ref={ev.screenVideo} muted playsInline className="pointer-events-none fixed top-0 left-0 size-px opacity-0" />
       {ev.talk && <div role="status" data-testid="talk-banner" className="fixed inset-x-0 top-0 z-[60] bg-red-600 py-2 text-center text-sm font-medium text-white">The invigilator is speaking with you. Your microphone is on.</div>}
-      <header className="sticky top-0 z-10 flex flex-wrap items-center gap-3 border-b bg-white px-4 py-2.5">
+      <header className="sticky top-0 z-10 flex shrink-0 flex-wrap items-center gap-3 border-b bg-white px-4 py-2.5">
         <Brand />
         <b className="grow truncate">{st.test.title}</b>
         {cfg.enabled && <Badge variant="secondary">Proctoring on</Badge>}
@@ -271,8 +271,8 @@ export default function Exam() {
         <Button size="sm" variant="secondary" onClick={() => { flushAll(); setEndOpen(true) }}>End exam</Button>
       </header>
 
-      <div className="mx-auto grid max-w-6xl gap-4 p-4">
-      <div className="flex flex-wrap items-start justify-between gap-4">
+      <div className="mx-auto flex w-full max-w-6xl flex-col gap-4 p-4 lg:min-h-0 lg:flex-1">
+      <div className="flex shrink-0 flex-wrap items-start justify-between gap-4">
         <div className="grid gap-4">
         <div className="flex flex-wrap gap-2">
           {sections.map((s, i) => (
@@ -291,7 +291,7 @@ export default function Exam() {
         </div>
         </div>
         {cfg.enabled && cfg.webcam && (
-          <div className={"w-48 shrink-0 overflow-hidden rounded-lg border-2 bg-black " + (faceBad ? "border-destructive" : "border-green-600")} data-testid="camera-box">
+          <div className={"w-48 shrink-0 overflow-hidden lg:w-36 rounded-lg border-2 bg-black " + (faceBad ? "border-destructive" : "border-green-600")} data-testid="camera-box">
             <FaceGuide videoRef={video} seen={face?.seen} state={face?.state} zone={cfg.face_zone} />
             <div className={"px-2 py-1 text-center text-xs " + (faceBad ? "bg-destructive text-white" : "text-white")}>
               {faceText}
@@ -302,8 +302,8 @@ export default function Exam() {
       </div>
 
         {q && (
-          <div className={isCode(q) ? "grid gap-4 lg:grid-cols-[2fr_3fr]" : "grid gap-4"}>
-            <Card>
+          <div className={isCode(q) ? "grid gap-4 lg:min-h-0 lg:flex-1 lg:grid-cols-[2fr_3fr] lg:grid-rows-[minmax(0,1fr)]" : "grid gap-4 lg:min-h-0 lg:flex-1 lg:content-start lg:overflow-y-auto"}>
+            <Card className="lg:min-h-0 lg:overflow-y-auto" data-testid="question-panel">
               <CardContent className="grid gap-3 pt-6">
                 <div className="flex flex-wrap items-start justify-between gap-2">
                   {(isCode(q) || !echoes(q.title, q.body)) && <h2 className="text-xl font-semibold">{q.title}</h2>}
@@ -331,7 +331,7 @@ export default function Exam() {
               </CardContent>
             </Card>
             {isCode(q) && (
-              <Card>
+              <Card className="lg:min-h-0 lg:overflow-y-auto" data-testid="code-panel">
                 <CardContent className="pt-6">
                   <CodeView key={q.id} q={q} r={resp[q.id] ?? {}} attemptId={attemptId} closed={curSec.closed} blockPaste={!!cfg.block_paste}
                     onChange={(p, imm) => update(q.id, p, imm)} />
@@ -342,7 +342,7 @@ export default function Exam() {
         )}
 
         {q && (
-          <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="flex shrink-0 flex-wrap items-center justify-between gap-2">
             <div className="flex gap-2">
               <Button variant="outline" disabled={qi === 0} onClick={() => go(qi - 1)}>Previous</Button>
               <Button variant="outline" onClick={() => toggleFlag(q.id)}><Flag /> {flags[q.id] ? "Unmark review" : "Mark for review"}</Button>

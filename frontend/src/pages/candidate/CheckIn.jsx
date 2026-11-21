@@ -119,14 +119,14 @@ export default function CheckIn() {
   }
 
   return (
-    <div className="min-h-svh bg-muted/40 p-4 md:p-8">
-      <div className="mx-auto grid max-w-5xl gap-6 md:grid-cols-2">
-        <Card>
-          <CardHeader>
+    <div className="min-h-svh bg-muted/40 p-4 md:h-svh md:overflow-hidden md:p-8">
+      <div className="mx-auto grid max-w-5xl gap-6 md:h-full md:grid-cols-2 md:grid-rows-[minmax(0,1fr)]">
+        <Card className="md:min-h-0">
+          <CardHeader className="shrink-0">
             <CardTitle className="text-xl">{item.test.title}</CardTitle>
             <CardDescription>{item.test.duration_min} minutes</CardDescription>
           </CardHeader>
-          <CardContent className="grid gap-4 text-sm">
+          <CardContent className="grid gap-4 text-sm md:min-h-0 md:flex-1 md:content-start md:overflow-y-auto" data-testid="rules-scroll">
             <Alert variant={wrongBrowser() ? "destructive" : undefined} className="p-3" data-testid="browser-note">
               {wrongBrowser() ? "You are not using Google Chrome or Microsoft Edge. Please open this exam in one of them: in other browsers (Firefox, Brave and the like) it may not start." : "Use Google Chrome or Microsoft Edge for this exam. Other browsers (Firefox, Brave and the like) may not work."}
             </Alert>
@@ -148,6 +148,8 @@ export default function CheckIn() {
             ) : (
               <p>This exam is not proctored.</p>
             )}
+          </CardContent>
+          <div className="grid shrink-0 gap-3 border-t px-4 pt-4 text-sm">
             {cfg.enabled && (
               <div className="flex items-start gap-2">
                 <Checkbox id="consent" checked={consent} onCheckedChange={(v) => setConsent(v === true)} />
@@ -158,11 +160,11 @@ export default function CheckIn() {
             {error && <Alert variant="destructive" className="p-3">{error}</Alert>}
             {item.message && !item.can_start && <Alert className="p-3">{item.message}</Alert>}
             <Button size="lg" disabled={!ready || busy || !item.can_start} onClick={start} loading={busy}>{busy ? "Starting..." : needScreen ? "Accept and start exam" : "Start exam"}</Button>
-          </CardContent>
+          </div>
         </Card>
 
         {needCamera && (
-          <Card>
+          <Card className="md:max-h-full md:self-start md:overflow-y-auto">
             <CardHeader>
               <CardTitle>Camera check</CardTitle>
               <CardDescription>Sit in good light, alone, and keep your face inside the green oval.</CardDescription>
