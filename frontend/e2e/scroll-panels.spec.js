@@ -104,3 +104,25 @@ test("exam: camera in the top bar, one row of sections, wide text scrolls inside
   await expect(last).toBeInViewport()
   await expect(page.getByTestId("timer")).toBeInViewport()
 })
+
+// Instructions are pasted as formatted text (headings, bullets, bold) and the candidate sees them formatted, not as one run-on paragraph.
+test("check-in: formatted exam instructions show as headings, bullets and bold", async ({ page, request }) => {
+  const api = await staffRequest(request)
+  const dept = (await api.get("/departments")).find((d) => d.name === "General").id
+  const title = "E2E Instructions Exam"
+  const exam = await api.post("/tests", { department_id: dept, title, duration_min: 30, settings: { proctoring: { enabled: false } },
+    instructions: "<h4>ABOUT THE TEST</h4><p>Total time: <b>120 minutes</b>. The timer cannot be paused.</p><h4>MARKING</h4><ul><li>Single answer: 1 mark.</li><li>A wrong answer loses 0.5 marks.</li></ul>" })
+  const section = (await api.post(`/tests/${exam.id}/sections`, { title: "All" })).sections[0]
+  const q = await api.post("/questions", { department_id: dept, type: "mcq_single", title: "Instr Q", body: "<p>x</p>", marks: 1, config: { options: [{ id: "a", text: "A", correct: true }, { id: "b", text: "B", correct: false }] } })
+  await api.post(`/sections/${section.id}/items`, { kind: "question", question_id: q.id })
+  await api.post(`/tests/${exam.id}/publish`)
+  const p = (await api.post(`/tests/${exam.id}/participants`, { names: ["Instr Reader"] })).participants[0]
+  await login(page, p.username, p.password)
+  await page.locator("div[data-slot=card]").filter({ hasText: title }).getByRole("link", { name: /Start|Resume/ }).click()
+  const box = page.getByTestId("exam-instructions")
+  await expect(box.locator("h4")).toHaveText(["ABOUT THE TEST", "MARKING"])
+  expect(Number(await box.locator("h4").first().evaluate((el) => getComputedStyle(el).fontWeight))).toBeGreaterThanOrEqual(600)
+  expect(await box.locator("li").first().evaluate((el) => getComputedStyle(el).listStyleType)).toBe("disc")      // real bullets
+  await expect(box.locator("b")).toHaveText("120 minutes")
+  await shot(page, "checkin-instructions")
+})

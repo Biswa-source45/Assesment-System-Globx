@@ -4,7 +4,7 @@ Read at the start of every task; update after every change. Plan and decisions: 
 
 ## Current state (2026-11-02)
 
-- Codebase: FastAPI backend (`backend/app`) and a React **JSX** frontend (`frontend/`: Vite, Tailwind, shadcn/ui). 262 pytest tests and 139 Playwright browser tests pass (plus 12 that call the real model, `RUN_AI=1`, two of them on the user's two real PDFs); **Question bank > Create with AI** and the AI box in every question editor write or change one question from words, a picture or both (the AI fills the form, nothing is saved until Save); the browser tests run all code through the judge service.
+- Codebase: FastAPI backend (`backend/app`) and a React **JSX** frontend (`frontend/`: Vite, Tailwind, shadcn/ui). 262 pytest tests and 140 Playwright browser tests pass (plus 12 that call the real model, `RUN_AI=1`, two of them on the user's two real PDFs); **Question bank > Create with AI** and the AI box in every question editor write or change one question from words, a picture or both (the AI fills the form, nothing is saved until Save); the browser tests run all code through the judge service.
 - Built and browser-tested: login (staff email or candidate username); admin Exams list; **question bank** (list, filter, create/edit/archive MCQ, short,
   explained, coding and **SQL** questions; coding has a case table, reference-solution check and "Generate with AI", both working on the unsaved form; saving returns to the bank with the question at the top); **candidate flow** (home, camera check-in with
   MediaPipe face gate and consent, exam runner with section tabs, palette, mark for review, autosave, server timer, CodeMirror editor with Run/Submit,
@@ -35,6 +35,9 @@ Read at the start of every task; update after every change. Plan and decisions: 
    through the judge container once it exists; old email-OTP/invite flow still in the backend; bundle is one 1.4 MB chunk (split later); rotate the OpenAI key.
 
 ## Log
+
+### 2026-11-24 (exam instructions show formatted)
+- **Seen by the owner.** Pasted instructions (headings, bullet lists) appeared run together on the check-in page. Cause: the box was styled `prose-sm`, a style that does not exist, so lists lost their bullets and headings looked like normal text. Now it uses the same `q-html` style as questions (bullets, paragraph spacing) plus heading styles (`index.css`). The exam's Instructions box already accepted HTML (h1-h4, p, b, i, ul, ol, li, br) and plain text with blank lines between paragraphs. Test: `scroll-panels.spec.js` +1 (headings bold, real bullets, bold word); scroll-panels and layout specs green.
 
 ### 2026-11-24 (exam screen: camera in the top bar, one row of sections, text no longer clipped)
 - **Seen by the owner (live test, laptop at 150%).** The camera block, three rows of long section tabs and the question palette left the question and the code only a small strip; the left question text was cut off at its right edge and the code panel looked squeezed.

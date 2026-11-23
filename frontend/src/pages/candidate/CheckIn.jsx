@@ -130,7 +130,7 @@ export default function CheckIn() {
             <Alert variant={wrongBrowser() ? "destructive" : undefined} className="p-3" data-testid="browser-note">
               {wrongBrowser() ? "You are not using Google Chrome or Microsoft Edge. Please open this exam in one of them: in other browsers (Firefox, Brave and the like) it may not start." : "Use Google Chrome or Microsoft Edge for this exam. Other browsers (Firefox, Brave and the like) may not work."}
             </Alert>
-            {item.test.instructions && <div className="prose-sm" dangerouslySetInnerHTML={{ __html: item.test.instructions }} />}
+            {item.test.instructions && <div className="q-html" data-testid="exam-instructions" dangerouslySetInnerHTML={{ __html: item.test.instructions }} />}
             {item.test.min_question_seconds > 0 && <p>Each question stays on screen for at least <b>{item.test.min_question_seconds} seconds</b> before you can move on, so please read it.</p>}
             {cfg.enabled ? (
               <ul className="list-disc space-y-1.5 pl-5">
