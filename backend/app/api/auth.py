@@ -15,6 +15,7 @@ from app.core.security import (hash_otp, hash_password, jwt_encode, new_otp, new
                                password_policy_error, sha256, totp_uri, totp_verify, verify_password)
 from app.db import get_db
 from app.models import (Assignment, Organization, OtpCode, RefreshToken, Test, User, aware, now, uid)
+from app.services import user_mail
 from app.services.mail import queue_mail
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -46,10 +47,23 @@ class PasswordIn(BaseModel):
     new_password: str
 
 
+class ProfileIn(BaseModel):
+    name: str = ""
+
+
+class EmailRequestIn(BaseModel):
+    new_email: str
+
+
+class EmailConfirmIn(BaseModel):
+    code: str
+
+
 def user_out(u: User, db: Session) -> dict:
     org = db.get(Organization, u.org_id)
     return {"id": u.id, "email": u.email, "name": u.name, "roles": u.role_names, "org_id": u.org_id,
             "org_name": org.name if org else "", "mfa_enabled": u.mfa_enabled,
+            "last_login_at": aware(u.last_login_at).isoformat() if u.last_login_at else None,
             "is_staff": bool(set(u.role_names) & STAFF), "can": permissions(u)}
 
 
@@ -137,6 +151,83 @@ def change_password(body: PasswordIn, request: Request, user: User = Depends(cur
     return {"ok": True}
 
 
+@router.put("/profile")
+def update_profile(body: ProfileIn, request: Request, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    """The person's own name. (The e-mail has its own two steps below; roles and status are an administrator's.)"""
+    name = " ".join(body.name.split())
+    if not name or len(name) > 120:
+        raise HTTPException(422, "Enter your name (up to 120 characters)")
+    user.name = name
+    audit(db, user, "profile_update", "user", user.id, request=request)
+    db.commit()
+    return user_out(user, db)
+
+
+def _mask(email: str) -> str:
+    return email[0] + "***" + email[email.index("@") - 1:] if "@" in email and email.index("@") > 1 else email
+
+
+@router.post("/email-change/request")
+def email_change_request(body: EmailRequestIn, request: Request, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    """Step 1 of a change of e-mail: a 6-digit code goes to the CURRENT address (so only whoever can read it can move the account) and is good for the one
+    new address asked for here."""
+    s = get_settings()
+    if not user.has(*STAFF):
+        raise HTTPException(403, "Only staff change their e-mail here")
+    new = body.new_email.strip().lower()
+    if "@" not in new or " " in new or len(new) > 255:
+        raise HTTPException(422, "Enter a valid email address")
+    if new == user.email.lower():
+        raise HTTPException(422, "That is already your e-mail")
+    if db.scalar(select(User.id).where(User.org_id == user.org_id, User.email == new, User.id != user.id)):
+        raise HTTPException(409, "A user with this email already exists in the organisation")
+    if not s.smtp_host and not s.demo_mode:
+        raise HTTPException(422, "E-mail is not set up on this server, so the code cannot be sent. Ask IT to set it up.")
+    old = user.email.lower()
+    recent = db.scalars(select(OtpCode).where(OtpCode.email == old, OtpCode.purpose == "email_change")).all()
+    if sum(1 for o in recent if aware(o.created_at) > now() - timedelta(hours=1)) >= s.otp_max_sends_per_hour:
+        raise HTTPException(429, "Too many codes requested. Please wait and try again later.")
+    last = max((aware(o.created_at) for o in recent), default=None)
+    if last and (now() - last).total_seconds() < 60:
+        raise HTTPException(429, f"Please wait {60 - int((now() - last).total_seconds())} s before requesting a new code")
+    code = new_otp()
+    db.add(OtpCode(id=uid(), email=old, code_hash=hash_otp(old, code), expires_at=now() + timedelta(minutes=s.otp_minutes), purpose="email_change", payload=new))
+    subject, text, page = user_mail.email_code_mail(user.name, code, new, s.otp_minutes)
+    queue_mail(db, user.email, subject, text, user_mail.CODE_KIND, user.org_id, html=page)
+    audit(db, user, "email_change_requested", "user", user.id, {"to": new}, request)
+    db.commit()
+    out = {"sent": True, "to": _mask(user.email), "valid_minutes": s.otp_minutes, "resend_after_s": 60}
+    if s.demo_mode and not s.smtp_host:
+        out["demo_otp"] = code
+        out["message"] = "DEMO MODE: email is not configured, so the code is shown here."
+    return out
+
+
+@router.post("/email-change/confirm")
+def email_change_confirm(body: EmailConfirmIn, request: Request, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    """Step 2: the code from the old address. The account then uses the new address the code was made for."""
+    s = get_settings()
+    old = user.email.lower()
+    o = db.scalar(select(OtpCode).where(OtpCode.email == old, OtpCode.purpose == "email_change", OtpCode.used.is_(False)).order_by(OtpCode.created_at.desc()))
+    if not o or aware(o.expires_at) < now():
+        raise HTTPException(410, "The code has expired. Ask for a new one.")
+    if o.attempts >= s.otp_max_attempts:
+        raise HTTPException(429, "Too many wrong codes. Ask for a new one.")
+    o.attempts += 1
+    if o.code_hash != hash_otp(old, body.code.strip()):
+        db.commit()
+        raise HTTPException(400, f"Wrong code. {s.otp_max_attempts - o.attempts} attempts left.")
+    if db.scalar(select(User.id).where(User.org_id == user.org_id, User.email == o.payload, User.id != user.id)):
+        raise HTTPException(409, "A user with this email already exists in the organisation")
+    o.used = True
+    user.email = o.payload
+    subject, text, page = user_mail.email_changed_mail(user.name, o.payload)
+    queue_mail(db, old, subject, text, user_mail.CODE_KIND, user.org_id, html=page)  # the old address hears about it
+    audit(db, user, "email_changed", "user", user.id, {"from": old, "to": o.payload}, request)
+    db.commit()
+    return user_out(user, db)
+
+
 @router.post("/mfa/setup")
 def mfa_setup(user: User = Depends(current_user), db: Session = Depends(get_db)):
     user.mfa_secret = new_totp_secret()
@@ -194,7 +285,7 @@ def otp_request(body: OtpRequestIn, db: Session = Depends(get_db)):
             return {"sent": True, "message": "If this email has an invitation, a code has been sent."}
         org_id = u.org_id
     hour_ago = now() - timedelta(hours=1)
-    recent = db.scalars(select(OtpCode).where(OtpCode.email == email)).all()
+    recent = db.scalars(select(OtpCode).where(OtpCode.email == email, OtpCode.purpose == "login")).all()
     if sum(1 for o in recent if aware(o.created_at) > hour_ago) >= s.otp_max_sends_per_hour:
         raise HTTPException(429, "Too many codes requested. Please wait and try again later.")
     last = max((aware(o.created_at) for o in recent), default=None)
@@ -217,7 +308,7 @@ def otp_request(body: OtpRequestIn, db: Session = Depends(get_db)):
 def otp_verify(body: OtpVerifyIn, request: Request, db: Session = Depends(get_db)):
     s = get_settings()
     email = body.email.strip().lower()
-    o = db.scalar(select(OtpCode).where(OtpCode.email == email, OtpCode.used.is_(False)).order_by(OtpCode.created_at.desc()))
+    o = db.scalar(select(OtpCode).where(OtpCode.email == email, OtpCode.purpose == "login", OtpCode.used.is_(False)).order_by(OtpCode.created_at.desc()))
     if not o or aware(o.expires_at) < now():
         raise HTTPException(410, "The code has expired. Request a new one.")
     if o.attempts >= s.otp_max_attempts:
@@ -234,7 +325,7 @@ def otp_verify(body: OtpVerifyIn, request: Request, db: Session = Depends(get_db
         asg_id = a.id
     else:
         u = db.scalar(select(User).where(func.lower(User.email) == email))
-    if not u or u.status != "active":
+    if not u or u.status != "active" or not u.has("candidate"):  # a code never signs a staff user in: staff use their password
         raise HTTPException(403, "Account disabled")
     out = issue_tokens(db, u, single_session=True)
     out["assignment_id"] = asg_id

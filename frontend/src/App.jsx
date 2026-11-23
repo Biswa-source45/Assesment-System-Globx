@@ -10,6 +10,7 @@ import Departments from "@/pages/admin/Departments"
 import ExamResults from "@/pages/admin/ExamResults"
 import ExamEditor from "@/pages/admin/ExamEditor"
 import Monitor from "@/pages/admin/Monitor"
+import Profile from "@/pages/admin/Profile"
 import Questions from "@/pages/admin/Questions"
 import Results from "@/pages/admin/Results"
 import Users from "@/pages/admin/Users"
@@ -65,6 +66,7 @@ export default function App() {
         <Route path="departments" element={<Departments />} />
         <Route path="monitor" element={<Monitor />} />
         <Route path="help" element={<Help />} />
+        <Route path="profile" element={<Profile />} />
         <Route path="users" element={<Need can="admin"><Users /></Need>} />
       </Route>
       <Route path="/exam" element={<Guard staff={false}><CandidateHome /></Guard>} />

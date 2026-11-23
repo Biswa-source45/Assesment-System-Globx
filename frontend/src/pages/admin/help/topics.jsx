@@ -69,7 +69,8 @@ export const TOPICS = [
         ["See exams, the Live monitor, candidates and reports", "Recruiter, Test Creator, Evaluator, Org Admin"],
         ["Read questions with their answer keys (Question bank)", "Test Creator, Evaluator, Org Admin"],
         ["Mark answers, accept or override AI marks, calculate results", "Evaluator, Org Admin"],
-        ["Users, passwords and locks", "Org Admin"],
+        ["Users, passwords and locks; e-mail the login details to a new user", "Org Admin"],
+        ["My profile: change your own name, password and e-mail (the e-mail needs a code sent to the old address)", "Everyone who signs in as staff"],
       ]} />
     </div>) },
 

@@ -94,7 +94,7 @@ def deliver_pending(db: Session) -> int:
                 break
     finally:
         for m in rows:  # a login mail holds a password: once it has been tried it is not kept (the address, times and reason stay as the record)
-            if m.kind == "exam_login" and m.status != "queued":
+            if m.kind in ("exam_login", "staff_login") and m.status != "queued":
                 m.body, m.body_html = SCRUBBED, None
         if smtp is not None:
             try:

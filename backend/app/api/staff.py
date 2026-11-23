@@ -14,7 +14,7 @@ from sqlalchemy.orm import Session
 from app.core.config import get_settings
 from app.core.deps import ADMIN, EVAL, SUPER, VIEW, audit, same_org, staff
 from app.core.paging import like, limit_q, offset_q, page_sql
-from app.core.security import hash_password, password_policy_error
+from app.core.security import hash_password, password_policy_error, verify_password
 from app.db import get_db
 from app.domain import scoring
 from app.models import (NOT_BINNED, ROLES, Answer, Assignment, Attempt, AttemptQuestion, AuditLog, CodeSubmission, Evaluation,
@@ -23,6 +23,8 @@ from app.sandbox import remote
 from app.services import ai
 from app.services.departments import create_defaults
 from app.services.attempts import _text_of, grade_answer, recompute_totals
+from app.services import user_mail
+from app.services.mail import queue_mail
 from app.services.reports import attempt_report, results_of
 
 router = APIRouter(tags=["staff"])
@@ -290,6 +292,33 @@ def create_user(body: UserIn, request: Request, user: User = Depends(ADMIN), db:
     return _user_out(u)
 
 
+class SendLoginIn(BaseModel):
+    password: str = ""
+
+
+@router.post("/users/{uid_}/send-login")
+def send_user_login(uid_: str, body: SendLoginIn, request: Request, user: User = Depends(ADMIN), db: Session = Depends(get_db)):
+    """E-mail a staff user their login (e-mail, password, the application link). The password is not stored anywhere: the screen that just made it sends it
+    here, and it must be the person's real password, so a mail can never carry a wrong one."""
+    u = db.get(User, uid_)
+    if not u:
+        raise HTTPException(404, "User not found")
+    same_org(user, u.org_id)
+    if u.has("candidate"):
+        raise HTTPException(422, "Candidates get their login from the exam they are invited to")
+    if u.has("super_admin") and not user.has("super_admin"):
+        raise HTTPException(403, "Only a Super Admin can send a Super Admin's login")
+    if not get_settings().smtp_host:
+        raise HTTPException(422, "E-mail is not set up on this server (the mail server setting is empty). Nothing was sent. Ask IT to set it up, or tell the person the password yourself.")
+    if not verify_password(body.password, u.password_hash):
+        raise HTTPException(422, "That is not this person's current password, so it was not mailed. Set a new password and send that.")
+    subject, text, page = user_mail.staff_login_mail(u.name, u.email, body.password, u.role_names)
+    queue_mail(db, u.email, subject, text, user_mail.LOGIN_KIND, u.org_id, html=page)
+    audit(db, user, "login_sent", "user", u.id, request=request)
+    db.commit()
+    return {"queued": True, "to": u.email}
+
+
 @router.put("/users/{uid_}")
 def update_user(uid_: str, body: UserIn, request: Request, user: User = Depends(ADMIN), db: Session = Depends(get_db)):
     """Name, email, roles, status, a new password, unlock. Candidates keep their candidate role; only name, status and password change."""
@@ -308,6 +337,8 @@ def update_user(uid_: str, body: UserIn, request: Request, user: User = Depends(
         _check_password(body.password)
     email = body.email.strip().lower()
     if email and not candidate and email != u.email:
+        if u.id == user.id:
+            raise HTTPException(409, "You change your own e-mail in My profile: a code is sent to your current address first.")
         if "@" not in email or " " in email:
             raise HTTPException(422, "Enter a valid email address")
         if db.scalar(select(User.id).where(User.org_id == u.org_id, User.email == email, User.id != u.id)):

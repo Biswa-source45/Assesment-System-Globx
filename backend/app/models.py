@@ -102,6 +102,8 @@ class OtpCode(Base):
     expires_at: Mapped[datetime] = mapped_column(TS)
     attempts: Mapped[int] = mapped_column(Integer, default=0)
     used: Mapped[bool] = mapped_column(Boolean, default=False)
+    purpose: Mapped[str] = mapped_column(String(20), default="login", server_default="login")  # login (candidate sign-in) | email_change (a staff user changing their address)
+    payload: Mapped[str] = mapped_column(String(255), default="", server_default="")  # email_change: the new address this code is good for
     created_at: Mapped[datetime] = mapped_column(TS, default=now)
 
 

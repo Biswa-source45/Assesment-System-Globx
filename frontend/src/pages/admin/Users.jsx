@@ -45,6 +45,40 @@ function PasswordField({ id, value, onChange }) {
   )
 }
 
+// Asked right after a staff user is made, and after a new password is set: mail them the login. The password lives only in this screen's memory until the question is answered.
+function SendLoginStep({ id, email, password, title, onClose }) {
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState("")
+  async function send() {
+    setBusy(true)
+    setError("")
+    try {
+      await post(`/users/${id}/send-login`, { password })
+      toast.success(`Login details queued for ${email}`)
+      onClose()
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setBusy(false)
+    }
+  }
+  return (
+    <Dialog open onOpenChange={(o) => !o && onClose()}>
+      <DialogContent data-testid="send-login-step">
+        <DialogHeader>
+          <DialogTitle>{title}</DialogTitle>
+          <DialogDescription>Do you want to send the login details to <b>{email}</b> by e-mail? The mail has their email, the password and the link to the application. If you choose Not now, tell them the password yourself.</DialogDescription>
+        </DialogHeader>
+        {error && <Alert variant="destructive" className="p-3">{error}</Alert>}
+        <DialogFooter>
+          <Button type="button" variant="outline" onClick={onClose}>Not now</Button>
+          <Button type="button" onClick={send} loading={busy}>{busy ? "Sending..." : "Send by e-mail"}</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
 // "new" creates a staff user; an existing row edits name, email, roles and status (a candidate: name and status only).
 function UserDialog({ target, me, onClose, onSaved }) {
   const isNew = target === "new"
@@ -54,6 +88,7 @@ function UserDialog({ target, me, onClose, onSaved }) {
     : { name: target.name, email: target.email, roles: target.roles, status: target.status, password: "" }))
   const [error, setError] = useState("")
   const [busy, setBusy] = useState(false)
+  const [made, setMade] = useState(null)  // the person just created: the next step offers to mail their login
   const set = (k, v) => setF((x) => ({ ...x, [k]: v }))
   const toggle = (r) => set("roles", f.roles.includes(r) ? f.roles.filter((x) => x !== r) : [...f.roles, r])
 
@@ -63,10 +98,11 @@ function UserDialog({ target, me, onClose, onSaved }) {
     setError("")
     try {
       const body = isNew ? f : { name: f.name, email: candidate ? "" : f.email, roles: candidate ? [] : f.roles, status: f.status }
-      await (isNew ? post("/users", body) : put(`/users/${target.id}`, body))
+      const saved = await (isNew ? post("/users", body) : put(`/users/${target.id}`, body))
       toast.success(isNew ? "User created" : "User saved")
       onSaved()
-      onClose()
+      if (isNew) setMade(saved)
+      else onClose()
     } catch (err) {
       setError(err.message)
     } finally {
@@ -74,6 +110,7 @@ function UserDialog({ target, me, onClose, onSaved }) {
     }
   }
 
+  if (made) return <SendLoginStep id={made.id} email={made.email} password={f.password} title={`${made.name} was created`} onClose={onClose} />
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
       <DialogContent className="sm:max-w-xl">
@@ -128,6 +165,7 @@ function PasswordDialog({ target, onClose, onSaved }) {
   const [password, setPassword] = useState("")
   const [error, setError] = useState("")
   const [busy, setBusy] = useState(false)
+  const [done, setDone] = useState(false)  // the password is set: staff are asked whether to mail it
 
   async function save(e) {
     e.preventDefault()
@@ -137,7 +175,8 @@ function PasswordDialog({ target, onClose, onSaved }) {
       await put(`/users/${target.id}`, { password })
       toast.success(`New password set for ${target.name || target.email}. Their open sessions were signed out.`)
       onSaved()
-      onClose()
+      if (target.roles.includes("candidate")) onClose()
+      else setDone(true)
     } catch (err) {
       setError(err.message)
     } finally {
@@ -145,6 +184,7 @@ function PasswordDialog({ target, onClose, onSaved }) {
     }
   }
 
+  if (done) return <SendLoginStep id={target.id} email={target.email} password={password} title="New password set" onClose={onClose} />
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
       <DialogContent>

@@ -22,6 +22,9 @@ export function AuthProvider({ children }) {
     return out.user
   }
 
+  // re-read the person after a change they made themselves (name, e-mail)
+  const refresh = () => get("/auth/me").then(setUser)
+
   async function logout() {
     const rt = refreshToken()
     if (rt) await post("/auth/logout", { refresh_token: rt }).catch(() => {})
@@ -29,5 +32,5 @@ export function AuthProvider({ children }) {
     setUser(null)
   }
 
-  return <AuthContext.Provider value={{ user, loading, login, logout }}>{children}</AuthContext.Provider>
+  return <AuthContext.Provider value={{ user, loading, login, logout, refresh }}>{children}</AuthContext.Provider>
 }

@@ -51,10 +51,10 @@ export default function AdminLayout() {
           </SidebarGroup>
         </SidebarContent>
         <SidebarFooter className="gap-2 p-3">
-          <div className="truncate text-sm">
+          <NavLink to="/admin/profile" aria-label="My profile" title="My profile" data-testid="my-profile" className="truncate rounded-md p-1 text-sm hover:bg-sidebar-accent">
             <div className="font-medium">{user.name || user.email}</div>
             <div className="text-xs text-muted-foreground">{user.roles.join(", ")}</div>
-          </div>
+          </NavLink>
           <SignOutButton icon />
         </SidebarFooter>
       </Sidebar>
