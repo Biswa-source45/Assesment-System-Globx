@@ -51,6 +51,7 @@ export default function Exam() {
   const skew = useRef(0)
   const version = useRef(null)  // the content version the screen shows; the server's moves when the examiner saves a question
   const video = useRef(null)
+  const tabs = useRef(null)
   const proctor = useRef(null)
   const finished = useRef(false)
   const opened = useRef({})  // question id -> when it was first shown (monotonic ms); -Infinity = answered before
@@ -83,6 +84,7 @@ export default function Exam() {
 
   const sections = st?.sections ?? []
   const curSec = sections[sec]
+  useEffect(() => { tabs.current?.querySelector("[data-current]")?.scrollIntoView({ inline: "nearest", block: "nearest" }) }, [sec, st?.sections?.length])  // the section you are in stays visible in the row of tabs
   const q = curSec?.questions[qi]
   const left = useCountdown(deadline, skew.current)
   const secLeft = useCountdown(curSec?.deadline, skew.current)
@@ -256,12 +258,21 @@ export default function Exam() {
   const faceText = !face ? "Camera starting" : { ok: "Face OK", off: "Move to the centre", none: "No face!", many: `${n} faces!`, hand: "Face covered!", left: "Looking left!", right: "Looking right!", up: "Looking up!", down: "Looking down!" }[face.state]
 
   return (
-    <div className="min-h-svh bg-muted/40 pb-32 lg:flex lg:h-svh lg:flex-col lg:overflow-hidden lg:pb-0">
+    <div className="min-h-svh bg-muted/40 pb-32 lg:flex lg:h-svh lg:min-h-[34rem] lg:flex-col lg:overflow-hidden lg:pb-0">
       <video ref={ev.screenVideo} muted playsInline className="pointer-events-none fixed top-0 left-0 size-px opacity-0" />
       {ev.talk && <div role="status" data-testid="talk-banner" className="fixed inset-x-0 top-0 z-[60] bg-red-600 py-2 text-center text-sm font-medium text-white">The invigilator is speaking with you. Your microphone is on.</div>}
       <header className="sticky top-0 z-10 flex shrink-0 flex-wrap items-center gap-3 border-b bg-white px-4 py-2.5">
         <Brand />
         <b className="grow truncate">{st.test.title}</b>
+        {cfg.enabled && cfg.webcam && (  // the camera lives in the top bar: a small picture and its status, so it takes no room from the question and the code
+          <div className={"flex shrink-0 items-stretch overflow-hidden rounded-lg border-2 text-xs text-white " + (faceBad ? "border-destructive" : "border-green-600")} data-testid="camera-box">
+            <FaceGuide videoRef={video} seen={face?.seen} state={face?.state} zone={cfg.face_zone} className="w-20" />
+            <span className={"flex items-center px-2 " + (faceBad ? "bg-destructive" : "bg-black")}>
+              {faceText}
+              {info.faceLimit ? ` · ${info.faceIncidents ?? 0}/${info.faceLimit}` : ""}
+            </span>
+          </div>
+        )}
         {cfg.enabled && <Badge variant="secondary">Proctoring on</Badge>}
         {cfg.enabled && cfg.tab_switch_limit > 0 && (
           <Badge variant={info.violations ? "destructive" : "secondary"} data-testid="violations">Warnings {info.violations ?? 0} / {cfg.tab_switch_limit}</Badge>
@@ -272,11 +283,10 @@ export default function Exam() {
       </header>
 
       <div className="mx-auto flex w-full max-w-6xl flex-col gap-4 p-4 lg:min-h-0 lg:flex-1">
-      <div className="flex shrink-0 flex-wrap items-start justify-between gap-4">
-        <div className="grid gap-4">
-        <div className="flex flex-wrap gap-2">
+      <div className="grid shrink-0 gap-3">
+        <div ref={tabs} className="flex gap-2 overflow-x-auto pb-1" aria-label="Sections">  {/* one row: a long list of sections scrolls sideways instead of taking several rows */}
           {sections.map((s, i) => (
-            <Button key={s.id} size="sm" variant={i === sec ? "default" : "outline"} disabled={(s.closed && i !== sec) || (hold && i > sec)} onClick={() => i !== sec && enterSection(i)}>
+            <Button key={s.id} size="sm" className="shrink-0" data-current={i === sec ? "true" : undefined} variant={i === sec ? "default" : "outline"} disabled={(s.closed && i !== sec) || (hold && i > sec)} onClick={() => i !== sec && enterSection(i)}>
               {s.title} · {answeredIn(s)}/{s.count}{s.closed ? " (closed)" : ""}
             </Button>
           ))}
@@ -289,22 +299,12 @@ export default function Exam() {
           ))}
           <span className="ml-2 self-center text-xs text-muted-foreground">Blue = answered, red outline = marked for review</span>
         </div>
-        </div>
-        {cfg.enabled && cfg.webcam && (
-          <div className={"w-48 shrink-0 overflow-hidden lg:w-36 rounded-lg border-2 bg-black " + (faceBad ? "border-destructive" : "border-green-600")} data-testid="camera-box">
-            <FaceGuide videoRef={video} seen={face?.seen} state={face?.state} zone={cfg.face_zone} />
-            <div className={"px-2 py-1 text-center text-xs " + (faceBad ? "bg-destructive text-white" : "text-white")}>
-              {faceText}
-              {info.faceLimit ? ` · ${info.faceIncidents ?? 0}/${info.faceLimit}` : ""}
-            </div>
-          </div>
-        )}
       </div>
 
         {q && (
           <div className={isCode(q) ? "grid gap-4 lg:min-h-0 lg:flex-1 lg:grid-cols-[2fr_3fr] lg:grid-rows-[minmax(0,1fr)]" : "grid gap-4 lg:min-h-0 lg:flex-1 lg:content-start lg:overflow-y-auto"}>
-            <Card className="lg:min-h-0 lg:overflow-y-auto" data-testid="question-panel">
-              <CardContent className="grid gap-3 pt-6">
+            <Card className="lg:min-h-0 lg:overflow-auto" data-testid="question-panel">
+              <CardContent className="grid grid-cols-[minmax(0,1fr)] gap-3 pt-6">  {/* the column never grows past the panel: long lines wrap, wide code scrolls inside its own box */}
                 <div className="flex flex-wrap items-start justify-between gap-2">
                   {(isCode(q) || !echoes(q.title, q.body)) && <h2 className="text-xl font-semibold">{q.title}</h2>}
                   <div className="ml-auto flex gap-1.5">
@@ -331,8 +331,8 @@ export default function Exam() {
               </CardContent>
             </Card>
             {isCode(q) && (
-              <Card className="lg:min-h-0 lg:overflow-y-auto" data-testid="code-panel">
-                <CardContent className="pt-6">
+              <Card className="lg:min-h-0 lg:overflow-auto" data-testid="code-panel">
+                <CardContent className="grid grid-cols-[minmax(0,1fr)] pt-6">
                   <CodeView key={q.id} q={q} r={resp[q.id] ?? {}} attemptId={attemptId} closed={curSec.closed} blockPaste={!!cfg.block_paste}
                     onChange={(p, imm) => update(q.id, p, imm)} />
                 </CardContent>

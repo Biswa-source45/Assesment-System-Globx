@@ -4,7 +4,7 @@ Read at the start of every task; update after every change. Plan and decisions: 
 
 ## Current state (2026-11-02)
 
-- Codebase: FastAPI backend (`backend/app`) and a React **JSX** frontend (`frontend/`: Vite, Tailwind, shadcn/ui). 262 pytest tests and 138 Playwright browser tests pass (plus 12 that call the real model, `RUN_AI=1`, two of them on the user's two real PDFs); **Question bank > Create with AI** and the AI box in every question editor write or change one question from words, a picture or both (the AI fills the form, nothing is saved until Save); the browser tests run all code through the judge service.
+- Codebase: FastAPI backend (`backend/app`) and a React **JSX** frontend (`frontend/`: Vite, Tailwind, shadcn/ui). 262 pytest tests and 139 Playwright browser tests pass (plus 12 that call the real model, `RUN_AI=1`, two of them on the user's two real PDFs); **Question bank > Create with AI** and the AI box in every question editor write or change one question from words, a picture or both (the AI fills the form, nothing is saved until Save); the browser tests run all code through the judge service.
 - Built and browser-tested: login (staff email or candidate username); admin Exams list; **question bank** (list, filter, create/edit/archive MCQ, short,
   explained, coding and **SQL** questions; coding has a case table, reference-solution check and "Generate with AI", both working on the unsaved form; saving returns to the bank with the question at the top); **candidate flow** (home, camera check-in with
   MediaPipe face gate and consent, exam runner with section tabs, palette, mark for review, autosave, server timer, CodeMirror editor with Run/Submit,
@@ -35,6 +35,11 @@ Read at the start of every task; update after every change. Plan and decisions: 
    through the judge container once it exists; old email-OTP/invite flow still in the backend; bundle is one 1.4 MB chunk (split later); rotate the OpenAI key.
 
 ## Log
+
+### 2026-11-24 (exam screen: camera in the top bar, one row of sections, text no longer clipped)
+- **Seen by the owner (live test, laptop at 150%).** The camera block, three rows of long section tabs and the question palette left the question and the code only a small strip; the left question text was cut off at its right edge and the code panel looked squeezed.
+- **Fix (`pages/candidate/Exam.jsx`, `CodeView.jsx`).** The camera is a small picture with its status ("Face OK 0/5") in the **top bar** (same `camera-box`, red when there is a problem); the sections are **one row that scrolls sideways** and keeps the current one in view; the panels' columns are `minmax(0, 1fr)` so a long line or a wide JSON example can no longer stretch the panel past the screen (text wraps, code and examples scroll inside their own box); both panels scroll in both directions; very short screens (under about 34rem) let the page scroll instead of squeezing the panels.
+- **Tests.** `scroll-panels.spec.js` +1 (camera in the header, six long sections stay one row and scroll, no sideways page scroll, wide text bounded, last section's tab comes into view). Exam, face-zone, proctoring, monitor, script-api, screen-start, starter-code and read-time specs re-run green (35). UI-only change: the full suite was not run.
 
 ### 2026-11-23 (mail a new user their login, and a staff Profile with an e-mail change that needs a code)
 - **Asked.** After **Add user** the screen should ask "send the login details by e-mail?" (e-mail, password, application link); every staff user gets a profile (see details, change name and password) and may change their e-mail only after a code sent to the OLD address.

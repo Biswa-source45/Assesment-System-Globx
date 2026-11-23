@@ -49,7 +49,7 @@ export function DataTable({ data }) {
 // SQL question: the schema, then for each sample the input tables and the expected output, formatted as tables.
 export function SqlSamples({ q }) {
   return (
-    <div className="grid gap-4">
+    <div className="grid grid-cols-[minmax(0,1fr)] gap-4">
       <details>
         <summary className="cursor-pointer text-sm font-medium">Schema</summary>
         <pre className="mt-2 overflow-auto whitespace-pre-wrap rounded-md bg-muted p-2 text-xs">{q.schema}</pre>
@@ -136,7 +136,7 @@ export function CodeView({ q, r, onChange, attemptId, closed, blockPaste }) {
   const privateRows = result?.hidden?.cases ?? []
 
   return (
-    <div className="grid gap-3">
+    <div className="grid grid-cols-[minmax(0,1fr)] gap-3">
       <div className="flex flex-wrap items-center gap-2">
         <Select value={lang} onValueChange={pickLang} disabled={closed}>
           <SelectTrigger className="w-52" aria-label={isSql ? "SQL engine" : "Language"}><SelectValue /></SelectTrigger>
