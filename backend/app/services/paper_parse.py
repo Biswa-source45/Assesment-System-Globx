@@ -221,8 +221,7 @@ def parse_paper(body: str, key: str, spans: List[Tuple[int, str]]) -> Dict[str, 
             continue
         text = body[offset:end].rstrip()
         q, why = _read_block(value, text, answers)
-        own = bool(re.search(r"(?i)\bCREATE\s+TABLE\b", text))
-        code = None if q else read_code_block(value, text if own or not shared else text + "\n\n" + shared, key_for(key, value))
+        code = None if q else read_code_block(value, text, key_for(key, value), shared)
         sections[-1]["items"].append({"kind": "mcq", "question": q, "number": value} if q else {"kind": "code", "question": code, "number": value, "text": text} if code
                                      else {"kind": "block", "text": text, "number": value, "why": why, **({"context": shared} if shared and not re.search(r"(?im)^[ \t]*sample data", text) else {})})  # (a script question's own CREATE TABLE and INSERT lines are its answer and its checks, not its schema)
     # text after the last option of a question that is really a passage for the questions after it
@@ -322,9 +321,16 @@ def _inline_cases(text: str) -> List[Dict[str, str]]:
     return [] if any(" -> " in c["input"] for c in out) else out
 
 
-def read_code_block(number: int, text: str, key_snippet: str) -> Optional[Dict[str, Any]]:
+def read_code_block(number: int, text: str, key_snippet: str, shared: str = "") -> Optional[Dict[str, Any]]:
     """A coding or SQL question read by rules, or None. The statement, the tables and rows (SQL), the reference query or program come from the text
-    (in the question, or in the answer key); test cases are read when written "open: ..." / "hidden: ...", otherwise left to the AI (`_cases_key`)."""
+    (in the question, or in the answer key); test cases are read when written "open: ..." / "hidden: ...", otherwise left to the AI (`_cases_key`).
+    `shared` is the schema and rows a section's introduction gives once (used when the question has no tables of its own). SQL hidden data may be written
+    in the paper: INSERT statements under a "Hidden data:" line, one such line per dataset."""
+    tail = "\n\n" + shared if shared and not re.search(r"(?i)\bCREATE\s+TABLE\b", text) else ""
+    hid = re.search(r"(?im)^[ \t]*hidden data\b", text)
+    sample = (text[:hid.start()] if hid else text) + tail      # the open data: everything before the first "Hidden data:" line
+    hidden = [d for part in (re.split(r"(?im)^[ \t]*hidden data\b[^\n]*$", text[hid.start():])[1:] if hid else []) if (d := "\n".join(re.findall(r"(?is)\bINSERT\s+INTO\b.*?;", part)))]
+    text += tail
     lines = text.split("\n")
     head = re.sub(r"^[ \t*#]*(?:Q|Question)\.?[ \t]*\d{1,3}[ \t]*[.):][ \t]*", "", lines[0])
     marks = next((m for m in (_MARKS.search(ln) for ln in lines[:6]) if m), None)  # the question's first line, or a later one when the line wrapped
@@ -337,9 +343,15 @@ def read_code_block(number: int, text: str, key_snippet: str) -> Optional[Dict[s
     sql = re.search(r"(?is)\bCREATE\s+TABLE\b.*?;", text)
     ref = _reference_code(_NOISE.sub("", text)) or _reference_code(clean_key)
     statement: List[str] = []
+    langs: List[str] = []
     for ln in body:
         if _MARKER.fullmatch(ln.strip()):
             continue
+        lang_line = re.match(r"(?i)^[ \t]*languages?[ \t]*:[ \t]*(.+?)[ \t]*$", ln)  # "Language: Python / Java / C++ / C": the languages the question allows, not part of the text
+        if lang_line and not langs:
+            langs = list(dict.fromkeys(_LANG[w] for t in re.split(r"[/,]|\bor\b", lang_line.group(1)) if (w := (t.strip().lower().split() or [""])[0]) in _LANG))
+            if langs:
+                continue
         if _HEAD_STOP.match(ln) and (len(statement) >= 1) or re.match(r"(?i)^\s*(?:create\s+table|insert\s+into)\b", ln):
             break
         shown = _MARKS.sub("", _MARKER.sub("", ln))
@@ -354,26 +366,36 @@ def read_code_block(number: int, text: str, key_snippet: str) -> Optional[Dict[s
     if images:
         q["images"] = images
     if sql:
-        schema = "\n".join(re.findall(r"(?is)\bCREATE\s+TABLE\b.*?;", text))
-        data = "\n".join(re.findall(r"(?is)\bINSERT\s+INTO\b.*?;", text))
+        schema = "\n".join(re.findall(r"(?is)\bCREATE\s+TABLE\b.*?;", sample))
+        data = "\n".join(re.findall(r"(?is)\bINSERT\s+INTO\b.*?;", sample))
         sel = None
-        a = re.search(r"(?im)^[ \t]*(?:(?:model )?answer|reference query)[ \t]*:?[ \t]*$", text)  # the format: "Answer:" and the query under it
+        a = re.search(r"(?im)^[ \t]*(?:(?:model )?answer|reference query)[ \t]*:?[ \t]*$", sample)  # the format: "Answer:" and the query under it
         if a:
             q_lines = []
-            for ln in text[a.end():].strip("\n").split("\n"):
-                if not ln.strip() or re.match(r"(?i)^[ \t]*hidden data", ln):
+            for ln in sample[a.end():].strip("\n").split("\n"):
+                if not ln.strip() or re.match(r"(?i)^[ \t]*(?:hidden data|checks?[ \t]*:?[ \t]*$)", ln):
                     break
                 q_lines.append(ln)
-            sel = "\n".join(q_lines).strip().rstrip(";") if q_lines else None
+            sel = "\n".join(q_lines).strip() if q_lines else None
         if not sel:
-            inserts = list(re.finditer(r"(?is)\bINSERT\s+INTO\b.*?;", text))
-            after_data = _NOISE.sub("", text[inserts[-1].end():]) if inserts else ""  # a solution printed right under the question's data
-            m = (re.search(r"(?is)\bSELECT\b.*?;", clean_key) or re.search(r"(?is)\bSELECT\b.*?;", _NOISE.sub("", text[text.lower().find("reference query"):]) if "reference query" in text.lower() else "")
+            inserts = list(re.finditer(r"(?is)\bINSERT\s+INTO\b.*?;", sample))
+            after_data = _NOISE.sub("", sample[inserts[-1].end():]) if inserts else ""  # a solution printed right under the question's data
+            m = (re.search(r"(?is)\bSELECT\b.*?;", clean_key) or re.search(r"(?is)\bSELECT\b.*?;", _NOISE.sub("", sample[sample.lower().find("reference query"):]) if "reference query" in sample.lower() else "")
                  or re.search(r"(?is)\bSELECT\b.*?;", after_data))
-            sel = m.group(0).rstrip(";") if m else None
-        if not sel or not data or not re.match(r"(?is)\s*(?:select|with)\b", sel):  # ALTER, DELETE, CREATE...: not a one-query question: the AI makes it a script question
+            sel = m.group(0) if m else None
+        c = re.search(r"(?im)^[ \t]*checks?[ \t]*:?[ \t]*$", sample)  # a script question (ALTER, INSERT, UPDATE, DELETE, DROP, CREATE): its statements, then the checks read the changed tables
+        checks: List[str] = []
+        for ln in (sample[c.end():].strip("\n").split("\n") if c else []):
+            if not ln.strip() or re.match(r"(?i)^[ \t]*hidden data", ln):
+                break
+            checks.append(ln.strip().rstrip(";"))
+        is_select = bool(sel and re.match(r"(?is)\s*(?:select|with)\b", sel))
+        if not sel or not data or not (is_select or checks):  # DDL or DML without checks: not a one-query question: the AI makes it a script question
             return None
-        q.update({"type": "sql", "schema": schema, "reference_sql": sel.strip(), "datasets": [{"data": data, "visibility": "open"}]})
+        q.update({"type": "sql", "schema": schema, "reference_sql": sel.rstrip(";").strip() if is_select else sel.strip(),
+                  "datasets": [{"data": data, "visibility": "open"}] + [{"data": d, "visibility": "hidden"} for d in hidden]})
+        if checks and not is_select:
+            q["checks"] = checks
         hint = re.search(r"(?im)^[ \t]*hidden data[ \t]*:[ \t]*(.+)$", text)
         if hint:
             q["_hint"] = hint.group(1).strip()
@@ -384,6 +406,8 @@ def read_code_block(number: int, text: str, key_snippet: str) -> Optional[Dict[s
     if ref is None:
         return None
     q.update({"type": "coding", "reference": {"language": ref[0], "source": ref[1]}})
+    if langs:
+        q["languages"] = langs
     if ref[0] == "flask":  # a backend (API) question: only that language, and its time limit allows the framework to load
         q.update({"languages": ["flask"], "time_limit_ms": 5000})
     cases = _inline_cases(_NOISE.sub("", text))

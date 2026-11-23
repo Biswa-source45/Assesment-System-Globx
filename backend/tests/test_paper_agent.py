@@ -98,6 +98,22 @@ def test_a_schema_written_once_for_a_section_reaches_its_questions_and_ddl_is_ne
     assert items[16]["kind"] == "block" and "CREATE TABLE courses" in items[16]["context"]                    # ALTER is not one query: the AI makes it a script question, with the schema as context
 
 
+def test_a_language_line_a_script_question_with_checks_and_hidden_data_written_in_the_paper_are_read_without_the_ai():
+    paper = ("Section C: Code (4 marks)\n"
+             "Q1. Echo [2 marks]\nPrint the input.\nLanguage: Python / Java / C++ or JavaScript (Node.js), TypeScript\nSample answer (Python):\nprint(input())\nTest cases:\nopen: a\nhidden: b\n"
+             "Section D: SQL (2 marks)\nOne table for all questions.\nCREATE TABLE t (id INTEGER, qty INTEGER);\nINSERT INTO t VALUES (1,0),(2,5);\n"
+             "Q2. Remove zero rows [1 mark]\nDelete the rows with quantity 0.\nAnswer:\nDELETE FROM t WHERE qty = 0;\nChecks:\nSELECT id FROM t ORDER BY id\nSELECT COUNT(*) FROM t\n"
+             "Hidden data: several zeros\nINSERT INTO t VALUES (1,0),(2,0),(3,4);\nHidden data: none to delete\nINSERT INTO t VALUES (1,1);\n"
+             "Q3. Big rows [1 mark]\nList the ids with qty above 3.\nAnswer:\nSELECT id FROM t WHERE qty > 3;\nHidden data:\nINSERT INTO t VALUES (7,9);\n")
+    res = _read(paper)[2]
+    q1, q2, q3 = (i["question"] for i in _items(res))
+    assert res["exact"] == 3 and q1["languages"] == ["python", "java", "cpp", "javascript"] and "Language" not in q1["statement"]   # the languages the paper allows (TypeScript is not a platform language)
+    assert q2["type"] == "sql" and q2["reference_sql"] == "DELETE FROM t WHERE qty = 0;" and q2["checks"] == ["SELECT id FROM t ORDER BY id", "SELECT COUNT(*) FROM t"]
+    assert [d["visibility"] for d in q2["datasets"]] == ["open", "hidden", "hidden"] and "(2,5)" in q2["datasets"][0]["data"] and "(3,4)" not in q2["datasets"][0]["data"]
+    assert q2["datasets"][1]["data"] == "INSERT INTO t VALUES (1,0),(2,0),(3,4);" and q2["datasets"][2]["data"] == "INSERT INTO t VALUES (1,1);"
+    assert q3["reference_sql"] == "SELECT id FROM t WHERE qty > 3" and "checks" not in q3 and [d["visibility"] for d in q3["datasets"]] == ["open", "hidden"]
+
+
 # ---------------------------------------------------------------- the plan
 PLAN_REPLY = {"questions": [{"number": 16, "type": "sql_script", "marks": 2, "negative_marks": None}, {"number": "17", "type": "sql", "marks": 2}, {"number": 18, "type": "nonsense"}],
               "shared_context": [{"applies_to": [16, 17], "text": "CREATE TABLE courses (\n  course_id INTEGER PRIMARY KEY,\n  course_name TEXT\n);"},
