@@ -4,7 +4,7 @@ Read at the start of every task; update after every change. Plan and decisions: 
 
 ## Current state (2026-11-02)
 
-- Codebase: FastAPI backend (`backend/app`) and a React **JSX** frontend (`frontend/`: Vite, Tailwind, shadcn/ui). 266 pytest tests and 141 Playwright browser tests pass (plus 12 that call the real model, `RUN_AI=1`, two of them on the user's two real PDFs); **Question bank > Create with AI** and the AI box in every question editor write or change one question from words, a picture or both (the AI fills the form, nothing is saved until Save); the browser tests run all code through the judge service.
+- Codebase: FastAPI backend (`backend/app`) and a React **JSX** frontend (`frontend/`: Vite, Tailwind, shadcn/ui). 266 pytest tests and 144 Playwright browser tests pass (plus 12 that call the real model, `RUN_AI=1`, two of them on the user's two real PDFs); **Question bank > Create with AI** and the AI box in every question editor write or change one question from words, a picture or both (the AI fills the form, nothing is saved until Save); the browser tests run all code through the judge service.
 - Built and browser-tested: login (staff email or candidate username); admin Exams list; **question bank** (list, filter, create/edit/archive MCQ, short,
   explained, coding and **SQL** questions; coding has a case table, reference-solution check and "Generate with AI", both working on the unsaved form; saving returns to the bank with the question at the top); **candidate flow** (home, camera check-in with
   MediaPipe face gate and consent, exam runner with section tabs, palette, mark for review, autosave, server timer, CodeMirror editor with Run/Submit,
@@ -35,6 +35,11 @@ Read at the start of every task; update after every change. Plan and decisions: 
    through the judge container once it exists; old email-OTP/invite flow still in the backend; bundle is one 1.4 MB chunk (split later); rotate the OpenAI key.
 
 ## Log
+
+### 2026-11-24 (an in-app Back button on every admin screen)
+- **Asked.** Opening a menu or an exam meant using the browser's Back button; the owner wants Back inside the app.
+- **Done (`AdminLayout.jsx`).** A **Back** button in the top bar of every admin screen except the Exams home. It goes to the screen you came from (the browser history of this visit); a screen opened directly (a bookmark, a new tab) goes one level up (a candidate's review to the exam's results, results to the Results list, a question to the Question bank, anything else to the Exams home), so Back never leaves the app. Tabs inside an exam already replace the address, so one Back leaves the exam. The existing links on some screens (All exams, All results, Back to bank) stay.
+- **Tests.** `back-button.spec.js` (3: sidebar menu, an exam and its tabs, results two levels deep, a directly opened screen, phone width); layout, users, profile, results, exam-setup and confirmations specs re-run green. Only these were run (UI-only change).
 
 ### 2026-11-24 (the talent team's second Intern paper: version 2 of the PDF, extra open datasets, formatted long questions)
 - **Asked.** The talent team sent a new file (model answers and test notes written under each question) with changes: new Q9-Q13, a new Q19 (maximum product of three numbers instead of the longest substring), four sections (A, B, C coding, D SQL) and a marking note that only describes multiple-answer marking (no negative marks on single answers, 0.25 off per wrong tick). The owner asked for a new importable PDF, tested here, and for the long questions to import formatted.

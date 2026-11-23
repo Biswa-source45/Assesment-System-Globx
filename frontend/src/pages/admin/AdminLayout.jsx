@@ -1,11 +1,12 @@
 import { BusyChip } from "@/components/Spinner"
 import { useEffect, useState } from "react"
-import { NavLink, Outlet } from "react-router-dom"
-import { Building2, CircleHelp, ClipboardList, FileQuestion, MonitorPlay, Trophy, Users } from "lucide-react"
+import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom"
+import { ArrowLeft, Building2, CircleHelp, ClipboardList, FileQuestion, MonitorPlay, Trophy, Users } from "lucide-react"
 import { useAuth } from "@/lib/auth"
 import { get } from "@/lib/api"
 import Brand from "@/components/Brand"
 import SignOutButton from "@/components/SignOutButton"
+import { Button } from "@/components/ui/button"
 import {
   Sidebar, SidebarContent, SidebarFooter, SidebarGroup, SidebarGroupContent, SidebarHeader, SidebarInset,
   SidebarMenu, SidebarMenuButton, SidebarMenuItem, SidebarProvider, SidebarTrigger,
@@ -22,8 +23,19 @@ const NAV = [
   { to: "/admin/help", label: "Help", icon: CircleHelp, can: "view" },
 ]
 
+// Where Back goes when this screen was opened directly (a bookmark, a reload in a new tab): one level up, never out of the app.
+function parentOf(pathname) {
+  const parts = pathname.split("/").filter(Boolean)  // ["admin", "results", testId, attemptId]
+  if (parts[1] === "results" && parts.length > 2) return "/" + parts.slice(0, -1).join("/")
+  if (parts[1] === "questions" && parts.length > 2) return "/admin/questions"
+  return "/admin"
+}
+
 export default function AdminLayout() {
   const { user } = useAuth()
+  const navigate = useNavigate()
+  const location = useLocation()
+  const goBack = () => (location.key !== "default" ? navigate(-1) : navigate(parentOf(location.pathname)))  // "default" = the first screen of this visit: nothing to go back to
   const [unsafe, setUnsafe] = useState(false)  // production without the isolated judge: candidate code would run inside the server
   useEffect(() => { get("/system/sandboxes", { quiet: true }).then((s) => setUnsafe(s.unsafe_in_production)).catch(() => {}) }, [])
   return (
@@ -61,6 +73,9 @@ export default function AdminLayout() {
       <SidebarInset>
         <header className="flex h-12 items-center gap-2 border-b px-4" data-testid="topbar">
           <SidebarTrigger />
+          {location.pathname.replace(/\/$/, "") !== "/admin" && (
+            <Button variant="ghost" size="sm" onClick={goBack} data-testid="back-button" aria-label="Back to the previous screen"><ArrowLeft /> Back</Button>
+          )}
         </header>
         {unsafe && (
           <div role="alert" data-testid="unsafe-judge" className="border-b border-destructive/30 bg-destructive/10 px-4 py-2 text-sm font-medium text-destructive">
