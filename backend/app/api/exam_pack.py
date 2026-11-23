@@ -1025,7 +1025,7 @@ def _place_pictures(pack: Dict[str, Any], body_text: str) -> None:
 
 
 # ---- how a question looks to the candidate
-_LABEL = re.compile(r"^(input( format)?|output( format)?|constraints?|sample( input| output| data| test cases?)?|examples?|notes?|explanation|hint)\s*[:\-]?\s*(?P<rest>.*)$", re.I)
+_LABEL = re.compile(r"^(input( format)?|output( format)?|rules?|constraints?|sample( input| output| data| test cases?)?|examples?|notes?|explanation|hint)\s*[:\-]?\s*(?P<rest>.*)$", re.I)
 _ITEM = re.compile(r"^\s*(?:(\d{1,2})[.)]|[-•*])\s+(\S.*)$")
 _SQLISH = re.compile(r"^\s*(create\s+table|insert\s+into|select\b|\)\s*;|\(?\d+\s*,)", re.I)
 

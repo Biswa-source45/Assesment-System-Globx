@@ -4,7 +4,7 @@ Read at the start of every task; update after every change. Plan and decisions: 
 
 ## Current state (2026-11-02)
 
-- Codebase: FastAPI backend (`backend/app`) and a React **JSX** frontend (`frontend/`: Vite, Tailwind, shadcn/ui). 266 pytest tests and 144 Playwright browser tests pass (plus 12 that call the real model, `RUN_AI=1`, two of them on the user's two real PDFs); **Question bank > Create with AI** and the AI box in every question editor write or change one question from words, a picture or both (the AI fills the form, nothing is saved until Save); the browser tests run all code through the judge service.
+- Codebase: FastAPI backend (`backend/app`) and a React **JSX** frontend (`frontend/`: Vite, Tailwind, shadcn/ui). 267 pytest tests and 144 Playwright browser tests pass (plus 12 that call the real model, `RUN_AI=1`, two of them on the user's two real PDFs); **Question bank > Create with AI** and the AI box in every question editor write or change one question from words, a picture or both (the AI fills the form, nothing is saved until Save); the browser tests run all code through the judge service.
 - Built and browser-tested: login (staff email or candidate username); admin Exams list; **question bank** (list, filter, create/edit/archive MCQ, short,
   explained, coding and **SQL** questions; coding has a case table, reference-solution check and "Generate with AI", both working on the unsaved form; saving returns to the bank with the question at the top); **candidate flow** (home, camera check-in with
   MediaPipe face gate and consent, exam runner with section tabs, palette, mark for review, autosave, server timer, CodeMirror editor with Run/Submit,
@@ -35,6 +35,13 @@ Read at the start of every task; update after every change. Plan and decisions: 
    through the judge container once it exists; old email-OTP/invite flow still in the backend; bundle is one 1.4 MB chunk (split later); rotate the OpenAI key.
 
 ## Log
+
+### 2026-11-24 (two more papers: Data Science Intern and AI Engineer Intern)
+- **Asked.** The talent team sent two more papers (same Sections A, B, D and Q19 as the Full-stack one; their own Q14-Q18 and Q20). The owner asked for an importable PDF and answer file for each, tested here, in one folder.
+- **Made (Downloads, `DS and AI Engineer Papers`, outside the repo).** `GLOBX_DataScience_Intern_...v2_50_Marks.pdf`, `GLOBX_AIEngineer_Intern_...v2_50_Marks.pdf` and the two copy-paste answer files. Same structure as the Full-stack v2 paper (four sections, 4 open and 4 hidden SQL datasets, starter code, formatted question texts). Q20 of each is a stdin/stdout program (Python only: the judge has no pandas, NumPy, PyTorch or scikit-learn).
+- **Where the talent team's own answers fail their own tests (written into the questions as explicit rules).** AI Engineer Q20: the model answer gives 3/2, 0/2 and 2/4 where the tests say 4/1, 1/1 and 3/3 (open 1, open 4, hidden 4); the rule now is "test items in all = round(n x test_size), each class floor(size x test_size), the rest to the largest fractional parts, ties to the smaller label", which gives all their numbers, and the output also lists the test count per class. Data Science Q20: open 1 expects B before A for equal totals (their answer gives A first) and hidden 3 expects `[('A', 0, 100.0)]` where their answer returns `[]`: now "equal totals sort by name" and "grand total 0 gives an empty list". Q19 hidden 3 is -6, not 20 (as in the Full-stack paper).
+- **Paper reader fixes found by these papers.** (1) A sample answer with a variable called `test` (`test += ...`) was cut at that line, because the line looked like the "Tests" label; the label must now be a line of its own (`Tests` or `Tests:`), also for starter code. (2) `Rules` is a label: it stays a heading above its numbered list instead of being joined with the first rule.
+- **Verified.** Every answer through the judge and each paper through the real upload with the real model, then a candidate solving everything: 23 questions, 50 marks, four sections, no problems in the dry run, 44 of the 44 auto-marked marks (Q19 10/10 in Python, Java, C++, C; Q20 10/10; SQL 8/8 each); the written answers (Q16-Q18, 6 marks) wait for a marker. Paper-related tests re-run green (78, including the two earlier real papers); the full suite was not re-run (the reader changes are narrow).
 
 ### 2026-11-24 (an in-app Back button on every admin screen)
 - **Asked.** Opening a menu or an exam meant using the browser's Back button; the owner wants Back inside the app.

@@ -131,6 +131,15 @@ def test_starter_code_written_in_the_paper_is_read_per_language_and_a_page_break
     assert q2["reference_sql"] == "SELECT id\nFROM t\nWHERE qty > 0"                               # the page break left no blank line in the query
 
 
+def test_a_sample_answer_with_a_variable_called_test_is_not_cut_short_and_rules_is_a_label():
+    paper = ("Section C: Code (2 marks)\nQ1. Echo [2 marks]\nRules\n1. Print the input.\n2. Nothing else.\n"
+             "Sample answer (Python):\ntest = []\ntest += [input()]\ntests = test\nprint(tests[0])\nTest cases:\nopen: a\nhidden: b\n"
+             "Q2. Another [1 mark]\nSay hi.\nSample answer (Python):\nprint('hi')\nTest cases:\nopen: x\nhidden: y\n")
+    q1 = _items(_read(paper)[2])[0]["question"]
+    assert q1["reference"]["source"] == "test = []\ntest += [input()]\ntests = test\nprint(tests[0])"
+    assert [c["input"] for c in q1["test_cases"]] == ["a", "b"] and "Rules\n1. Print the input." in q1["statement"]    # "Rules" stays a line of its own above the list
+
+
 def test_open_and_hidden_datasets_in_the_paper_keep_their_visibility_and_order():
     paper = ("Section D: SQL (2 marks)\nCREATE TABLE t (id INTEGER, qty INTEGER);\nINSERT INTO t VALUES (1,5);\n"
              "Q1. Ids [1 mark]\nList the ids.\nAnswer:\nSELECT id FROM t;\n"

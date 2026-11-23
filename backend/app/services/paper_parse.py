@@ -295,7 +295,7 @@ def _reference_code(text: str) -> Optional[Tuple[str, str]]:
     code: List[str] = []
     for ln in text[m.end():].split("\n")[1:] if text[m.end():].startswith("\n") else text[m.end():].split("\n"):
         # the code ends at the test cases, the next question, or another solution (a paper may give the same answer in two languages)
-        if re.match(r"^#\s*Type\b|^\d+\s+(?:open|hidden)\b|^[ \t]*Q\s*\d+\s*[.:\-]|^[ \t]*(?:Detailed solutions?|Test cases?|Tests?\b|starter(?: code)?[ \t]*\(|(?:reference|sample|model) (?:solution|answer|program|code)\b)", ln, re.I):
+        if re.match(r"^#\s*Type\b|^\d+\s+(?:open|hidden)\b|^[ \t]*Q\s*\d+\s*[.:\-]|^[ \t]*(?:Detailed solutions?|Test cases?|Tests?[ \t]*:?[ \t]*$|starter(?: code)?[ \t]*\(|(?:reference|sample|model) (?:solution|answer|program|code)\b)", ln, re.I):
             break
         code.append(ln.rstrip())
     while code and not code[-1].strip():
@@ -316,7 +316,7 @@ def _starters(text: str) -> Dict[str, str]:
             continue
         code: List[str] = []
         for nxt in lines[i + 1:]:
-            if re.match(r"(?i)^[ \t]*(?:Test cases?|Tests?\b|starter(?: code)?[ \t]*\(|(?:reference|sample|model) (?:solution|answer|program|code)\b|Q\s*\d+\s*[.:\-])", nxt):
+            if re.match(r"(?i)^[ \t]*(?:Test cases?|Tests?[ \t]*:?[ \t]*$|starter(?: code)?[ \t]*\(|(?:reference|sample|model) (?:solution|answer|program|code)\b|Q\s*\d+\s*[.:\-])", nxt):
                 break
             code.append(nxt.rstrip())
         src = "\n".join(code).strip("\n")
@@ -464,7 +464,7 @@ def table_cases(key: str) -> List[Dict[str, str]]:
 
 
 _TERM = re.compile(r"[.?!:;]\s*$")
-_LABELISH = re.compile(r"(?i)^(?:input|output|constraints?|sample|examples?|notes?|explanation|hint|tables?|answer|statements?|conclusions?|read the)\b")
+_LABELISH = re.compile(r"(?i)^(?:input|output|rules?|constraints?|sample|examples?|notes?|explanation|hint|tables?|answer|statements?|conclusions?|read the)\b")
 
 
 def join_wrapped(lines: List[str]) -> List[str]:
