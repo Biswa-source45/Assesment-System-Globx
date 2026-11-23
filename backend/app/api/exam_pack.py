@@ -1026,6 +1026,7 @@ def _place_pictures(pack: Dict[str, Any], body_text: str) -> None:
 
 # ---- how a question looks to the candidate
 _LABEL = re.compile(r"^(input( format)?|output( format)?|constraints?|sample( input| output| data| test cases?)?|examples?|notes?|explanation|hint)\s*[:\-]?\s*(?P<rest>.*)$", re.I)
+_ITEM = re.compile(r"^\s*(?:(\d{1,2})[.)]|[-•*])\s+(\S.*)$")
 _SQLISH = re.compile(r"^\s*(create\s+table|insert\s+into|select\b|\)\s*;|\(?\d+\s*,)", re.I)
 
 
@@ -1043,26 +1044,40 @@ def _structure(text: str, qtype: str) -> str:
         if cut is not None:
             note = next((i for i in range(cut, len(lines)) if re.match(r"(?i)\s*notes?\b", lines[i])), len(lines))
             lines = lines[:cut] + lines[note:]
-    out, code = [], []
+    out, code, items = [], [], []   # items: the lines of the numbered or bulleted list being read, as (kind, text)
+
+    def inline(s: str) -> str:  # `name` in backticks is code
+        return re.sub(r"`([^`\n]+)`", r"<code>\1</code>", html.escape(s, quote=False))
 
     def flush():
         if code:
             out.append("<pre>" + html.escape("\n".join(code), quote=False) + "</pre>")
             code.clear()
+        if items:
+            tag = "ol" if items[0][0] == "ol" else "ul"
+            out.append(f"<{tag}>" + "".join(f"<li>{inline(t)}</li>" for _, t in items) + f"</{tag}>")
+            items.clear()
     for ln in lines:
         if not ln.strip():
             flush()
         elif qtype in ("sql", "coding") and (_SQLISH.match(ln) or (code and ln.startswith((" ", "\t")))):
+            if items:
+                flush()
             code.append(ln)
+        elif qtype in ("sql", "coding") and (li := _ITEM.match(ln)):  # "1. Required fields ..." and "- one more thing": a list, not a run of paragraphs
+            kind = "ol" if li.group(1) else "ul"
+            if items and items[0][0] != kind:
+                flush()
+            items.append((kind, li.group(2).strip()))
         else:
             flush()
             m = _LABEL.match(ln.strip())
             if m and not m.group("rest"):
                 out.append(f"<p><b>{html.escape(ln.strip(), quote=False)}</b></p>")
             elif m:
-                out.append(f"<p><b>{html.escape(ln.strip()[:m.start("rest")].rstrip(), quote=False)}</b> {html.escape(m.group("rest"), quote=False)}</p>")
+                out.append(f"<p><b>{html.escape(ln.strip()[:m.start("rest")].rstrip(), quote=False)}</b> {inline(m.group("rest"))}</p>")
             else:
-                out.append(f"<p>{html.escape(ln.strip(), quote=False)}</p>")
+                out.append(f"<p>{inline(ln.strip())}</p>")
     flush()
     return "".join(out) or text
 

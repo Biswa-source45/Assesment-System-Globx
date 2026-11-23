@@ -346,11 +346,12 @@ def read_code_block(number: int, text: str, key_snippet: str, shared: str = "") 
     """A coding or SQL question read by rules, or None. The statement, the tables and rows (SQL), the reference query or program come from the text
     (in the question, or in the answer key); test cases are read when written "open: ..." / "hidden: ...", otherwise left to the AI (`_cases_key`).
     `shared` is the schema and rows a section's introduction gives once (used when the question has no tables of its own). SQL hidden data may be written
-    in the paper: INSERT statements under a "Hidden data:" line, one such line per dataset."""
+    in the paper: INSERT statements under a "Hidden data:" line (or "Open data:" for one the candidate sees as a sample), one such line per dataset."""
     tail = "\n\n" + shared if shared and not re.search(r"(?i)\bCREATE\s+TABLE\b", text) else ""
-    hid = re.search(r"(?im)^[ \t]*hidden data\b", text)
-    sample = (text[:hid.start()] if hid else text) + tail      # the open data: everything before the first "Hidden data:" line
-    hidden = [d for part in (re.split(r"(?im)^[ \t]*hidden data\b[^\n]*$", text[hid.start():])[1:] if hid else []) if (d := "\n".join(re.findall(r"(?is)\bINSERT\s+INTO\b.*?;", part)))]
+    labels = list(re.finditer(r"(?im)^[ \t]*(hidden|open) data\b[^\n]*$", text))
+    sample = (text[:labels[0].start()] if labels else text) + tail      # the first dataset: everything before the first "Hidden data:" or "Open data:" line
+    extra = [(m.group(1).lower(), d) for k, m in enumerate(labels)
+             if (d := "\n".join(re.findall(r"(?is)\bINSERT\s+INTO\b.*?;", text[m.end():labels[k + 1].start() if k + 1 < len(labels) else len(text)])))]
     text += tail
     lines = text.split("\n")
     head = re.sub(r"^[ \t*#]*(?:Q|Question)\.?[ \t]*\d{1,3}[ \t]*[.):][ \t]*", "", lines[0])
@@ -394,7 +395,7 @@ def read_code_block(number: int, text: str, key_snippet: str, shared: str = "") 
         if a:
             q_lines = []
             for ln in sample[a.end():].strip("\n").split("\n"):
-                if not ln.strip() or re.match(r"(?i)^[ \t]*(?:hidden data|checks?[ \t]*:?[ \t]*$)", ln):
+                if not ln.strip() or re.match(r"(?i)^[ \t]*(?:(?:hidden|open) data|checks?[ \t]*:?[ \t]*$)", ln):
                     break
                 q_lines.append(ln)
             sel = "\n".join(q_lines).strip() if q_lines else None
@@ -407,14 +408,14 @@ def read_code_block(number: int, text: str, key_snippet: str, shared: str = "") 
         c = re.search(r"(?im)^[ \t]*checks?[ \t]*:?[ \t]*$", sample)  # a script question (ALTER, INSERT, UPDATE, DELETE, DROP, CREATE): its statements, then the checks read the changed tables
         checks: List[str] = []
         for ln in (sample[c.end():].strip("\n").split("\n") if c else []):
-            if not ln.strip() or re.match(r"(?i)^[ \t]*hidden data", ln):
+            if not ln.strip() or re.match(r"(?i)^[ \t]*(?:hidden|open) data", ln):
                 break
             checks.append(ln.strip().rstrip(";"))
         is_select = bool(sel and re.match(r"(?is)\s*(?:select|with)\b", sel))
         if not sel or not data or not (is_select or checks):  # DDL or DML without checks: not a one-query question: the AI makes it a script question
             return None
         q.update({"type": "sql", "schema": schema, "reference_sql": sel.rstrip(";").strip() if is_select else sel.strip(),
-                  "datasets": [{"data": data, "visibility": "open"}] + [{"data": d, "visibility": "hidden"} for d in hidden]})
+                  "datasets": [{"data": data, "visibility": "open"}] + [{"data": d, "visibility": v} for v, d in extra]})
         if checks and not is_select:
             q["checks"] = checks
         hint = re.search(r"(?im)^[ \t]*hidden data[ \t]*:[ \t]*(.+)$", text)

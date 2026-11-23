@@ -131,6 +131,23 @@ def test_starter_code_written_in_the_paper_is_read_per_language_and_a_page_break
     assert q2["reference_sql"] == "SELECT id\nFROM t\nWHERE qty > 0"                               # the page break left no blank line in the query
 
 
+def test_open_and_hidden_datasets_in_the_paper_keep_their_visibility_and_order():
+    paper = ("Section D: SQL (2 marks)\nCREATE TABLE t (id INTEGER, qty INTEGER);\nINSERT INTO t VALUES (1,5);\n"
+             "Q1. Ids [1 mark]\nList the ids.\nAnswer:\nSELECT id FROM t;\n"
+             "Open data: none at all\nINSERT INTO t VALUES (9,9);\nHidden data: one more\nINSERT INTO t VALUES (2,2);\nOpen data: a last sample\nINSERT INTO t VALUES (3,3);\n"
+             "Q2. Quantities [1 mark]\nList the quantities.\nAnswer:\nSELECT qty FROM t;\n")
+    q1 = _items(_read(paper)[2])[0]["question"]
+    assert [(d["visibility"], d["data"]) for d in q1["datasets"]] == [("open", "INSERT INTO t VALUES (1,5);"), ("open", "INSERT INTO t VALUES (9,9);"),
+                                                                      ("hidden", "INSERT INTO t VALUES (2,2);"), ("open", "INSERT INTO t VALUES (3,3);")]
+
+
+def test_a_long_question_text_keeps_its_numbered_rules_bullets_and_code_words():
+    from app.api.exam_pack import _structure
+    text = "Check `payload` in this order:\n1. First rule, return (400, 'x').\n2. Second rule.\n- one more thing\nInput format\nOne line with `s`."
+    assert _structure(text, "coding") == ("<p>Check <code>payload</code> in this order:</p><ol><li>First rule, return (400, 'x').</li><li>Second rule.</li></ol>"
+                                          "<ul><li>one more thing</li></ul><p><b>Input format</b></p><p>One line with <code>s</code>.</p>")
+
+
 # ---------------------------------------------------------------- the plan
 PLAN_REPLY = {"questions": [{"number": 16, "type": "sql_script", "marks": 2, "negative_marks": None}, {"number": "17", "type": "sql", "marks": 2}, {"number": 18, "type": "nonsense"}],
               "shared_context": [{"applies_to": [16, 17], "text": "CREATE TABLE courses (\n  course_id INTEGER PRIMARY KEY,\n  course_name TEXT\n);"},
