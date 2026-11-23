@@ -57,7 +57,7 @@ test("exam: the question and the code each scroll on their own, the page does no
 })
 
 // The camera sits in the top bar, the sections are one row that scrolls sideways, and wide text can never stretch a panel past the screen.
-test("exam: camera in the top bar, one row of sections, wide text scrolls inside its own box", async ({ page, request }) => {
+test("exam: camera beside the sections, every section written on the page, wide text scrolls inside its own box", async ({ page, request }) => {
   await page.setViewportSize({ width: 1280, height: 700 })
   const api = await staffRequest(request)
   const dept = (await api.get("/departments")).find((d) => d.name === "General").id
@@ -83,12 +83,16 @@ test("exam: camera in the top bar, one row of sections, wide text scrolls inside
   await page.getByRole("button", { name: "Start exam" }).click()
   await expect(page).toHaveURL(/\/exam\/attempt\//)
 
-  const cam = page.locator("header").getByTestId("camera-box")                                // the camera is in the top bar
+  const cam = page.getByTestId("camera-box")                                                  // the camera sits to the right of the sections, its status under the picture
   await expect(cam).toContainText("Face OK")
-  expect((await cam.boundingBox()).height).toBeLessThan(80)
-  const row = page.getByLabel("Sections", { exact: true })                                    // six long names: still one row, scrolling sideways
-  expect((await row.boundingBox()).height).toBeLessThan(60)
-  expect(await row.evaluate((el) => el.scrollWidth > el.clientWidth)).toBe(true)
+  const camBox = await cam.boundingBox()
+  expect(camBox.x).toBeGreaterThan(900)
+  expect(camBox.height).toBeGreaterThan((await cam.getByTestId("face-guide").boundingBox()).height + 8)
+  const row = page.getByLabel("Sections", { exact: true })                                    // six long names: all written on the page, wrapping, never a sideways scroll
+  expect(await row.evaluate((el) => el.scrollWidth <= el.clientWidth + 1)).toBe(true)
+  expect((await row.boundingBox()).height).toBeGreaterThan(40)
+  await expect(page.getByRole("button", { name: /^Section 6/ })).toBeInViewport()
+  expect((await row.boundingBox()).y + (await row.boundingBox()).height).toBeLessThan(camBox.y + camBox.height + 120)   // the camera takes no row of its own
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBe(true)
   const q = page.getByTestId("question-panel")
   expect((await q.boundingBox()).height).toBeGreaterThan(300)                                 // the room the camera and three rows of tabs used to take
@@ -99,9 +103,7 @@ test("exam: camera in the top bar, one row of sections, wide text scrolls inside
   expect(await pre.evaluate((el) => el.scrollLeft)).toBeGreaterThan(0)
   await shot(page, "exam-wide-layout")
 
-  const last = page.getByRole("button", { name: /^Section 6/ })                                // going to the last section brings its tab into view
-  await last.click()
-  await expect(last).toBeInViewport()
+  await page.getByRole("button", { name: /^Section 6/ }).click()
   await expect(page.getByTestId("timer")).toBeInViewport()
 })
 

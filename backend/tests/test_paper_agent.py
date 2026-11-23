@@ -114,6 +114,23 @@ def test_a_language_line_a_script_question_with_checks_and_hidden_data_written_i
     assert q3["reference_sql"] == "SELECT id FROM t WHERE qty > 3" and "checks" not in q3 and [d["visibility"] for d in q3["datasets"]] == ["open", "hidden"]
 
 
+def test_starter_code_written_in_the_paper_is_read_per_language_and_a_page_break_never_cuts_a_query():
+    paper = ("Section C: Code (3 marks)\n"
+             "Q1. Echo [2 marks]\nPrint the input.\nLanguage: Python / JavaScript\n"
+             "Starter code (Python):\nimport sys\ndef solve(x):\n    # write your code here\n    return 0\nprint(solve(sys.stdin.read()))\n"
+             "Starter code (JavaScript):\nconst input = require('fs').readFileSync(0, 'utf8');\nconsole.log(0);\n"
+             "Sample answer (Python):\nprint(input())\nTest cases:\nopen: a\nhidden: b\n"
+             "Section D: SQL (2 marks)\nCREATE TABLE t (id INTEGER, qty INTEGER);\nINSERT INTO t VALUES (1,0),(2,5);\n"
+             "Q2. Ids with stock [1 mark]\nList the ids.\nAnswer:\nSELECT id\n\n--- Page 3 ---\nFROM t\nWHERE qty > 0;\n"
+             "Q3. Another [1 mark]\nList all ids.\nAnswer:\nSELECT id FROM t;\n")
+    res = _read(paper)[2]
+    q1, q2, _ = (i["question"] for i in _items(res))
+    assert set(q1["starter"]) == {"python", "javascript"}
+    assert "def solve(x):\n    # write your code here\n    return 0" in q1["starter"]["python"] and "console.log(0);" in q1["starter"]["javascript"]
+    assert "Starter" not in q1["statement"] and q1["reference"]["source"] == "print(input())"    # the starters are neither the statement nor the sample answer
+    assert q2["reference_sql"] == "SELECT id\nFROM t\nWHERE qty > 0"                               # the page break left no blank line in the query
+
+
 # ---------------------------------------------------------------- the plan
 PLAN_REPLY = {"questions": [{"number": 16, "type": "sql_script", "marks": 2, "negative_marks": None}, {"number": "17", "type": "sql", "marks": 2}, {"number": 18, "type": "nonsense"}],
               "shared_context": [{"applies_to": [16, 17], "text": "CREATE TABLE courses (\n  course_id INTEGER PRIMARY KEY,\n  course_name TEXT\n);"},

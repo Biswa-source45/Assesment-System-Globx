@@ -121,6 +121,8 @@ export class LiveViewer {
     } else if (m.type === "busy") {
       this.release(m.id)
       this.onBusy?.(m.id)
+    } else if (m.type === "unreachable") {
+      this.onUnreachable?.(m.id)  // a manual reconnect found the candidate's browser outside the room
     } else if (m.type === "offer") {
       await this.answer(m)
     } else if (m.type === "ice") {
@@ -159,6 +161,22 @@ export class LiveViewer {
     if (peer.voice) peer.voice.direction = "sendrecv"  // so the examiner's voice can go back on the same line
     await pc.setLocalDescription(await pc.createAnswer())
     this.net.send({ type: "answer", to: from, sdp: pc.localDescription.sdp })
+  }
+
+  // Connect to one candidate again by hand (a tile that stays black or says it cannot connect): the old line is dropped and the candidate's
+  // browser is asked to offer its camera and screen anew. If the browser is not in the room, onUnreachable(id) is called.
+  reconnect(id) {
+    const peer = this.peers.get(id)
+    if (peer) {
+      peer.pc?.close()
+      peer.pc = null  // its closing is then ignored (answer() ignores a connection that is not the current one)
+      clearTimeout(peer.timer)
+      peer.camera = peer.screen = null
+      peer.state = "connecting"
+      peer.timer = setTimeout(() => { if (peer.state !== "connected") { peer.state = "unreachable"; this.emit() } }, CONNECT_WAIT_MS)
+      this.emit()
+    }
+    this.net.send({ type: "reconnect", to: id })
   }
 
   // Open a line to one candidate (must be called from a click: the browser asks for the microphone and allows sound).

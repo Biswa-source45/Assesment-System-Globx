@@ -35,9 +35,11 @@ const editor = (page) => page.locator(".cm-content")
 async function openQuestion(page, word) {
   const heading = page.getByRole("heading", { name: new RegExp(`${word}$`) })
   if (await heading.isVisible()) return
+  await page.getByLabel("Question palette").waitFor()   // the exam screen has loaded
+  if (await heading.isVisible()) return
   for (const b of await page.getByLabel("Question palette").getByRole("button").all()) {
     await b.click()
-    if (await heading.isVisible()) return
+    if (await heading.waitFor({ timeout: 2000 }).then(() => true, () => false)) return   // (waits for the screen to change: the last click used to be checked before it had)
   }
 }
 

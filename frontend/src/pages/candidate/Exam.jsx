@@ -51,7 +51,6 @@ export default function Exam() {
   const skew = useRef(0)
   const version = useRef(null)  // the content version the screen shows; the server's moves when the examiner saves a question
   const video = useRef(null)
-  const tabs = useRef(null)
   const proctor = useRef(null)
   const finished = useRef(false)
   const opened = useRef({})  // question id -> when it was first shown (monotonic ms); -Infinity = answered before
@@ -84,7 +83,6 @@ export default function Exam() {
 
   const sections = st?.sections ?? []
   const curSec = sections[sec]
-  useEffect(() => { tabs.current?.querySelector("[data-current]")?.scrollIntoView({ inline: "nearest", block: "nearest" }) }, [sec, st?.sections?.length])  // the section you are in stays visible in the row of tabs
   const q = curSec?.questions[qi]
   const left = useCountdown(deadline, skew.current)
   const secLeft = useCountdown(curSec?.deadline, skew.current)
@@ -264,15 +262,6 @@ export default function Exam() {
       <header className="sticky top-0 z-10 flex shrink-0 flex-wrap items-center gap-3 border-b bg-white px-4 py-2.5">
         <Brand />
         <b className="grow truncate">{st.test.title}</b>
-        {cfg.enabled && cfg.webcam && (  // the camera lives in the top bar: a small picture and its status, so it takes no room from the question and the code
-          <div className={"flex shrink-0 items-stretch overflow-hidden rounded-lg border-2 text-xs text-white " + (faceBad ? "border-destructive" : "border-green-600")} data-testid="camera-box">
-            <FaceGuide videoRef={video} seen={face?.seen} state={face?.state} zone={cfg.face_zone} className="w-20" />
-            <span className={"flex items-center px-2 " + (faceBad ? "bg-destructive" : "bg-black")}>
-              {faceText}
-              {info.faceLimit ? ` · ${info.faceIncidents ?? 0}/${info.faceLimit}` : ""}
-            </span>
-          </div>
-        )}
         {cfg.enabled && <Badge variant="secondary">Proctoring on</Badge>}
         {cfg.enabled && cfg.tab_switch_limit > 0 && (
           <Badge variant={info.violations ? "destructive" : "secondary"} data-testid="violations">Warnings {info.violations ?? 0} / {cfg.tab_switch_limit}</Badge>
@@ -283,22 +272,33 @@ export default function Exam() {
       </header>
 
       <div className="mx-auto flex w-full max-w-6xl flex-col gap-4 p-4 lg:min-h-0 lg:flex-1">
-      <div className="grid shrink-0 gap-3">
-        <div ref={tabs} className="flex gap-2 overflow-x-auto pb-1" aria-label="Sections">  {/* one row: a long list of sections scrolls sideways instead of taking several rows */}
-          {sections.map((s, i) => (
-            <Button key={s.id} size="sm" className="shrink-0" data-current={i === sec ? "true" : undefined} variant={i === sec ? "default" : "outline"} disabled={(s.closed && i !== sec) || (hold && i > sec)} onClick={() => i !== sec && enterSection(i)}>
-              {s.title} · {answeredIn(s)}/{s.count}{s.closed ? " (closed)" : ""}
-            </Button>
-          ))}
+      <div className="flex shrink-0 flex-wrap items-start gap-4 lg:flex-nowrap">
+        <div className="grid min-w-0 flex-1 gap-2">
+          <div className="flex flex-wrap gap-1.5" aria-label="Sections">
+            {sections.map((s, i) => (
+              <Button key={s.id} size="sm" className="h-7 px-2.5 text-xs" variant={i === sec ? "default" : "outline"} disabled={(s.closed && i !== sec) || (hold && i > sec)} onClick={() => i !== sec && enterSection(i)}>
+                {s.title} · {answeredIn(s)}/{s.count}{s.closed ? " (closed)" : ""}
+              </Button>
+            ))}
+          </div>
+          <div className="flex flex-wrap gap-1.5" aria-label="Question palette">
+            {curSec.questions.map((x, i) => (
+              <button key={x.id} onClick={() => go(i)} disabled={hold && i > qi} aria-label={`Question ${i + 1}`}
+                className={"size-8 rounded-md border text-sm font-medium disabled:opacity-50 " + (i === qi ? "ring-2 ring-ring " : "") +
+                  (isAnswered(x, resp[x.id]) ? "border-primary bg-primary text-white" : flags[x.id] ? "border-destructive text-destructive" : "bg-white")}>{i + 1}</button>
+            ))}
+            <span className="ml-2 self-center text-xs text-muted-foreground">Blue = answered, red outline = marked for review</span>
+          </div>
         </div>
-        <div className="flex flex-wrap gap-1.5" aria-label="Question palette">
-          {curSec.questions.map((x, i) => (
-            <button key={x.id} onClick={() => go(i)} disabled={hold && i > qi} aria-label={`Question ${i + 1}`}
-              className={"size-8 rounded-md border text-sm font-medium disabled:opacity-50 " + (i === qi ? "ring-2 ring-ring " : "") +
-                (isAnswered(x, resp[x.id]) ? "border-primary bg-primary text-white" : flags[x.id] ? "border-destructive text-destructive" : "bg-white")}>{i + 1}</button>
-          ))}
-          <span className="ml-2 self-center text-xs text-muted-foreground">Blue = answered, red outline = marked for review</span>
-        </div>
+        {cfg.enabled && cfg.webcam && (  // beside the sections, so it takes no height of its own; the status is under the picture
+          <div className={"w-28 shrink-0 overflow-hidden rounded-lg border-2 bg-black " + (faceBad ? "border-destructive" : "border-green-600")} data-testid="camera-box">
+            <FaceGuide videoRef={video} seen={face?.seen} state={face?.state} zone={cfg.face_zone} />
+            <div className={"px-1 py-0.5 text-center text-[11px] leading-tight " + (faceBad ? "bg-destructive text-white" : "text-white")}>
+              {faceText}
+              {info.faceLimit ? ` · ${info.faceIncidents ?? 0}/${info.faceLimit}` : ""}
+            </div>
+          </div>
+        )}
       </div>
 
         {q && (
@@ -316,15 +316,19 @@ export default function Exam() {
                 {q.group && <div className="rounded-md border bg-muted p-3"><h3 className="font-medium">{q.group.title}</h3><Html html={q.group.stimulus} /></div>}
                 <Html html={q.body} />
                 {q.type === "sql" && <SqlSamples q={q} />}
-                {q.type === "coding" && q.open_cases.map((c) => (
-                  <div key={c.ordinal} className="grid gap-1 text-xs">
-                    <b className="text-sm">Sample {c.ordinal}</b>
-                    <div className="grid gap-2 md:grid-cols-2">
-                      <pre className="whitespace-pre-wrap rounded bg-muted p-2">{c.input}</pre>
-                      <pre className="whitespace-pre-wrap rounded bg-muted p-2">{c.expected}</pre>
-                    </div>
+                {q.type === "coding" && q.open_cases.length > 0 && (
+                  <div className="grid gap-2" data-testid="examples">
+                    {q.open_cases.map((c) => (
+                      <div key={c.ordinal} className="grid grid-cols-[minmax(0,1fr)] gap-1 rounded-md border p-2 text-xs">
+                        <b className="text-sm">Sample {c.ordinal}</b>
+                        <span className="text-muted-foreground">{q.languages?.[0]?.api ? "Requests" : "Input"}</span>
+                        <pre className="max-h-40 overflow-auto whitespace-pre rounded bg-muted p-2">{c.input.slice(0, 2000)}</pre>
+                        <span className="text-muted-foreground">{q.languages?.[0]?.api ? "Expected responses" : "Output"}</span>
+                        <pre className="max-h-40 overflow-auto whitespace-pre rounded bg-muted p-2">{c.expected.slice(0, 2000)}</pre>
+                      </div>
+                    ))}
                   </div>
-                ))}
+                )}
                 {curSec.closed && <p className="text-sm text-destructive">This section is closed. Answers can no longer be changed.</p>}
                 {q.type.startsWith("mcq") && <McqView key={q.id} q={q} r={resp[q.id] ?? {}} closed={curSec.closed} onChange={(p, imm) => update(q.id, p, imm)} />}
                 {(q.type === "short" || q.type === "long") && <TextView key={q.id} q={q} r={resp[q.id] ?? {}} closed={curSec.closed} onChange={(p, imm) => update(q.id, p, imm)} />}

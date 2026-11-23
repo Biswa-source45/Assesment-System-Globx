@@ -269,7 +269,7 @@ def share_pictures(questions: List[Dict[str, Any]]) -> None:
 # ---- coding and SQL questions: the code in them is copied, never written by an AI
 _LANG = {"python": "python", "python3": "python", "py": "python", "java": "java", "c++": "cpp", "cpp": "cpp", "c": "c", "javascript": "javascript", "js": "javascript", "node": "javascript", "flask": "flask", "fastapi": "flask"}
 _NOISE =re.compile(r"(?m)^[ \t]*(?:\[the whole page is also shown[^\n]*\]|--- Page \d+ ---|\[\[IMAGE \d+\]\])[ \t]*\n?")
-_HEAD_STOP = re.compile(r"(?i)^\s*(?:sample answer|model answer|sample solution|reference (?:solution|answer|program|code)|test cases?|sample(?: input| output| cases?| data)?|tables?|answer|hidden data)\b[^\n]{0,40}$")
+_HEAD_STOP = re.compile(r"(?i)^\s*(?:starter(?: code)?|sample answer|model answer|sample solution|reference (?:solution|answer|program|code)|test cases?|sample(?: input| output| cases?| data)?|tables?|answer|hidden data)\b[^\n]{0,40}$")
 
 
 def key_for(key: str, number: Optional[int]) -> str:
@@ -295,13 +295,34 @@ def _reference_code(text: str) -> Optional[Tuple[str, str]]:
     code: List[str] = []
     for ln in text[m.end():].split("\n")[1:] if text[m.end():].startswith("\n") else text[m.end():].split("\n"):
         # the code ends at the test cases, the next question, or another solution (a paper may give the same answer in two languages)
-        if re.match(r"^#\s*Type\b|^\d+\s+(?:open|hidden)\b|^[ \t]*Q\s*\d+\s*[.:\-]|^[ \t]*(?:Detailed solutions?|Test cases?|Tests?\b|(?:reference|sample|model) (?:solution|answer|program|code)\b)", ln, re.I):
+        if re.match(r"^#\s*Type\b|^\d+\s+(?:open|hidden)\b|^[ \t]*Q\s*\d+\s*[.:\-]|^[ \t]*(?:Detailed solutions?|Test cases?|Tests?\b|starter(?: code)?[ \t]*\(|(?:reference|sample|model) (?:solution|answer|program|code)\b)", ln, re.I):
             break
         code.append(ln.rstrip())
     while code and not code[-1].strip():
         code.pop()
     src = "\n".join(code)
     return (lang, src) if src.strip() and len(src) < 20000 else None
+
+
+def _starters(text: str) -> Dict[str, str]:
+    """The code a candidate's editor opens with, one block per language: a line "Starter code (Python):" and the code under it (indentation kept), up to the
+    next label or the test cases."""
+    out: Dict[str, str] = {}
+    lines = text.split("\n")
+    for i, ln in enumerate(lines):
+        m = re.match(r"(?i)^[ \t]*starter(?: code)?[ \t]*\(([^)\n]*)\)[ \t]*:?[ \t]*$", ln)
+        lang = _LANG.get(((m.group(1) if m else "").strip().lower().split() or [""])[0])
+        if not lang:
+            continue
+        code: List[str] = []
+        for nxt in lines[i + 1:]:
+            if re.match(r"(?i)^[ \t]*(?:Test cases?|Tests?\b|starter(?: code)?[ \t]*\(|(?:reference|sample|model) (?:solution|answer|program|code)\b|Q\s*\d+\s*[.:\-])", nxt):
+                break
+            code.append(nxt.rstrip())
+        src = "\n".join(code).strip("\n")
+        if src.strip() and len(src) < 20000:
+            out.setdefault(lang, src + "\n")
+    return out
 
 
 def _inline_cases(text: str) -> List[Dict[str, str]]:
@@ -408,6 +429,9 @@ def read_code_block(number: int, text: str, key_snippet: str, shared: str = "") 
     q.update({"type": "coding", "reference": {"language": ref[0], "source": ref[1]}})
     if langs:
         q["languages"] = langs
+    starters = _starters(_NOISE.sub("", text))
+    if starters:
+        q["starter"] = starters
     if ref[0] == "flask":  # a backend (API) question: only that language, and its time limit allows the framework to load
         q.update({"languages": ["flask"], "time_limit_ms": 5000})
     cases = _inline_cases(_NOISE.sub("", text))
@@ -421,12 +445,13 @@ def read_code_block(number: int, text: str, key_snippet: str, shared: str = "") 
     return q
 
 
-_PAGE_LINES = re.compile(r"(?m)^[ \t]*(?:\[the whole page is also shown[^\n]*\]|--- Page \d+ ---)[ \t]*\n?")
+_PAGE_LINES = re.compile(r"(?m)\n*^[ \t]*(?:\[the whole page is also shown[^\n]*\]|--- Page \d+ ---)[ \t]*\n?")
 
 
 def clean_pages(text: str) -> str:
-    """Remove the reader's own page lines ("--- Page 8 ---", "[the whole page is also shown ...]") so a question that crosses a page break reads as one."""
-    return re.sub(r"\n{3,}", "\n\n", _PAGE_LINES.sub("", text))
+    """Remove the reader's own page lines ("--- Page 8 ---", "[the whole page is also shown ...]") so a question that crosses a page break reads as one.
+    The blank line the reader leaves before a page line goes too: a query or a program cut by a page break is still one block."""
+    return re.sub(r"\n{3,}", "\n\n", _PAGE_LINES.sub("\n", text))
 
 
 def table_cases(key: str) -> List[Dict[str, str]]:

@@ -45,7 +45,7 @@ test("a question without starter code opens with a template, the examples are sh
 
   // the examples are on the screen before anything is run
   const examples = page.getByTestId("examples")
-  await expect(examples).toContainText("Example 1")
+  await expect(examples).toContainText("Sample 1")
   await expect(examples.locator("pre").nth(0)).toHaveText("2")
   await expect(examples.locator("pre").nth(1)).toHaveText("4")
   await expect(examples.locator("pre")).toHaveCount(2)                  // only the sample case, never the hidden one

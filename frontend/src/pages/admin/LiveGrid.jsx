@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react"
 import { toast } from "sonner"
-import { Maximize2, MessageSquare, Mic, MicOff } from "lucide-react"
+import { Maximize2, MessageSquare, Mic, MicOff, RefreshCw } from "lucide-react"
 import { LiveViewer } from "@/lib/live"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -34,12 +34,16 @@ export default function LiveGrid({ testId, rows }) {
   useEffect(() => {
     const v = new LiveViewer({ testId, onChange: setState })
     v.onBusy = () => toast.error("Another invigilator is already talking to this candidate.")
+    v.onUnreachable = (id) => toast.error(`${nameOf.current(id) || "This candidate"}'s browser is not in the live room right now (offline, or reconnecting). It joins again by itself within seconds; if it does not, check their internet.`)
     viewer.current = v
     return () => v.stop()
   }, [testId])
 
   const peerOf = (id) => state.peers.find((p) => p.id === id)
   const people = rows.filter((r) => r.status === "in_progress" && r.attempt)
+  const nameOf = useRef(() => "")
+  nameOf.current = (id) => people.find((r) => r.attempt.id === id)?.name
+  const notLive = people.filter((r) => peerOf(r.attempt.id)?.state !== "connected")  // no connection, still connecting, or one that failed
   const me = () => viewer.current?.me
 
   async function talk(id) {
@@ -72,6 +76,12 @@ export default function LiveGrid({ testId, rows }) {
   return (
     <div className="grid gap-3" data-testid="live-grid">
       {!people.length && <p className="text-sm text-muted-foreground">Nobody is taking the exam right now.</p>}
+      {notLive.length > 0 && (
+        <div className="flex flex-wrap items-center gap-2 text-sm">
+          <span className="text-muted-foreground">{notLive.length} of {people.length} not live.</span>
+          <Button size="sm" variant="outline" data-testid="reconnect-all" onClick={() => notLive.forEach((r) => viewer.current.reconnect(r.attempt.id))}><RefreshCw /> Reconnect all not live</Button>
+        </div>
+      )}
       <div className="grid gap-3 lg:grid-cols-2">
         {people.map((r) => {
           const peer = peerOf(r.attempt.id)
@@ -92,6 +102,9 @@ export default function LiveGrid({ testId, rows }) {
                     {mine ? <><MicOff /> End talk</> : <><Mic /> {line ? "Line in use" : "Talk"}</>}
                   </Button>
                   <Button size="sm" variant="outline" disabled={!peer} onClick={() => setWriting(r.attempt.id)}><MessageSquare /> Message</Button>
+                  {peer?.state !== "connected" && (
+                    <Button size="sm" variant="outline" aria-label={`Reconnect ${r.name}`} onClick={() => viewer.current.reconnect(r.attempt.id)}><RefreshCw /> Reconnect</Button>
+                  )}
                   <Button size="sm" variant="ghost" disabled={!peer} aria-label={`Enlarge ${r.name}`} onClick={() => setFocus(r.attempt.id)}><Maximize2 /></Button>
                 </div>
               </CardContent>

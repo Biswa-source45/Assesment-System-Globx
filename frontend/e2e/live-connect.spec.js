@@ -65,3 +65,44 @@ test("when the network lets no video through, the tile says so instead of stayin
   await shot(page, "live-cannot-connect")
   await cand.ctx.close()
 })
+
+test("a tile that is not live is connected again by hand with Reconnect, and Reconnect all does the same for every such tile", async ({ page, browser, request }) => {
+  const api = await staffRequest(request)
+  const t = await liveExam(api, "E2E Live Reconnect Exam")
+  const p = (await api.post(`/tests/${t.id}/participants`, { names: ["Redial Candidate"] })).participants[0]
+  const net = { drop: true, asked: 0, offers: 0 }      // while `drop` is on, neither browser gets its connection details through: the network "blocks" video
+  const gate = (pg, examiner) => pg.routeWebSocket(/\/api\/v1\/live\//, (ws) => {
+    const server = ws.connectToServer()
+    ws.onMessage((m) => { const type = JSON.parse(String(m)).type; if (type === "reconnect") net.asked++; if (!(net.drop && type === "ice")) server.send(m) })
+    server.onMessage((m) => { if (examiner && JSON.parse(String(m)).type === "offer") net.offers++; ws.send(m) })
+  })
+  const cand = await candidateWindow(browser)
+  await gate(cand.page, false)
+  await startProctoredExam(cand.page, p.username, "E2E Live Reconnect Exam", p.password)
+  await gate(page, true)
+  await loginStaff(page)
+  await page.goto(`/admin/monitor?exam=${t.id}`)
+  await page.getByRole("button", { name: "Live view" }).click()
+  const card = page.getByTestId("live-card").filter({ hasText: "Redial Candidate" })
+  await expect(card.getByTestId("live-state")).toHaveText("Cannot connect", { timeout: 40_000 })
+  await expect(page.getByText("1 of 1 not live.")).toBeVisible()
+
+  // the network is fine again; the examiner asks for the connection by hand
+  net.drop = false
+  const offersBefore = net.offers
+  await card.getByRole("button", { name: "Reconnect Redial Candidate" }).click()
+  await expect(card.getByTestId("live-state")).toHaveText("Connecting")                         // at once: the old line is dropped
+  await expect.poll(() => net.asked, { message: "the examiner's browser must ask the server to reconnect" }).toBe(1)
+  await expect.poll(() => net.offers, { message: "the candidate's browser must offer again" }).toBeGreaterThan(offersBefore)
+  await expect(card.getByTestId("live-state")).toHaveText("Live", { timeout: 30_000 })
+  await expect.poll(() => card.getByLabel("Redial Candidate camera").evaluate((v) => v.readyState >= 2 && v.videoWidth > 0), { timeout: 30_000 }).toBe(true)
+  await expect(card.getByRole("button", { name: "Reconnect Redial Candidate" })).toHaveCount(0)   // nothing to fix any more
+  await expect(page.getByTestId("reconnect-all")).toHaveCount(0)
+  await shot(page, "live-reconnected")
+
+  // a candidate who left the room: the button says so instead of doing nothing
+  await cand.ctx.close()
+  await expect(page.getByTestId("live-card").filter({ hasText: "Redial Candidate" }).getByTestId("live-state")).toHaveText("Not connected", { timeout: 20_000 })
+  await page.getByTestId("live-card").filter({ hasText: "Redial Candidate" }).getByRole("button", { name: "Reconnect Redial Candidate" }).click()
+  await expect(page.getByText("browser is not in the live room right now")).toBeVisible()
+})

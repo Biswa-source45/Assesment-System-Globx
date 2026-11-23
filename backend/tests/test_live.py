@@ -149,6 +149,27 @@ def test_the_relay_connects_talks_and_messages_one_candidate_and_logs_it(client)
     assert counts_b["message_sent"] == 2 and counts_b["talk_ended"] == 1  # the open line was ended and logged
 
 
+def test_an_examiner_can_ask_a_candidate_to_connect_again_by_hand(client):
+    creator = _login(client, "creator@globx.co.in", PW["creator@globx.co.in"])
+    tid = _exam(client, creator, "Reconnect exam", VIDEO)
+    asha, at_a, _ = _person(client, creator, tid, "Asha Redial")
+    bala, at_b, _ = _person(client, creator, tid, "Bala Away")
+    with _ws(client, tid, creator) as examiner:
+        me = examiner.receive_json()["you"]
+        with _ws(client, tid, asha) as cand_a:
+            assert cand_a.receive_json() == {"type": "examiners", "ids": [me]}
+            assert examiner.receive_json()["id"] == at_a
+            examiner.send_json({"type": "reconnect", "to": at_a})
+            assert cand_a.receive_json() == {"type": "examiner", "id": me}                   # the candidate's browser is told to offer again
+            examiner.send_json({"type": "reconnect", "to": at_b})                            # Bala's browser is not in the room: the examiner is told
+            assert examiner.receive_json() == {"type": "unreachable", "id": at_b}
+            examiner.send_json({"type": "reconnect", "to": "nobody"})
+            assert examiner.receive_json() == {"type": "unreachable", "id": "nobody"}
+            cand_a.send_json({"type": "reconnect", "to": me})                                # a candidate cannot ask for anything
+            examiner.send_json({"type": "message", "to": at_a, "text": "still alive"})
+            assert cand_a.receive_json() == {"type": "message", "from": me, "text": "still alive"}   # (nothing else was waiting in between)
+
+
 def test_an_examiner_leaving_ends_the_line_and_tells_the_candidate(client):
     creator = _login(client, "creator@globx.co.in", PW["creator@globx.co.in"])
     tid = _exam(client, creator, "Leave exam", VIDEO)

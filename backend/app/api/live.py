@@ -111,6 +111,12 @@ async def _relay(room: Room, who: dict, ws: WebSocket, msg: object) -> None:
         if kind in FROM_CANDIDATE and to in room.examiners:
             await _send(room.examiners[to], out)
         return
+    if kind == "reconnect":  # an examiner asks one candidate to connect again (a tile that stays black): the browser then offers its camera and screen anew
+        if to in room.candidates:
+            await _send(room.candidates[to][0], {"type": "examiner", "id": who["id"]})
+        else:
+            await _send(ws, {"type": "unreachable", "id": to})  # its browser is not in the room at all (offline, or reconnecting)
+        return
     if to not in room.candidates:
         return
     target = room.candidates[to][0]
