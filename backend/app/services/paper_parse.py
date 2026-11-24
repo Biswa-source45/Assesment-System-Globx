@@ -467,6 +467,18 @@ _TERM = re.compile(r"[.?!:;]\s*$")
 _LABELISH = re.compile(r"(?i)^(?:input|output|rules?|constraints?|sample|examples?|notes?|explanation|hint|tables?|answer|statements?|conclusions?|read the)\b")
 
 
+_END = re.compile(r'(?:[.?!;]|(?<!")[:])\s*$')   # a sentence end; a line cut after a JSON key ("error":) is only a wrap
+
+
+def _label(s: str, whole: bool) -> bool:
+    """A heading or a "Label: text" line, not a sentence that merely starts with the word ("answer 400 with ..."). `whole`: only a short heading counts."""
+    if not _LABELISH.match(s):
+        return False
+    if re.fullmatch(r"[A-Za-z ]{1,30}:?\s*", s) and len(s.split()) <= 3:   # a heading: "Input format", "Answer:"
+        return True
+    return re.match(r"(?i)^[a-z ]{1,24}:", s) is not None and (not whole or len(s) <= 40)
+
+
 def join_wrapped(lines: List[str]) -> List[str]:
     """PDF lines that only wrapped (the previous one does not end a sentence, neither is a label) are joined, so a question reads as paragraphs."""
     out: List[str] = []
@@ -474,7 +486,7 @@ def join_wrapped(lines: List[str]) -> List[str]:
         s = ln.strip()
         if not s:
             out.append("")
-        elif out and out[-1] and not _TERM.search(out[-1]) and not _LABELISH.match(out[-1]) and not _LABELISH.match(s):
+        elif out and out[-1] and not _END.search(out[-1]) and not _label(out[-1], True) and not _label(s, False):
             out[-1] += " " + s
         else:
             out.append(s)

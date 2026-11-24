@@ -216,3 +216,11 @@ def test_checks_written_with_descriptions_or_as_one_text_are_accepted_as_plain_s
     described = exam_pack._loosen({"checks": [{"statement": "SELECT 1", "description": "one"}, {"sql": "SELECT 2"}, "SELECT 3"]})
     assert described["checks"] == ["SELECT 1", "SELECT 2", "SELECT 3"]
     assert exam_pack._loosen({"checks": "SELECT 1\n\nSELECT 2\n"})["checks"] == ["SELECT 1", "SELECT 2"]
+
+
+def test_a_wrapped_statement_is_joined_even_when_a_line_starts_with_answer_or_is_cut_after_a_json_key():
+    from app.services.paper_parse import join_wrapped
+    lines = ["Rules", '1. POST /api/login with a body. If the email is missing,', 'answer 400 with {"error":', '"email is required"}. Any other pair.',
+             "2. GET /api/users/{id} answers 200.", "Example input: three requests, `GET /a` and `GET", "/b 404`.", "Input format", "One line", "Answer: (b)"]
+    assert join_wrapped(lines) == ["Rules", '1. POST /api/login with a body. If the email is missing, answer 400 with {"error": "email is required"}. Any other pair.',
+                                   "2. GET /api/users/{id} answers 200.", "Example input: three requests, `GET /a` and `GET /b 404`.", "Input format", "One line", "Answer: (b)"]
