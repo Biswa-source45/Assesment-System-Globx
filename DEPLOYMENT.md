@@ -101,7 +101,7 @@ Local development uses the repo-root `.env` (git-ignored). See `.env.example`; `
 
 ## 7. Deploy steps (GitHub builds the images, the server pulls them)
 
-**How it flows.** A push to `main` runs `.github/workflows/ci.yml`: backend tests (Postgres service), the judge's 58-attack drill, and only if both pass it builds `oap-api`, `oap-judge`, `oap-caddy` and publishes them to `ghcr.io/biswa-source45/` (tags `latest` and the commit). GitHub cannot reach the office PC, so the **server pulls**: you run `deploy.ps1` there when you choose (never in an exam). The server holds only `docker-compose.yml`, `deploy.ps1` and `.env`, no source code.
+**How it flows.** A push to `main` runs `.github/workflows/ci.yml`: backend tests (Postgres service), the judge's 58-attack drill, and only if both pass it builds `oap-api`, `oap-judge`, `oap-caddy` and publishes them to `ghcr.io/dilliprout/` (tags `latest` and the commit). GitHub cannot reach the office PC, so the **server pulls**: you run `deploy.ps1` there when you choose (never in an exam). The server holds only `docker-compose.yml`, `deploy.ps1` and `.env`, no source code.
 
 **Once, from your PC (browser):**
 1. Push the code to GitHub. Watch the *Actions* tab: `tests`, `judge-drill` and `publish` must turn green. The repository stays private; the images are private too and belong to the repository.
@@ -111,7 +111,7 @@ Local development uses the repo-root `.env` (git-ignored). See `.env.example`; `
 
 **Once, on the server (UltraViewer, then PowerShell as Administrator):**
 5. Make a folder, for example `C:\oap`, and copy into it only `docker-compose.yml` and `deploy.ps1` from the repository. Docker Desktop must be running and no exam must be running.
-6. `cd C:\oap`, then `docker login ghcr.io -u Biswa-source45` and paste the token from step 2 as the password.
+6. `cd C:\oap`, then `docker login ghcr.io -u dilliprout` and paste the token from step 2 as the password.
 7. `powershell -ExecutionPolicy Bypass -File .\deploy.ps1 -Seed -Drill`. It asks for the address (Enter keeps `assessment.globx.co.in`) and the Cloudflare token (hidden), writes `.env` with random passwords, opens port 443 for the office network, pulls the images, starts everything, creates the first accounts (the passwords are shown once: note them, sign in, make real users, change the passwords) and runs the drill, which must end with `58 of 58 checks passed`. The first start also gets the certificate through GoDaddy (`docker compose logs caddy`).
 8. From another office computer open `https://assessment.globx.co.in`; check sign-in, the camera, screen sharing, the live view and a coding question.
 

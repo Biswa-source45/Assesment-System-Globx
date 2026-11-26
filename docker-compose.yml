@@ -13,7 +13,7 @@ services:
   judge:
     <<: *keep
     build: { context: ., dockerfile: Dockerfile.judge }
-    image: ${OAP_REGISTRY:-ghcr.io/biswa-source45}/oap-judge:${OAP_TAG:-latest}
+    image: ${OAP_REGISTRY:-ghcr.io/dilliprout}/oap-judge:${OAP_TAG:-latest}
     init: true                            # a tiny init process clears the dead processes a fork bomb leaves; without it they would use up the process limit
     read_only: true                       # the filesystem cannot be changed, except the two memory disks below
     network_mode: none                    # no network: not the internet, not the database, not the api
@@ -61,7 +61,7 @@ services:
   api:
     <<: *keep
     build: { context: ., dockerfile: Dockerfile.api }
-    image: ${OAP_REGISTRY:-ghcr.io/biswa-source45}/oap-api:${OAP_TAG:-latest}
+    image: ${OAP_REGISTRY:-ghcr.io/dilliprout}/oap-api:${OAP_TAG:-latest}
     group_add: ["3000"]                   # the group that may use the judge's socket
     depends_on:
       db: { condition: service_healthy }
@@ -99,7 +99,7 @@ services:
   caddy:
     <<: *keep
     build: { context: ., dockerfile: Dockerfile.caddy }
-    image: ${OAP_REGISTRY:-ghcr.io/biswa-source45}/oap-caddy:${OAP_TAG:-latest}
+    image: ${OAP_REGISTRY:-ghcr.io/dilliprout}/oap-caddy:${OAP_TAG:-latest}
     ports: ["443:443"]
     depends_on:
       api: { condition: service_healthy }

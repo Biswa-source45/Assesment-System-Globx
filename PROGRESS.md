@@ -20,7 +20,7 @@ Read at the start of every task; update after every change. Plan and decisions: 
 - Run backend (from `backend/`): `.venv/Scripts/python -m app.seed` then `.venv/Scripts/python -m uvicorn app.main:app --port 8000 --reload`.
   `backend/.venv` exists (git-ignored).
 - Run tests: `DATABASE_URL=postgresql+psycopg://USER:PASSWORD@localhost:5433/oap_test python -m pytest tests -q` from `backend/`.
-- Git: remote `origin` = github.com/Biswa-source45/Assesment-System-Globx, branch `main`. Commits are made locally; **the user pushes**. No Claude attribution in commits.
+- Git: remote `origin` = github.com/dilliprout/Assesment-System-Globx, branch `main`. Commits are made locally; **the user pushes**. No Claude attribution in commits.
 - graphify: kept local only (`.claude/`, `CLAUDE.local.md`, `.graphifyignore`, `graphify-out/` are git-ignored). Upgraded to 0.9.100 (0.9.66 segfaulted); graph built (817 nodes). Refresh with `graphify update .`.
 - Tooling note: the PowerShell tool is broken in this environment; use Bash.
 
@@ -35,6 +35,11 @@ Read at the start of every task; update after every change. Plan and decisions: 
    through the judge container once it exists; old email-OTP/invite flow still in the backend; bundle is one 1.4 MB chunk (split later); rotate the OpenAI key.
 
 ## Log
+
+### 2026-11-26 (Repository moved to the GitHub account dilliprout)
+- **Done by the owner.** Transferred to github.com/dilliprout/Assesment-System-Globx (new repository at commit `d7c1b7d`).
+- **Changed.** The default image address in `docker-compose.yml` (3 lines) is now `ghcr.io/dilliprout`; the notes name the new owner. Not committed, not pushed.
+- **Still to do.** Point `origin` at the new address and push; wait for the workflow and the three packages under dilliprout; on the server sign in to ghcr.io with dilliprout's `read:packages` token, add `OAP_REGISTRY=ghcr.io/dilliprout` to `D:\oap\.env`, run `deploy.ps1 -Drill`, then the checks. Old images stay under the old account.
 
 ### 2026-11-26 (Results review: the whole question can be opened above the answer)
 - **Asked.** On a candidate's review screen only the short title of each question showed, so long and coding questions could not be read; the owner wanted an open/close button with the question, then the answers.
