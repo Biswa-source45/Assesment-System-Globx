@@ -105,6 +105,13 @@ test("results: calculated by itself after the end time, reviewed, declared; ende
   await expect(mcq.locator("[data-state=plain]")).toHaveCount(1)
   const short = page.getByTestId("review-question").filter({ hasText: "Exam short" })
   await expect(short.getByTestId("model-answer")).toHaveText("alpha is first")
+  // the whole question is closed at first, opens above the answers, and closes again
+  const text = short.getByTestId("full-question").locator(".q-html")
+  await expect(text).toBeHidden()
+  await short.getByText("Show full question").click()
+  await expect(text).toHaveText("x")
+  await short.getByText("Hide question").click()
+  await expect(text).toBeHidden()
   await expect(short.locator("[data-state=found]")).toHaveText("alpha")  // the word she was expected to mention is there
   await expect(page.getByTestId("needs-attention")).toHaveCount(1)
   await page.getByTestId("review-question").filter({ hasText: "Exam long" }).getByRole("button", { name: "Mark or change the mark" }).click()

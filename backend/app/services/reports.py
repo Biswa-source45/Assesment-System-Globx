@@ -92,6 +92,12 @@ def attempt_report(db: Session, at: Attempt, staff_view: bool = True) -> Dict:
                 "feedback": a.feedback if a else ""}
         if staff_view:
             c = q.config or {}
+            item["body"], item["passage"] = q.body, q.group.stimulus if q.group else ""  # the whole question, as the candidate read it (cleaned when saved)
+            if q.type == "coding":
+                item["samples"] = [{"input": t.input, "expected": t.expected} for t in q.cases if t.visibility == "open"]
+                item["solution"] = (c.get("reference") or {}).get("source", "")
+            elif q.type == "sql":
+                item["schema"], item["solution"] = c.get("schema", ""), c.get("reference_sql", "")
             if q.type.startswith("mcq"):  # every option in the order this candidate saw them: what is right, what they ticked
                 by_id = {o["id"]: o for o in c.get("options", [])}
                 chosen = set(resp.get("selected", []))

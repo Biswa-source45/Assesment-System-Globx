@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react"
 import { Link, useParams } from "react-router-dom"
 import { toast } from "sonner"
-import { BarChart3, Check, Circle, Minus, X } from "lucide-react"
+import { BarChart3, Check, ChevronRight, Circle, Minus, X } from "lucide-react"
 import { api, get, post } from "@/lib/api"
 import { useAuth } from "@/lib/auth"
 import { saveFile } from "@/lib/download"
@@ -9,6 +9,7 @@ import { ENDED, RISK, fmtDate } from "@/lib/labels"
 import { EDGE, TONE, VERDICT_TEXT, verdictOf, RESULT } from "@/lib/verdict"
 import { TYPE_LABEL } from "@/pages/admin/Questions"
 import { Verdict } from "@/pages/candidate/CodeView"
+import { Html } from "@/pages/candidate/questions"
 import PdfButton from "@/components/PdfButton"
 import Snapshot from "@/components/Snapshot"
 import { useConfirm } from "@/components/ConfirmDialog"
@@ -125,15 +126,40 @@ function Answer({ q }) {
     )
   }
   const sub = q.submission
-  if (!sub?.id) return <p className="text-sm text-muted-foreground">No program was submitted or saved.</p>
   return (
     <div className="grid gap-2 text-sm">
-      <p className="text-xs text-muted-foreground">{sub.language}, {sub.submissions} submission(s). Sample cases are shown to the candidate; hidden cases are not.</p>
-      <pre className="max-h-64 overflow-auto rounded-md border bg-muted p-3 text-xs">{sub.source}</pre>
-      <div className="flex flex-wrap gap-x-4 gap-y-1.5" data-testid="cases">
-        {sub.cases.map((c) => <span key={c.ordinal} className="inline-flex items-center gap-1.5 text-xs">{c.visibility === "open" ? "Sample" : "Hidden"} {c.ordinal} <Verdict v={c.verdict} /></span>)}
-      </div>
+      {!sub?.id ? <p className="text-muted-foreground">No program was submitted or saved.</p> : <>
+        <span className="text-xs font-medium text-muted-foreground">Candidate's answer</span>
+        <p className="text-xs text-muted-foreground">{sub.language}, {sub.submissions} submission(s). Sample cases are shown to the candidate; hidden cases are not.</p>
+        <pre className="max-h-96 overflow-auto whitespace-pre-wrap break-words rounded-md border bg-muted p-3 text-xs">{sub.source}</pre>
+        <div className="flex flex-wrap gap-x-4 gap-y-1.5" data-testid="cases">
+          {sub.cases.map((c) => <span key={c.ordinal} className="inline-flex items-center gap-1.5 text-xs">{c.visibility === "open" ? "Sample" : "Hidden"} {c.ordinal} <Verdict v={c.verdict} /></span>)}
+        </div>
+      </>}
+      {q.solution && <>
+        <span className="text-xs font-medium text-muted-foreground">Model answer (reference solution)</span>
+        <pre className="max-h-96 overflow-auto whitespace-pre-wrap break-words rounded-md border border-green-600/40 bg-green-50 p-3 text-xs text-green-900" data-testid="solution">{q.solution}</pre>
+      </>}
     </div>
+  )
+}
+
+// The header shows only the short title: this opens the whole question above the answers. A native <details>, so no state to keep.
+function FullQuestion({ q }) {
+  const code = (label, text) => <div className="grid gap-1"><span className="text-xs font-medium text-muted-foreground">{label}</span><pre className="overflow-auto whitespace-pre-wrap rounded-md bg-muted p-2 text-xs">{text}</pre></div>
+  return (
+    <details className="group rounded-md border" data-testid="full-question">
+      <summary className="flex cursor-pointer list-none items-center gap-1.5 p-2 text-sm font-medium text-primary [&::-webkit-details-marker]:hidden">
+        <ChevronRight className="size-4 transition-transform group-open:rotate-90" />
+        <span className="group-open:hidden">Show full question</span><span className="hidden group-open:inline">Hide question</span>
+      </summary>
+      <div className="grid gap-3 border-t p-3 text-sm">
+        {q.passage && <div className="rounded-md border bg-muted p-3"><Html html={q.passage} /></div>}
+        <Html html={q.body} />
+        {q.schema && code("Tables", q.schema)}
+        {q.samples?.map((s, i) => <div key={i} className="grid gap-2 sm:grid-cols-2">{code(`Sample input ${i + 1}`, s.input)}{code(`Expected output ${i + 1}`, s.expected)}</div>)}
+      </div>
+    </details>
   )
 }
 
@@ -292,6 +318,7 @@ export default function AttemptReview() {
                   {q.flags?.length > 0 && <Badge variant="outline">{q.flags.join(", ").replace(/_/g, " ")}</Badge>}
                   <span className="w-24 text-right font-semibold" data-testid="question-score">{q.score ?? 0} / {q.marks}</span>
                 </div>
+                <FullQuestion q={q} />
                 <Answer q={q} />
                 {q.feedback && <p className="text-xs text-muted-foreground">Feedback: {q.feedback}</p>}
                 {evaluate && q.answer_id && (

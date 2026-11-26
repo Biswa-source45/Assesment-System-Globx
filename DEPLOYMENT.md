@@ -206,6 +206,7 @@ Every event is stored with a timestamp, plus when and why the exam ended. Browse
 - [prepared, not yet switched on] Open from anywhere through a Cloudflare Tunnel (2026-11-18): the tunnel and the route are made in Cloudflare (steps in section 4b, the route and the `assessment` Tunnel record already exist), the `tunnel` service and `.\deploy.ps1 -Tunnel` are in the repository. Still to do: push, wait for green Actions, copy the new `docker-compose.yml` and `deploy.ps1` to the server, run `.\deploy.ps1 -Tunnel` with no exam running, then the phone test. **The tunnel, the Caddy header change and the deploy option could not be run on the development machine (no Docker there), so the first run on the server is the real test.**
 - [planned] Backups; push to GitHub and see the workflow turn green; real certificate and DNS record on the office server
 - [planned] LAN test with 2-3 PCs
+- [done] Results review: Show full question on every answer card, reference solution for coding and SQL (staff only)
 
 ## 12. Open items
 

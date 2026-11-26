@@ -112,6 +112,8 @@ def test_the_exam_is_calculated_after_its_end_time_then_reviewed_and_declared(cl
     _wait(lambda: _finished(client, asha, at_a), "Asha's submission")
     assert ai_calls == {"short": 0, "long": 0}                      # nothing is sent to the AI at submit time
     assert _answers(client, creator, at_a)["mcq"]["score"] == 1 and _answers(client, creator, at_a)["code"]["score"] == 10  # MCQ and the program are marked at once
+    seen = _answers(client, creator, at_a)  # the review gets the whole question, and for a program the reference solution and the samples
+    assert seen["mcq"]["body"] == "<p>x</p>" and seen["code"]["body"] and seen["code"]["solution"] and seen["code"]["samples"]
 
     # Bala answers badly, saves a program but never presses Submit, then leaves the window too often and is ended
     at_b = _start(client, bala, b_asg)
@@ -178,7 +180,9 @@ def test_the_exam_is_calculated_after_its_end_time_then_reviewed_and_declared(cl
     assert _mine(client, asha, a_asg)["result"] is None
     assert client.post(f"{API}/tests/{tid}/declare", headers=staff, json={"declared": True}).status_code == 200
     mine = _mine(client, asha, a_asg)["result"]
-    assert mine["score"] == 18 and mine["percent"] == 100 and mine["result"] == "passed" and mine["sections"] == [{"title": "All", "score": 18.0, "max": 18.0}]
+    theirs = client.get(f"{API}/attempts/{at_a}/result", headers=asha).json()["questions"]  # the candidate's own report never carries an answer key
+    assert theirs and not any({"body", "solution", "model_answer"} & set(x) for x in theirs)
+    assert mine["score"] == 18and mine["percent"] == 100 and mine["result"] == "passed" and mine["sections"] == [{"title": "All", "score": 18.0, "max": 18.0}]
     assert _mine(client, bala, b_asg)["result"]["reason"] == "violation_limit"
     assert _mine(client, dev, d_asg)["result"]["result"] == "not_attempted"
     assert _mine(client, bala, b_asg)["result"]["result"] == "passed"   # Bala was ended early but his saved program alone (10) is over the pass mark of 8
