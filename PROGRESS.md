@@ -38,8 +38,12 @@ Read at the start of every task; update after every change. Plan and decisions: 
 
 ### 2026-11-26 (Repository moved to the GitHub account dilliprout)
 - **Done by the owner.** Transferred to github.com/dilliprout/Assesment-System-Globx (new repository at commit `d7c1b7d`).
-- **Changed.** The default image address in `docker-compose.yml` (3 lines) is now `ghcr.io/dilliprout`; the notes name the new owner. Not committed, not pushed.
-- **Still to do.** Point `origin` at the new address and push; wait for the workflow and the three packages under dilliprout; on the server sign in to ghcr.io with dilliprout's `read:packages` token, add `OAP_REGISTRY=ghcr.io/dilliprout` to `D:\oap\.env`, run `deploy.ps1 -Drill`, then the checks. Old images stay under the old account.
+- **Changed.** The default image address in `docker-compose.yml` (3 lines) is now `ghcr.io/dilliprout`; the notes name the new owner. Committed by the owner (`51e986b`); `origin` points to the new address.
+- **Server switched (owner's screenshot).** Database dump taken, ghcr.io sign-in as dilliprout, `deploy.ps1 -Drill` pulled the three `ghcr.io/dilliprout` images, api, judge and db healthy, caddy started.
+- **Drill passed** on the new images: 58 of 58, system running.
+- **Mail test sent** from the server (`app.mailtest`, through the configured SMTP account).
+- **Confirmed by the owner.** Everything works after the move; the transfer is complete.
+- **Later.** Make sure `token.txt` is gone from the server; delete the old token and the old images under the old account after a few days; note when the new token expires.
 
 ### 2026-11-26 (Results review: the whole question can be opened above the answer)
 - **Asked.** On a candidate's review screen only the short title of each question showed, so long and coding questions could not be read; the owner wanted an open/close button with the question, then the answers.
