@@ -95,4 +95,6 @@ cd frontend && npm install && npm run dev                  # http://localhost:51
 http://localhost:8000/api/docs
 ```
 
+## test commnet
+
 The previous version of the project (Docker-based) was moved to `_backup_v1/`.
